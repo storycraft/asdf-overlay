@@ -1,6 +1,8 @@
 # Asdf Overlay
 Electron overlay solution for Windows
 
+![Screenshot](assets/example.png)
+
 ## Supported API
 * [x] OpenGL
 * [ ] DX9
