@@ -1,0 +1,37 @@
+[package]
+name = "asdf-overlay"
+description = "Windows opengl Overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["storycraft <storycraft@pancake.sh>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+asdf-overlay-common = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+anyhow = "1.0.97"
+parking_lot = "0.12.3"
+retour = "0.3"
+gl = "0.14.0"
+serde = "1.0.219"
+tokio-util = "0.7.14"
+futures = "0.3.31"
+
+[dependencies.windows]
+version = "0.61.1"
+features = [
+    "Win32_Foundation",
+    "Win32_System_SystemServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL"
+]
+
+[build-dependencies]
+gl_generator = "0.14.0"

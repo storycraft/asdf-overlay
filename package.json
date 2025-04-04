@@ -1,0 +1,54 @@
+{
+  "name": "asdf-overlay-node",
+  "version": "0.1.0",
+  "description": "",
+  "main": "./lib/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "tsc && cargo test",
+    "cargo-build": "tsc && cargo build --message-format=json-render-diagnostics > node_modules/cargo.log",
+    "cross-build": "tsc && cross build --message-format=json-render-diagnostics > node_modules/cross.log",
+    "postcargo-build": "neon dist < node_modules/cargo.log",
+    "postcross-build": "neon dist -m /target < node_modules/cross.log",
+    "debug": "npm run cargo-build --",
+    "build": "npm run cargo-build -- --release",
+    "cross": "npm run cross-build -- --release",
+    "prepack": "tsc && neon update",
+    "version": "neon bump --binaries platforms && git add ."
+  },
+  "author": "storycraft <storycraft@pancake.sh>",
+  "license": "MIT OR Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "types": "./lib/index.d.ts",
+  "files": [
+    "lib/**/*"
+  ],
+  "neon": {
+    "type": "library",
+    "org": "@asdf-overlay-node",
+    "platforms": [
+      "win32-x64-msvc",
+      "win32-ia32-msvc"
+    ],
+    "load": "./asdf-overlay-node/src/load.cts"
+  },
+  "devDependencies": {
+    "@neon-rs/cli": "^0.1.82",
+    "@tsconfig/node20": "^20.1.4",
+    "@types/node": "^22.14.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@neon-rs/load": "^0.1.82"
+  },
+  "optionalDependencies": {
+    "@asdf-overlay-node/win32-x64-msvc": "0.1.0",
+    "@asdf-overlay-node/win32-ia32-msvc": "0.1.0"
+  },
+  "packageManager": "pnpm@10.7.1+sha512.2d92c86b7928dc8284f53494fb4201f983da65f0fb4f0d40baafa5cf628fa31dae3e5968f12466f17df7e97310e30f343a648baea1b9b350685dafafffdf5808"
+}

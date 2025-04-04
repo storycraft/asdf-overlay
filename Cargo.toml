@@ -1,0 +1,15 @@
+[workspace]
+members = ["./crates/*", "./asdf-overlay-node/native"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 or MIT"
+
+[workspace.dependencies]
+asdf-overlay = { path = "./crates/overlay" }
+asdf-overlay-client = { path = "./crates/client" }
+asdf-overlay-common = { path = "./crates/common" }
+
+tokio = "1.44.1"
