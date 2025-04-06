@@ -25,11 +25,11 @@ impl Manager {
         }
     }
 
-    async fn attach(&self, name: &str, timeout: Option<Duration>) -> anyhow::Result<u32> {
+    async fn attach(&self, pid: u32, timeout: Option<Duration>) -> anyhow::Result<u32> {
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
 
-        let process = OwnedProcess::find_first_by_name(name)
-            .with_context(|| format!("cannot find process: {name}"))?;
+        let process = OwnedProcess::from_pid(pid)
+            .with_context(|| format!("cannot find process pid: {pid}"))?;
         let conn = inject(process, None, timeout)
             .await
             .context("cannot inject to the process")?;
@@ -77,7 +77,7 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let name = cx.argument::<JsString>(0)?.value(&mut cx);
+    let pid = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let timeout = cx
         .argument_opt(1)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
@@ -90,7 +90,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.attach(&name, timeout).await;
+        let res = MANAGER.attach(pid, timeout).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),

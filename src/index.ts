@@ -1,5 +1,5 @@
 const addon: {
-    attach(name: string, timeout?: number): Promise<number>,
+    attach(pid: number, timeout?: number): Promise<number>,
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayReposition(id: number, x: number, y: number): Promise<void>,
     overlayClose(id: number): Promise<boolean>,
@@ -34,11 +34,11 @@ export class Overlay {
 
     /**
      * Attach overlay to target process
-     * @param name process name
+     * @param pid target process pid
      * @param timeout Timeout for injection, in milliseconds. Will wait indefinitely if not provided.
      * @returns new {@link Overlay} object
      */
-    static async attach(name: string, timeout?: number): Promise<Overlay> {
-        return new Overlay(await addon.attach(name, timeout));
+    static async attach(pid: number, timeout?: number): Promise<Overlay> {
+        return new Overlay(await addon.attach(pid, timeout));
     }
 }
