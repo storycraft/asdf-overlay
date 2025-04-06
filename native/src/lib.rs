@@ -109,7 +109,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let dll_dir = cx.argument::<JsString>(0)?.value(&mut cx);
     let pid = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let timeout = cx
-        .argument_opt(1)
+        .argument_opt(2)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
         .map(|v| v.downcast_or_throw::<JsNumber, _>(&mut cx))
         .transpose()?
