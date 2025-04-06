@@ -3,7 +3,7 @@ import * as addon from './load.cjs';
 
 declare module './load.cjs' {
     function attach(name: string): Promise<number>;
-    function overlayUpdateBitmap(id: number, width: number, data: ArrayBuffer): Promise<void>;
+    function overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>;
     function overlayReposition(id: number, x: number, y: number): Promise<void>;
     function overlayClose(id: number): Promise<boolean>;
 }
@@ -31,7 +31,7 @@ export class Overlay {
      * @param width width of the bitmap
      * @param data bgra formatted bitmap
      */
-    async updateBitmap(width: number, data: ArrayBuffer) {
+    async updateBitmap(width: number, data: Buffer) {
         await addon.overlayUpdateBitmap(this[idSym], width, data);
     }
 

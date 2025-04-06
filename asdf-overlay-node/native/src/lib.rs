@@ -70,7 +70,7 @@ static MANAGER: LazyLock<Manager> = LazyLock::new(Manager::new);
 fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
     static RUNTIME: OnceCell<Runtime> = OnceCell::new();
 
-    RUNTIME.get_or_try_init(|| Runtime::new().or_else(|err| cx.throw_error(err.to_string())))
+    RUNTIME.get_or_try_init(|| Runtime::new().or_else(|err| cx.throw_error(format!("{err:?}"))))
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -85,7 +85,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),
-            Err(err) => return cx.throw_error(err.to_string()),
+            Err(err) => return cx.throw_error(format!("{err:?}")),
         });
     });
 
@@ -106,7 +106,7 @@ fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => return cx.throw_error(err.to_string()),
+            Err(err) => return cx.throw_error(format!("{err:?}")),
         });
     });
 
@@ -116,7 +116,7 @@ fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-    let data = cx.argument::<JsArrayBuffer>(2)?.as_slice(&mut cx).to_vec();
+    let data = cx.argument::<JsBuffer>(2)?.as_slice(&mut cx).to_vec();
 
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
@@ -127,7 +127,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => return cx.throw_error(err.to_string()),
+            Err(err) => return cx.throw_error(format!("{err:?}")),
         });
     });
 
@@ -146,7 +146,7 @@ fn overlay_close(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(ejected) => Ok(JsBoolean::new(&mut cx, ejected)),
-            Err(err) => cx.throw_error(err.to_string()),
+            Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
 
