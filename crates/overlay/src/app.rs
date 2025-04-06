@@ -61,10 +61,7 @@ pub async fn main() -> anyhow::Result<()> {
     let token = CancellationToken::new();
     select! {
         _ = token.cancelled() => {}
-
-        res = run_client(client, token.clone()) => {
-            res.context("connection closed")?
-        }
+        _ = run_client(client, token.clone()) => {}
     };
 
     Ok(())
