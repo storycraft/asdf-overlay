@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+description = "repo xtask for building dlls"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors = ["storycraft <storycraft@pancake.sh>"]
+
+[dependencies]
+anyhow = "1.0.97"
+camino = "1.1.9"
+cargo_metadata = "0.19.2"
+clap = { version = "4.5.35", features = ["derive"] }

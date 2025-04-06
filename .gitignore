@@ -1,4 +1,6 @@
 /target
-index.node
+/index.node
+/asdf_overlay-x64.dll
+/asdf_overlay-x86.dll
 /node_modules
 /lib

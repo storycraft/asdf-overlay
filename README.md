@@ -13,7 +13,7 @@ Electron overlay solution for Windows
 
 ## Pre-requirement
 1. node, pnpm package manager
-2. rust, cargo, msvc, cross(optional)
+2. rust, cargo, msvc
 
 ### Installing node dependencies
 ```bash

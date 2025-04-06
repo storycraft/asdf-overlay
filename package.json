@@ -5,13 +5,11 @@
   "main": "./lib/index.js",
   "scripts": {
     "test": "tsc && cargo test",
-    "cargo-build": "cargo build --message-format=json-render-diagnostics > node_modules/cargo.log",
-    "cross-build": "cross build --message-format=json-render-diagnostics > node_modules/cross.log",
+    "build-dll": "cargo run -p xtask --release build-dll",
+    "cargo-build": "cargo build -p asdf-overlay-node --message-format=json-render-diagnostics > node_modules/cargo.log",
     "postcargo-build": "neon dist < node_modules/cargo.log",
-    "postcross-build": "neon dist -m /target < node_modules/cross.log",
     "debug": "npm run cargo-build -- --release && tsc",
-    "build": "npm run cargo-build -- --release && tsc",
-    "cross": "npm run cross-build",
+    "build": "npm run cargo-build -- --release && npm run build-dll && tsc",
     "prepack": "npm run build"
   },
   "author": "storycraft <storycraft@pancake.sh>",
@@ -25,7 +23,9 @@
   "types": "./lib/index.d.ts",
   "files": [
     "lib/**/*",
-    "index.node"
+    "index.node",
+    "asdf_overlay-x64.dll",
+    "asdf_overlay-x86.dll"
   ],
   "devDependencies": {
     "@neon-rs/cli": "^0.1.82",
