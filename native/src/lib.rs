@@ -78,13 +78,18 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let name = cx.argument::<JsString>(0)?.value(&mut cx);
+    let timeout = cx
+        .argument_opt(1)
+        .map(|v| v.downcast_or_throw::<JsNumber, _>(&mut cx))
+        .transpose()?
+        .map(|timeout| Duration::from_millis(timeout.value(&mut cx) as _));
 
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.attach(&name, Some(Duration::from_secs(1))).await;
+        let res = MANAGER.attach(&name, timeout).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),
