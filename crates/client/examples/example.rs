@@ -49,7 +49,5 @@ async fn main() -> anyhow::Result<()> {
 
     sleep(Duration::from_secs(1)).await;
 
-    conn.request(&Request::Close).await?;
-
     Ok(())
 }
