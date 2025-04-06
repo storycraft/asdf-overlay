@@ -5,6 +5,7 @@ use anyhow::Context;
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use parity_tokio_ipc::{Endpoint, SecurityAttributes};
+use scopeguard::defer;
 use tokio::{
     io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, split},
     sync::oneshot,
@@ -41,6 +42,8 @@ fn create_conn<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(stream: S) ->
 
         async move {
             let mut body = Vec::new();
+            defer!(map.clear());
+
             loop {
                 let frame = Frame::read(&mut rx).await?;
                 body.resize(frame.size as usize, 0_u8);
@@ -75,8 +78,7 @@ pub struct IpcServerConn {
 
 impl IpcServerConn {
     pub async fn request(&mut self, req: &Request) -> anyhow::Result<Response> {
-        self
-            .send(req)
+        self.send(req)
             .await
             .context("failed to send request")?
             .await

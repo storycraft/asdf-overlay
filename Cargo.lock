@@ -68,6 +68,7 @@ dependencies = [
  "parity-tokio-ipc",
  "parking_lot",
  "rustc-hash",
+ "scopeguard",
  "tokio",
 ]
 
