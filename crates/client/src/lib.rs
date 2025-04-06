@@ -50,13 +50,15 @@ pub async fn inject(
 
     let mut stream = pin!(stream);
     select! {
-        _ = sleep(timeout) => {
-            bail!("client wait timeout")
-        },
+        biased;
 
         res = stream.next() => {
             Ok(res.context("server closed unexpectedly")??)
         }
+
+        _ = sleep(timeout) => {
+            bail!("client wait timeout")
+        },
 
         res = task => {
             res
