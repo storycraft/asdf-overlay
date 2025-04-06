@@ -1,4 +1,5 @@
 use core::pin::pin;
+use std::thread::Thread;
 
 use anyhow::Context;
 use asdf_overlay_common::{
@@ -57,7 +58,7 @@ async fn run_server(
     Ok(())
 }
 
-pub async fn main() -> anyhow::Result<()> {
+pub async fn main(load_thread: Thread) -> anyhow::Result<()> {
     hook().context("hook failed")?;
 
     let token = CancellationToken::new();
@@ -65,6 +66,8 @@ pub async fn main() -> anyhow::Result<()> {
     let mut tasks = Vec::new();
     let server = async {
         let conn = listen()?;
+        load_thread.unpark();
+
         let mut conn = pin!(conn);
         while let Some(conn) = conn.next().await.transpose()? {
             tasks.push(tokio::spawn(run_server(conn, token.clone())));

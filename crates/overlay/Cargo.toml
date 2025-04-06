@@ -20,6 +20,7 @@ gl = "0.14.0"
 serde = "1.0.219"
 tokio-util = "0.7.14"
 futures = "0.3.31"
+once_cell = "1.21.3"
 
 [dependencies.windows]
 version = "0.61.1"

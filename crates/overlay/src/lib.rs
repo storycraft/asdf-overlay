@@ -9,10 +9,9 @@ mod app;
 mod hook;
 mod renderer;
 
-use core::ffi::c_void;
-use std::thread;
-
 use app::main;
+use core::{ffi::c_void, time::Duration};
+use std::thread;
 use tokio::runtime::Runtime;
 use windows::{
     Win32::{
@@ -25,6 +24,8 @@ use windows::{
 fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
     let rt = Runtime::new()?;
 
+    let current = thread::current();
+
     thread::spawn({
         struct Wrapper(*mut c_void);
         unsafe impl Send for Wrapper {}
@@ -33,7 +34,7 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
 
         move || {
             let dll_module = dll_module;
-            if let Err(err) = rt.block_on(main()) {
+            if let Err(err) = rt.block_on(main(current)) {
                 eprintln!("dll error: {err}");
             }
             drop(rt);
@@ -44,12 +45,14 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
         }
     });
 
+    thread::park_timeout(Duration::from_secs(1));
+
     Ok(())
 }
 
+#[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-#[allow(non_snake_case, unused_variables)]
-pub extern "system" fn DllMain(dll_module: HINSTANCE, reason: u32, reserved: *mut c_void) -> BOOL {
+pub extern "system" fn DllMain(dll_module: HINSTANCE, reason: u32, _reserved: *mut c_void) -> BOOL {
     if let Err(err) = match reason {
         DLL_PROCESS_ATTACH => attach(dll_module),
         _ => Ok(()),

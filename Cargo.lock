@@ -32,6 +32,7 @@ dependencies = [
  "futures",
  "gl",
  "gl_generator",
+ "once_cell",
  "parking_lot",
  "retour",
  "serde",
