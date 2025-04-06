@@ -4,8 +4,8 @@ use bincode::{Decode, Encode};
 pub enum Request {
     /// Change draw position
     Position(UpdatePosition),
-    /// Change image
-    Texture(UpdateTexture),
+    /// Update overlay using bitmap
+    Bitmap(UpdateBitmap),
     /// Close and exit overlay
     Close,
     Test,
@@ -18,7 +18,7 @@ pub struct UpdatePosition {
 }
 
 #[derive(Debug, Encode, Decode)]
-pub struct UpdateTexture {
+pub struct UpdateBitmap {
     pub width: u32,
     pub data: Vec<u8>,
 }

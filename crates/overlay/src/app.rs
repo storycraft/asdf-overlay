@@ -28,9 +28,9 @@ async fn run_server(
                     }
                 }
 
-                Request::Texture(update_texture) => {
+                Request::Bitmap(update_bitmap) => {
                     if let Some(ref mut renderer) = *RENDERER.lock() {
-                        renderer.update_texture(update_texture.width, update_texture.data);
+                        renderer.update_texture(update_bitmap.width, update_bitmap.data);
                     }
                 }
 
