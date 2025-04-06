@@ -64,6 +64,7 @@ dependencies = [
  "futures-core",
  "parity-tokio-ipc",
  "parking_lot",
+ "rustc-hash",
  "tokio",
 ]
 
@@ -74,9 +75,11 @@ dependencies = [
  "anyhow",
  "asdf-overlay-client",
  "asdf-overlay-common",
+ "dashmap",
  "neon",
  "once_cell",
  "parking_lot",
+ "rustc-hash",
  "tokio",
 ]
 
@@ -847,6 +850,12 @@ name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "same-file"

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use dashmap::DashMap;
 use parity_tokio_ipc::{Connection, Endpoint};
 use tokio::{
@@ -58,7 +59,12 @@ impl IpcClientConn {
     }
 
     pub async fn request(&mut self, req: &Request) -> anyhow::Result<Response> {
-        Ok(self.send(req).await?.await?)
+        Ok(self
+            .send(req)
+            .await
+            .context("failed to send request")?
+            .await
+            .context("failed to receive response")?)
     }
 
     async fn send(&mut self, req: &Request) -> anyhow::Result<oneshot::Receiver<Response>> {

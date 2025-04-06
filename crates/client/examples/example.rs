@@ -3,7 +3,7 @@ use std::env::{self, current_exe};
 
 use anyhow::Context;
 use asdf_overlay_client::{inject, process::OwnedProcess};
-use asdf_overlay_common::message::{Request, UpdatePosition, UpdateTexture};
+use asdf_overlay_common::message::{Request, UpdatePosition, UpdateBitmap};
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
         data.resize(i * i * 4, 0);
         rand::fill(&mut data[..]);
 
-        conn.request(&Request::Texture(UpdateTexture {
+        conn.request(&Request::Bitmap(UpdateBitmap {
             width: i as _,
             data: data.clone(),
         }))

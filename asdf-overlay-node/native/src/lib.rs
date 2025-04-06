@@ -1,10 +1,71 @@
+use core::sync::atomic::{AtomicU32, Ordering};
+use std::sync::LazyLock;
+
+use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::prelude::*;
+use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
-use parking_lot::Mutex;
+use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
 
-static CONN: Mutex<Option<IpcClientConn>> = Mutex::new(None);
+struct Manager {
+    next_id: AtomicU32,
+    map: DashMap<u32, tokio::sync::Mutex<IpcClientConn>, FxBuildHasher>,
+}
+
+impl Manager {
+    fn new() -> Self {
+        Self {
+            next_id: AtomicU32::new(0),
+            map: DashMap::with_hasher(FxBuildHasher::default()),
+        }
+    }
+
+    async fn attach(&self, name: &str) -> anyhow::Result<u32> {
+        let id = self.next_id.fetch_add(1, Ordering::AcqRel);
+
+        let process = OwnedProcess::find_first_by_name(name)
+            .with_context(|| format!("cannot find process: {name}"))?;
+        let conn = inject(process, None)
+            .await
+            .context("cannot inject to the process")?;
+        self.map.insert(id, tokio::sync::Mutex::new(conn));
+
+        Ok(id)
+    }
+
+    async fn reposition(&self, id: u32, x: f32, y: f32) -> anyhow::Result<()> {
+        let conn = self.map.get(&id).context("invalid id")?;
+        conn.lock()
+            .await
+            .request(&Request::Position(UpdatePosition { x, y }))
+            .await?;
+
+        Ok(())
+    }
+
+    async fn update_bitmap(&self, id: u32, width: u32, data: Vec<u8>) -> anyhow::Result<()> {
+        let conn = self.map.get(&id).context("invalid id")?;
+        conn.lock()
+            .await
+            .request(&Request::Bitmap(UpdateBitmap { width, data }))
+            .await?;
+
+        Ok(())
+    }
+
+    async fn destroy(&self, id: u32) -> anyhow::Result<bool> {
+        let (_, conn) = self.map.remove(&id).context("invalid id")?;
+        if conn.into_inner().request(&Request::Close).await.is_ok() {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+static MANAGER: LazyLock<Manager> = LazyLock::new(Manager::new);
 
 fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
     static RUNTIME: OnceCell<Runtime> = OnceCell::new();
@@ -12,66 +73,81 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
     RUNTIME.get_or_try_init(|| Runtime::new().or_else(|err| cx.throw_error(err.to_string())))
 }
 
-fn init(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let name = cx.argument::<JsString>(0)?.value(&mut cx);
 
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
 
     let (deferred, promise) = cx.promise();
-
     rt.spawn(async move {
-        *CONN.lock() = Some(
-            inject(OwnedProcess::find_first_by_name(name).unwrap(), None)
-                .await
-                .unwrap(),
-        );
+        let res = MANAGER.attach(&name).await;
 
-        deferred.settle_with(&channel, move |mut cx| Ok(JsUndefined::new(&mut cx)));
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(id) => Ok(JsNumber::new(&mut cx, id)),
+            Err(err) => return cx.throw_error(err.to_string()),
+        });
     });
 
     Ok(promise)
 }
 
-fn update(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let width = cx.argument::<JsNumber>(0)?.value(&mut cx);
-    let data = cx.argument::<JsBuffer>(1)?.as_slice(&mut cx).to_vec();
+fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let x = cx.argument::<JsNumber>(1)?.value(&mut cx) as f32;
+    let y = cx.argument::<JsNumber>(2)?.value(&mut cx) as f32;
 
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = MANAGER.reposition(id, x, y).await;
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(_) => Ok(JsUndefined::new(&mut cx)),
+            Err(err) => return cx.throw_error(err.to_string()),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let data = cx.argument::<JsArrayBuffer>(2)?.as_slice(&mut cx).to_vec();
+
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = MANAGER.update_bitmap(id, width, data).await;
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(_) => Ok(JsUndefined::new(&mut cx)),
+            Err(err) => return cx.throw_error(err.to_string()),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn overlay_close(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
 
     let (deferred, promise) = cx.promise();
 
     rt.spawn(async move {
-        if let Some(mut conn) = { CONN.lock().take() } {
-            println!("sending update {} {}", width, data.len());
-            conn.request(&Request::Texture(UpdateTexture {
-                width: width as _,
-                data,
-            }))
-            .await
-            .unwrap();
-            *CONN.lock() = Some(conn);
-        }
+        let res = MANAGER.destroy(id).await;
 
-        deferred.settle_with(&channel, move |mut cx| Ok(JsUndefined::new(&mut cx)));
-    });
-
-    Ok(promise)
-}
-
-fn close(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
-
-    let (deferred, promise) = cx.promise();
-
-    rt.spawn(async move {
-        if let Some(mut conn) = { CONN.lock().take() } {
-            conn.request(&Request::Close).await.unwrap();
-        }
-
-        deferred.settle_with(&channel, move |mut cx| Ok(JsUndefined::new(&mut cx)));
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(ejected) => Ok(JsBoolean::new(&mut cx, ejected)),
+            Err(err) => cx.throw_error(err.to_string()),
+        });
     });
 
     Ok(promise)
@@ -79,8 +155,9 @@ fn close(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
-    cx.export_function("init", init)?;
-    cx.export_function("update", update)?;
-    cx.export_function("close", close)?;
+    cx.export_function("attach", attach)?;
+    cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
+    cx.export_function("overlayReposition", overlay_reposition)?;
+    cx.export_function("overlayClose", overlay_close)?;
     Ok(())
 }
