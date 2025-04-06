@@ -33,6 +33,13 @@ export class Overlay {
     }
 
     /**
+     * Close overlay
+     */
+    async close() {
+        await addon.overlayClose(this[idSym]);
+    }
+
+    /**
      * Attach overlay to target process
      * @param pid target process pid
      * @param timeout Timeout for injection, in milliseconds. Will wait indefinitely if not provided.
