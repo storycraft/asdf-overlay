@@ -1,11 +1,9 @@
-use std::sync::Arc;
+use std::process;
 
-use anyhow::Context;
-use dashmap::DashMap;
 use parity_tokio_ipc::{Connection, Endpoint};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
-    sync::oneshot,
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
+    sync::mpsc::{Sender, channel},
     task::JoinHandle,
 };
 
@@ -14,86 +12,69 @@ use crate::message::{Request, Response};
 use super::{Frame, create_name};
 
 pub struct IpcClientConn {
-    next_id: u32,
-    tx: WriteHalf<Connection>,
+    rx: ReadHalf<Connection>,
     buf: Vec<u8>,
-    map: Arc<DashMap<u32, oneshot::Sender<Response>>>,
-    read_task: JoinHandle<anyhow::Result<()>>,
+    chan: Sender<(u32, Response)>,
+    write_task: JoinHandle<anyhow::Result<()>>,
 }
 
 impl IpcClientConn {
-    pub async fn connect(pid: u32) -> anyhow::Result<Self> {
-        let name = create_name(pid);
+    pub async fn connect() -> anyhow::Result<Self> {
+        let name = create_name(process::id());
 
-        let (mut rx, tx) = split(Endpoint::connect(name).await?);
+        let (rx, mut tx) = split(Endpoint::connect(name).await?);
+        let (chan_tx, mut chan_rx) = channel(4);
 
-        let map = Arc::new(DashMap::<u32, oneshot::Sender<Response>>::new());
-
-        let read_task = tokio::spawn({
-            let map = map.clone();
-
+        let write_task = tokio::spawn({
             async move {
-                let mut body = Vec::new();
-                loop {
-                    let frame = Frame::read(&mut rx).await?;
-                    body.resize(frame.size as usize, 0_u8);
-                    rx.read_exact(&mut body).await?;
+                let mut buf = Vec::new();
+                while let Some((id, res)) = chan_rx.recv().await {
+                    bincode::encode_into_std_write(res, &mut buf, bincode::config::standard())?;
 
-                    let res: Response =
-                        bincode::decode_from_slice(&body, bincode::config::standard())?.0;
-
-                    if let Some((_, sender)) = map.remove(&frame.id) {
-                        _ = sender.send(res);
+                    Frame {
+                        id,
+                        size: buf.len() as u32,
                     }
+                    .write(&mut tx)
+                    .await?;
+                    tx.write_all(&buf).await?;
+
+                    tx.flush().await?;
+
+                    buf.clear();
                 }
+
+                Ok(())
             }
         });
 
-        Ok(IpcClientConn {
-            next_id: 0,
-            tx,
+        Ok(Self {
+            rx,
             buf: Vec::new(),
-            map,
-            read_task,
+            chan: chan_tx,
+            write_task,
         })
     }
 
-    pub async fn request(&mut self, req: &Request) -> anyhow::Result<Response> {
-        Ok(self
-            .send(req)
-            .await
-            .context("failed to send request")?
-            .await
-            .context("failed to receive response")?)
+    pub async fn recv(
+        &mut self,
+        f: impl AsyncFnOnce(Request) -> anyhow::Result<Response>,
+    ) -> anyhow::Result<()> {
+        let frame = Frame::read(&mut self.rx).await?;
+        self.buf.resize(frame.size as usize, 0_u8);
+        self.rx.read_exact(&mut self.buf).await?;
+
+        let req: Request = bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
+
+        _ = self.chan.send((frame.id, f(req).await?)).await;
+
+        Ok(())
     }
 
-    async fn send(&mut self, req: &Request) -> anyhow::Result<oneshot::Receiver<Response>> {
-        let id = self.next_id;
-        self.next_id += 1;
+    pub async fn close(self) -> anyhow::Result<()> {
+        drop(self.chan);
+        self.write_task.await??;
 
-        bincode::encode_into_std_write(req, &mut self.buf, bincode::config::standard())?;
-
-        Frame {
-            id,
-            size: self.buf.len() as _,
-        }
-        .write(&mut self.tx)
-        .await?;
-
-        let (tx, rx) = oneshot::channel();
-        self.map.insert(id, tx);
-        self.tx.write_all(&self.buf).await?;
-
-        self.tx.flush().await?;
-
-        self.buf.clear();
-
-        Ok(rx)
-    }
-}
-
-impl Drop for IpcClientConn {
-    fn drop(&mut self) {
-        self.read_task.abort();
+        Ok(())
     }
 }

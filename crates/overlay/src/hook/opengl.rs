@@ -8,15 +8,16 @@ use cx::OverlayGlContext;
 use parking_lot::Mutex;
 use retour::GenericDetour;
 use windows::{
-    core::{BOOL, PCSTR}, Win32::{
+    Win32::{
         Foundation::{HMODULE, RECT},
         Graphics::{
-            Gdi::{WindowFromDC, HDC},
+            Gdi::{HDC, WindowFromDC},
             OpenGL::wglGetProcAddress,
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
         UI::WindowsAndMessaging::GetClientRect,
-    }
+    },
+    core::{BOOL, PCSTR},
 };
 
 use crate::{renderer::opengl::OpenglRenderer, wgl};
@@ -103,8 +104,7 @@ fn setup_gl() -> anyhow::Result<()> {
             if let Some(ptr) = fn_ptr {
                 ptr as _
             } else {
-                GetProcAddress(module, addr)
-                    .map_or(std::ptr::null(), |fn_ptr| fn_ptr as *const _)
+                GetProcAddress(module, addr).map_or(std::ptr::null(), |fn_ptr| fn_ptr as *const _)
             }
         }
     }

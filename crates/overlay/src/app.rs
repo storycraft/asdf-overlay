@@ -1,23 +1,17 @@
-use core::pin::pin;
-use std::thread::Thread;
-
 use anyhow::Context;
 use asdf_overlay_common::{
-    ipc::server::{IpcServerConn, listen},
+    ipc::client::IpcClientConn,
     message::{Request, Response},
 };
-use futures::StreamExt;
-use tokio::{io::AsyncRead, select};
+use scopeguard::defer;
+use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::hook::opengl::{RENDERER, cleanup_hook, hook};
 
-async fn run_server(
-    mut conn: IpcServerConn<impl AsyncRead + Unpin>,
-    token: CancellationToken,
-) -> anyhow::Result<()> {
+async fn run_client(mut client: IpcClientConn, token: CancellationToken) -> anyhow::Result<()> {
     loop {
-        let recv = conn.recv(async |message| {
+        let recv = client.recv(async |message| {
             match message {
                 Request::Close => {
                     token.cancel();
@@ -53,42 +47,25 @@ async fn run_server(
         }
     }
 
-    conn.close().await?;
+    client.close().await?;
 
     Ok(())
 }
 
-pub async fn main(load_thread: Thread) -> anyhow::Result<()> {
+pub async fn main() -> anyhow::Result<()> {
+    let client = IpcClientConn::connect().await?;
+
     hook().context("hook failed")?;
+    defer!(cleanup_hook().expect("hook cleanup failed"));
 
     let token = CancellationToken::new();
-
-    let mut tasks = Vec::new();
-    let server = async {
-        let conn = listen()?;
-        load_thread.unpark();
-
-        let mut conn = pin!(conn);
-        while let Some(conn) = conn.next().await.transpose()? {
-            tasks.push(tokio::spawn(run_server(conn, token.clone())));
-        }
-
-        Ok::<_, anyhow::Error>(())
-    };
-
     select! {
         _ = token.cancelled() => {}
 
-        res = server => {
-            res?
+        res = run_client(client, token.clone()) => {
+            res.context("connection closed")?
         }
     };
-
-    cleanup_hook().context("hook cleanup failed. program may crash")?;
-
-    for task in tasks {
-        task.await??;
-    }
 
     Ok(())
 }

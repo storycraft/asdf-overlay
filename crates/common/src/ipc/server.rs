@@ -1,11 +1,13 @@
 use core::pin::pin;
-use std::process;
+use std::sync::Arc;
 
+use anyhow::Context;
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use parity_tokio_ipc::{Endpoint, SecurityAttributes};
 use tokio::{
-    io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, split},
-    sync::mpsc::{Sender, channel},
+    io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, split},
+    sync::oneshot,
     task::JoinHandle,
 };
 
@@ -13,9 +15,8 @@ use crate::message::{Request, Response};
 
 use super::{Frame, create_name};
 
-pub fn listen()
--> anyhow::Result<impl Stream<Item = io::Result<IpcServerConn<impl AsyncRead + Unpin>>>> {
-    let name = create_name(process::id());
+pub fn listen(pid: u32) -> anyhow::Result<impl Stream<Item = io::Result<IpcServerConn>>> {
+    let name = create_name(pid);
 
     let mut endpoint = Endpoint::new(name);
     endpoint.set_security_attributes(SecurityAttributes::allow_everyone_create().unwrap());
@@ -30,70 +31,85 @@ pub fn listen()
     })
 }
 
-fn create_conn<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
-    stream: S,
-) -> IpcServerConn<ReadHalf<S>> {
-    let (rx, mut tx) = split(stream);
-    let (chan_tx, mut chan_rx) = channel(4);
+fn create_conn<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(stream: S) -> IpcServerConn {
+    let (mut rx, tx) = split(stream);
 
-    let write_task = tokio::spawn({
+    let map = Arc::new(DashMap::<u32, oneshot::Sender<Response>>::new());
+
+    let read_task = tokio::spawn({
+        let map = map.clone();
+
         async move {
-            let mut buf = Vec::new();
-            while let Some((id, res)) = chan_rx.recv().await {
-                bincode::encode_into_std_write(res, &mut buf, bincode::config::standard())?;
+            let mut body = Vec::new();
+            loop {
+                let frame = Frame::read(&mut rx).await?;
+                body.resize(frame.size as usize, 0_u8);
+                rx.read_exact(&mut body).await?;
 
-                Frame {
-                    id,
-                    size: buf.len() as u32,
+                let res: Response =
+                    bincode::decode_from_slice(&body, bincode::config::standard())?.0;
+
+                if let Some((_, sender)) = map.remove(&frame.id) {
+                    _ = sender.send(res);
                 }
-                .write(&mut tx)
-                .await?;
-                tx.write_all(&buf).await?;
-
-                tx.flush().await?;
-
-                buf.clear();
             }
-
-            Ok(())
         }
     });
 
     IpcServerConn {
-        rx,
+        next_id: 0,
+        tx: Box::new(tx),
         buf: Vec::new(),
-        chan: chan_tx,
-        write_task,
+        map,
+        read_task,
     }
 }
 
-pub struct IpcServerConn<R> {
-    rx: R,
+pub struct IpcServerConn {
+    next_id: u32,
+    tx: Box<dyn AsyncWrite + Unpin + Send + 'static>,
     buf: Vec<u8>,
-    chan: Sender<(u32, Response)>,
-    write_task: JoinHandle<anyhow::Result<()>>,
+    map: Arc<DashMap<u32, oneshot::Sender<Response>>>,
+    read_task: JoinHandle<anyhow::Result<()>>,
 }
 
-impl<R: AsyncRead + Unpin> IpcServerConn<R> {
-    pub async fn recv(
-        &mut self,
-        f: impl AsyncFnOnce(Request) -> anyhow::Result<Response>,
-    ) -> anyhow::Result<()> {
-        let frame = Frame::read(&mut self.rx).await?;
-        self.buf.resize(frame.size as usize, 0_u8);
-        self.rx.read_exact(&mut self.buf).await?;
-
-        let req: Request = bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
-
-        _ = self.chan.send((frame.id, f(req).await?)).await;
-
-        Ok(())
+impl IpcServerConn {
+    pub async fn request(&mut self, req: &Request) -> anyhow::Result<Response> {
+        self
+            .send(req)
+            .await
+            .context("failed to send request")?
+            .await
+            .context("failed to receive response")
     }
 
-    pub async fn close(self) -> anyhow::Result<()> {
-        drop(self.chan);
-        self.write_task.await??;
+    async fn send(&mut self, req: &Request) -> anyhow::Result<oneshot::Receiver<Response>> {
+        let id = self.next_id;
+        self.next_id += 1;
 
-        Ok(())
+        bincode::encode_into_std_write(req, &mut self.buf, bincode::config::standard())?;
+
+        Frame {
+            id,
+            size: self.buf.len() as _,
+        }
+        .write(&mut self.tx)
+        .await?;
+
+        let (tx, rx) = oneshot::channel();
+        self.map.insert(id, tx);
+        self.tx.write_all(&self.buf).await?;
+
+        self.tx.flush().await?;
+
+        self.buf.clear();
+
+        Ok(rx)
+    }
+}
+
+impl Drop for IpcServerConn {
+    fn drop(&mut self) {
+        self.read_task.abort();
     }
 }

@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 use std::sync::LazyLock;
 
 use anyhow::Context as AnyhowContext;
@@ -11,23 +14,23 @@ use tokio::runtime::Runtime;
 
 struct Manager {
     next_id: AtomicU32,
-    map: DashMap<u32, tokio::sync::Mutex<IpcClientConn>, FxBuildHasher>,
+    map: DashMap<u32, tokio::sync::Mutex<IpcServerConn>, FxBuildHasher>,
 }
 
 impl Manager {
     fn new() -> Self {
         Self {
             next_id: AtomicU32::new(0),
-            map: DashMap::with_hasher(FxBuildHasher::default()),
+            map: DashMap::with_hasher(FxBuildHasher),
         }
     }
 
-    async fn attach(&self, name: &str) -> anyhow::Result<u32> {
+    async fn attach(&self, name: &str, timeout: Option<Duration>) -> anyhow::Result<u32> {
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
 
         let process = OwnedProcess::find_first_by_name(name)
             .with_context(|| format!("cannot find process: {name}"))?;
-        let conn = inject(process, None)
+        let conn = inject(process, None, timeout)
             .await
             .context("cannot inject to the process")?;
         self.map.insert(id, tokio::sync::Mutex::new(conn));
@@ -81,11 +84,11 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.attach(&name).await;
+        let res = MANAGER.attach(&name, Some(Duration::from_secs(1))).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),
-            Err(err) => return cx.throw_error(format!("{err:?}")),
+            Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
 
@@ -106,7 +109,7 @@ fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => return cx.throw_error(format!("{err:?}")),
+            Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
 
@@ -116,7 +119,7 @@ fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-    let data = cx.argument::<JsBuffer>(2)?.as_slice(&mut cx).to_vec();
+    let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
@@ -127,7 +130,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => return cx.throw_error(format!("{err:?}")),
+            Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
 

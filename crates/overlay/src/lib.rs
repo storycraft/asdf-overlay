@@ -10,7 +10,7 @@ mod hook;
 mod renderer;
 
 use app::main;
-use core::{ffi::c_void, time::Duration};
+use core::ffi::c_void;
 use std::thread;
 use tokio::runtime::Runtime;
 use windows::{
@@ -24,8 +24,6 @@ use windows::{
 fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
     let rt = Runtime::new()?;
 
-    let current = thread::current();
-
     thread::spawn({
         struct Wrapper(*mut c_void);
         unsafe impl Send for Wrapper {}
@@ -34,7 +32,7 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
 
         move || {
             let dll_module = dll_module;
-            if let Err(err) = rt.block_on(main(current)) {
+            if let Err(err) = rt.block_on(main()) {
                 eprintln!("dll error: {err}");
             }
             drop(rt);
@@ -44,8 +42,6 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
             }
         }
     });
-
-    thread::park_timeout(Duration::from_secs(1));
 
     Ok(())
 }

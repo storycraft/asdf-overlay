@@ -3,14 +3,12 @@ use std::env::{self, current_exe};
 
 use anyhow::Context;
 use asdf_overlay_client::{inject, process::OwnedProcess};
-use asdf_overlay_common::message::{Request, UpdatePosition, UpdateBitmap};
+use asdf_overlay_common::message::{Request, UpdateBitmap, UpdatePosition};
 use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let name = env::args()
-        .skip(1)
-        .next()
+    let name = env::args().nth(1)
         .context("processs name is not provided")?;
 
     let mut conn = inject(
@@ -24,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
 
             current
         }),
+        None,
     )
     .await?;
 
