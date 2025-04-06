@@ -8,8 +8,6 @@ pub enum Request {
     Bitmap(UpdateBitmap),
     /// Update overlay using shared dx11 texture handle
     Direct(UpdateDirect),
-    /// Close and exit overlay
-    Close,
     Test,
 }
 

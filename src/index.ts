@@ -4,7 +4,7 @@ const addon: {
     attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayReposition(id: number, x: number, y: number): Promise<void>,
-    overlayClose(id: number): Promise<boolean>,
+    overlayDestroy(id: number): void,
 } = require('../index.node');
 
 const idSym: unique symbol = Symbol("id");
@@ -35,10 +35,10 @@ export class Overlay {
     }
 
     /**
-     * Close overlay
+     * Destroy overlay
      */
-    async close() {
-        await addon.overlayClose(this[idSym]);
+    destroy() {
+        addon.overlayDestroy(this[idSym]);
     }
 
     /**

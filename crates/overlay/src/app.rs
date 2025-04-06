@@ -5,55 +5,37 @@ use asdf_overlay_common::{
 };
 use scopeguard::defer;
 use tokio::select;
-use tokio_util::sync::CancellationToken;
 
 use crate::hook::opengl::{RENDERER, cleanup_hook, hook};
 
-async fn run_client(mut client: IpcClientConn, token: CancellationToken) -> anyhow::Result<()> {
+async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     loop {
-        let recv = client.recv(async |message| {
-            match message {
-                Request::Close => {
-                    token.cancel();
-                }
+        client
+            .recv(async |message| {
+                match message {
+                    Request::Position(update_position) => {
+                        if let Some(ref mut renderer) = *RENDERER.lock() {
+                            renderer.position = (update_position.x, update_position.y);
+                        }
+                    }
 
-                Request::Position(update_position) => {
-                    if let Some(ref mut renderer) = *RENDERER.lock() {
-                        renderer.position = (update_position.x, update_position.y);
+                    Request::Bitmap(update_bitmap) => {
+                        if let Some(ref mut renderer) = *RENDERER.lock() {
+                            renderer.update_texture(update_bitmap.width, update_bitmap.data);
+                        }
+                    }
+
+                    Request::Direct(_) => {}
+
+                    Request::Test => {
+                        eprintln!("Test message");
                     }
                 }
 
-                Request::Bitmap(update_bitmap) => {
-                    if let Some(ref mut renderer) = *RENDERER.lock() {
-                        renderer.update_texture(update_bitmap.width, update_bitmap.data);
-                    }
-                }
-
-                Request::Direct(update_direct) => {
-                    
-                }
-
-                Request::Test => {
-                    eprintln!("Test message");
-                }
-            }
-
-            Ok(Response::Success)
-        });
-
-        select! {
-            res = recv => {
-                res?
-            }
-            _ = token.cancelled() => {
-                break;
-            }
-        }
+                Ok(Response::Success)
+            })
+            .await?;
     }
-
-    client.close().await?;
-
-    Ok(())
 }
 
 pub async fn main() -> anyhow::Result<()> {
@@ -62,10 +44,8 @@ pub async fn main() -> anyhow::Result<()> {
     hook().context("hook failed")?;
     defer!(cleanup_hook().expect("hook cleanup failed"));
 
-    let token = CancellationToken::new();
     select! {
-        _ = token.cancelled() => {}
-        _ = run_client(client, token.clone()) => {}
+        _ = run_client(client) => {}
     };
 
     Ok(())

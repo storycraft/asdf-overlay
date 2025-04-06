@@ -90,13 +90,10 @@ impl Manager {
         Ok(())
     }
 
-    async fn destroy(&self, id: u32) -> anyhow::Result<bool> {
-        let (_, conn) = self.map.remove(&id).context("invalid id")?;
-        if conn.into_inner().request(&Request::Close).await.is_ok() {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+    fn destroy(&self, id: u32) -> anyhow::Result<()> {
+        self.map.remove(&id).context("invalid id")?;
+
+        Ok(())
     }
 }
 
@@ -176,23 +173,13 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-fn overlay_close(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
 
-    let (deferred, promise) = cx.promise();
-
-    rt.spawn(async move {
-        let res = MANAGER.destroy(id).await;
-
-        deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(ejected) => Ok(JsBoolean::new(&mut cx, ejected)),
-            Err(err) => cx.throw_error(format!("{err:?}")),
-        });
-    });
-
-    Ok(promise)
+    match MANAGER.destroy(id) {
+        Ok(_) => Ok(JsUndefined::new(&mut cx)),
+        Err(err) => cx.throw_error(format!("{err:?}")),
+    }
 }
 
 #[neon::main]
@@ -200,6 +187,6 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("attach", attach)?;
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
     cx.export_function("overlayReposition", overlay_reposition)?;
-    cx.export_function("overlayClose", overlay_close)?;
+    cx.export_function("overlayDestroy", overlay_destroy)?;
     Ok(())
 }
