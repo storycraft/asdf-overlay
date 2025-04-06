@@ -61,7 +61,6 @@ impl Manager {
         let conn = inject(process, Some({
             let mut dll = dll_dir;
             dll.push(dll_path);
-            println!("pwd: {dll:?}");
             dll
         }), timeout)
             .await
