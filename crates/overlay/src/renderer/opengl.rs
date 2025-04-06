@@ -34,6 +34,9 @@ impl OpenglRenderer {
         let mut texture = 0;
         let program;
         unsafe {
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::Enable(gl::BLEND);
+
             gl::GenBuffers(1, &mut vertex_buffer);
 
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer);
