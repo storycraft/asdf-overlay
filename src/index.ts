@@ -1,5 +1,7 @@
+import path from 'node:path';
+
 const addon: {
-    attach(pid: number, timeout?: number): Promise<number>,
+    attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayReposition(id: number, x: number, y: number): Promise<void>,
     overlayClose(id: number): Promise<boolean>,
@@ -46,6 +48,6 @@ export class Overlay {
      * @returns new {@link Overlay} object
      */
     static async attach(pid: number, timeout?: number): Promise<Overlay> {
-        return new Overlay(await addon.attach(pid, timeout));
+        return new Overlay(await addon.attach(path.resolve(__dirname, '..'), pid, timeout));
     }
 }

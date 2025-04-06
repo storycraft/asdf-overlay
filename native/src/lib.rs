@@ -2,7 +2,7 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
-use std::sync::LazyLock;
+use std::{path::PathBuf, sync::LazyLock};
 
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::prelude::*;
@@ -10,7 +10,17 @@ use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
+use scopeguard::defer;
 use tokio::runtime::Runtime;
+use windows::Win32::{
+    Foundation::CloseHandle,
+    System::{
+        SystemInformation::{
+            IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
+        },
+        Threading::{IsWow64Process2, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+    },
+};
 
 struct Manager {
     next_id: AtomicU32,
@@ -25,12 +35,35 @@ impl Manager {
         }
     }
 
-    async fn attach(&self, pid: u32, timeout: Option<Duration>) -> anyhow::Result<u32> {
+    async fn attach(&self, dll_dir: PathBuf, pid: u32, timeout: Option<Duration>) -> anyhow::Result<u32> {
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
+
+        let dll_path = {
+            let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }?;
+            defer!(unsafe {
+                _ = CloseHandle(handle);
+            });
+
+            let mut output: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_UNKNOWN;
+            unsafe {
+                IsWow64Process2(handle, &mut output, None)?;
+            }
+
+            if output == IMAGE_FILE_MACHINE_I386 {
+                "asdf_overlay-x86.dll"
+            } else {
+                "asdf_overlay-x64.dll"
+            }
+        };
 
         let process = OwnedProcess::from_pid(pid)
             .with_context(|| format!("cannot find process pid: {pid}"))?;
-        let conn = inject(process, None, timeout)
+        let conn = inject(process, Some({
+            let mut dll = dll_dir;
+            dll.push(dll_path);
+            println!("pwd: {dll:?}");
+            dll
+        }), timeout)
             .await
             .context("cannot inject to the process")?;
         self.map.insert(id, tokio::sync::Mutex::new(conn));
@@ -77,7 +110,8 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let pid = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let dll_dir = cx.argument::<JsString>(0)?.value(&mut cx);
+    let pid = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let timeout = cx
         .argument_opt(1)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
@@ -90,7 +124,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.attach(pid, timeout).await;
+        let res = MANAGER.attach(PathBuf::from(dll_dir), pid, timeout).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),
