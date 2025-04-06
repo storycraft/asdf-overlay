@@ -6,5 +6,5 @@
     "outDir": "./lib",
   },
   "exclude": ["lib"],
-  "include": ["asdf-overlay-node"]
+  "include": ["src"]
 }

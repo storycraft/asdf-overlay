@@ -1,12 +1,9 @@
-// The Rust addon.
-import * as addon from './load.cjs';
-
-declare module './load.cjs' {
-    function attach(name: string): Promise<number>;
-    function overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>;
-    function overlayReposition(id: number, x: number, y: number): Promise<void>;
-    function overlayClose(id: number): Promise<boolean>;
-}
+const addon: {
+    attach(name: string): Promise<number>,
+    overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
+    overlayReposition(id: number, x: number, y: number): Promise<void>,
+    overlayClose(id: number): Promise<boolean>,
+} = require('../index.node');
 
 const idSym: unique symbol = Symbol("id");
 
@@ -16,7 +13,7 @@ export class Overlay {
     private constructor(id: number) {
         this[idSym] = id;
     }
-    
+
     /**
      * Update overlay position relative to window
      * @param x x position. 0 is left
@@ -25,7 +22,7 @@ export class Overlay {
     async reposition(x: number, y: number) {
         await addon.overlayReposition(this[idSym], x, y);
     }
-    
+
     /**
      * Update overlay using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
      * @param width width of the bitmap

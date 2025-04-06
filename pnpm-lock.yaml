@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@neon-rs/load':
-        specifier: ^0.1.82
-        version: 0.1.82
     devDependencies:
       '@neon-rs/cli':
         specifier: ^0.1.82
@@ -81,9 +77,6 @@ packages:
     resolution: {integrity: sha512-QrlGPQp9KOGuMvjjua79lEV2QTcE16m8JatG5ITdQpBAwRQpDw5xab57W9130y2iUEfMzYtp7v6pcN1fUB0Exg==}
     hasBin: true
 
-  '@neon-rs/load@0.1.82':
-    resolution: {integrity: sha512-H4Gu2o5kPp+JOEhRrOQCnJnf7X6sv9FBLttM/wSbb4efsgFWeHzfU/ItZ01E5qqEk+U6QGdeVO7lxXIAtYHr5A==}
-
   '@tsconfig/node20@20.1.5':
     resolution: {integrity: sha512-Vm8e3WxDTqMGPU4GATF9keQAIy1Drd7bPwlgzKJnZtoOsTm1tduUTbDjg0W5qERvGuxPI2h9RbMufH0YdfBylA==}
 
@@ -142,8 +135,6 @@ snapshots:
       '@cargo-messages/linux-x64-musl': 0.1.81
       '@cargo-messages/win32-arm64-msvc': 0.1.81
       '@cargo-messages/win32-x64-msvc': 0.1.81
-
-  '@neon-rs/load@0.1.82': {}
 
   '@tsconfig/node20@20.1.5': {}
 

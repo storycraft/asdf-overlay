@@ -1,5 +1,5 @@
 [workspace]
-members = ["./crates/*", "./asdf-overlay-node/native"]
+members = ["./crates/*", "./native"]
 resolver = "2"
 
 [workspace.package]
@@ -12,4 +12,4 @@ asdf-overlay = { path = "./crates/overlay" }
 asdf-overlay-client = { path = "./crates/client" }
 asdf-overlay-common = { path = "./crates/common" }
 
-tokio = "1.44.1"
+tokio = "1.44.2"
