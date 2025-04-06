@@ -80,6 +80,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let name = cx.argument::<JsString>(0)?.value(&mut cx);
     let timeout = cx
         .argument_opt(1)
+        .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
         .map(|v| v.downcast_or_throw::<JsNumber, _>(&mut cx))
         .transpose()?
         .map(|timeout| Duration::from_millis(timeout.value(&mut cx) as _));
