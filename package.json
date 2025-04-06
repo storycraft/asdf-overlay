@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "",
   "main": "./lib/index.js",
-  "type": "module",
   "scripts": {
     "test": "tsc && cargo test",
     "cargo-build": "tsc && cargo build --message-format=json-render-diagnostics > node_modules/cargo.log",
