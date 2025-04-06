@@ -6,6 +6,8 @@ pub enum Request {
     Position(UpdatePosition),
     /// Update overlay using bitmap
     Bitmap(UpdateBitmap),
+    /// Update overlay using shared dx11 texture handle
+    Direct(UpdateDirect),
     /// Close and exit overlay
     Close,
     Test,
@@ -21,6 +23,12 @@ pub struct UpdatePosition {
 pub struct UpdateBitmap {
     pub width: u32,
     pub data: Vec<u8>,
+}
+
+#[derive(Debug, Encode, Decode)]
+pub struct UpdateDirect {
+    pub width: u32,
+    pub handle: usize,
 }
 
 #[derive(Debug, Encode, Decode, Clone)]

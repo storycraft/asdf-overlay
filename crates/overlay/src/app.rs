@@ -29,6 +29,10 @@ async fn run_client(mut client: IpcClientConn, token: CancellationToken) -> anyh
                     }
                 }
 
+                Request::Direct(update_direct) => {
+                    
+                }
+
                 Request::Test => {
                     eprintln!("Test message");
                 }
