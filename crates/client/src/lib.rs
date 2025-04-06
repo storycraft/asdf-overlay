@@ -1,6 +1,6 @@
 pub mod prelude;
 
-use core::{pin::pin, time::Duration};
+use core::{future::pending, pin::pin, time::Duration};
 use std::{env::current_exe, path::PathBuf};
 
 use anyhow::{Context, bail};
@@ -36,26 +36,30 @@ pub async fn inject(
 ) -> anyhow::Result<IpcServerConn> {
     let pid = process.pid()?;
 
-    let task = tokio::spawn(async move {
-        let stream = listen(pid.get())?;
-        let timeout = timeout.unwrap_or(Duration::MAX);
-
-        let mut stream = pin!(stream);
-        select! {
-            _ = sleep(timeout) => {
-                bail!("client wait timeout")
-            },
-
-            res = stream.next() => {
-                Ok(res.context("server closed unexpectedly")??)
-            }
+    let task = async {
+        {
+            let injector = Syringe::for_process(process);
+            injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
         }
-    });
 
-    {
-        let injector = Syringe::for_process(process);
-        injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
+        pending::<anyhow::Result<IpcServerConn>>().await
+    };
+
+    let stream = listen(pid.get())?;
+    let timeout = timeout.unwrap_or(Duration::MAX);
+
+    let mut stream = pin!(stream);
+    select! {
+        _ = sleep(timeout) => {
+            bail!("client wait timeout")
+        },
+
+        res = stream.next() => {
+            Ok(res.context("server closed unexpectedly")??)
+        }
+
+        res = task => {
+            res
+        }
     }
-
-    task.await?
 }
