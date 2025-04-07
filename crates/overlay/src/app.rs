@@ -3,7 +3,6 @@ use asdf_overlay_common::{
     message::{Request, Response},
 };
 use scopeguard::defer;
-use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 
 use crate::hook::{dxgi, opengl};
 
@@ -45,10 +44,6 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 
 pub async fn main() -> anyhow::Result<()> {
     let client = IpcClientConn::connect().await?;
-    
-    unsafe {
-        AllocConsole()?;
-    }
 
     _ = opengl::hook();
     defer!(opengl::cleanup_hook().expect("opengl hook cleanup failed"));
@@ -57,10 +52,6 @@ pub async fn main() -> anyhow::Result<()> {
     defer!(dxgi::cleanup_hook().expect("dxgi hook cleanup failed"));
 
     _ = run_client(client).await;
-    
-    unsafe {
-        FreeConsole()?;
-    }
 
     Ok(())
 }
