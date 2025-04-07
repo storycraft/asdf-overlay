@@ -44,7 +44,7 @@ impl OpenglRenderer {
                 gl::ARRAY_BUFFER,
                 mem::size_of::<VertexArray>() as _,
                 ptr::null(),
-                gl::STATIC_DRAW,
+                gl::DYNAMIC_DRAW,
             );
 
             gl::GenVertexArrays(1, &mut vao);
