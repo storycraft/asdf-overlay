@@ -3,7 +3,7 @@ use gl::types::GLuint;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub struct Vertex {
+struct Vertex {
     pub pos: (f32, f32),
     pub texture_pos: (f32, f32),
 }
