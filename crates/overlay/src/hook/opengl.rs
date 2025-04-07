@@ -5,7 +5,7 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use cx::OverlayGlContext;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use retour::GenericDetour;
 use windows::{
     Win32::{
@@ -26,13 +26,13 @@ pub fn hook() -> anyhow::Result<()> {
     let original = get_opengl_wglswapbuffers_addr()?;
     let hook = unsafe { Hook::new(original, hooked)? };
     unsafe { hook.enable()? };
-    *HOOK.lock() = Some(hook);
+    *HOOK.write() = Some(hook);
 
     Ok(())
 }
 
 pub fn cleanup_hook() -> anyhow::Result<()> {
-    let Some(hook) = HOOK.lock().take() else {
+    let Some(hook) = HOOK.write().take() else {
         return Ok(());
     };
 
@@ -61,13 +61,13 @@ fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
 
 type Hook = GenericDetour<WglSwapBuffersFn>;
 
-static HOOK: Mutex<Option<Hook>> = Mutex::new(None);
+static HOOK: RwLock<Option<Hook>> = RwLock::new(None);
 
 pub static RENDERER: Mutex<Option<OpenglRenderer>> = Mutex::new(None);
 static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
 unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
-    let Some(ref mut hook) = *HOOK.lock() else {
+    let Some(ref hook) = *HOOK.read() else {
         return BOOL(0);
     };
 

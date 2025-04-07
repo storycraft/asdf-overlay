@@ -1,7 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::{Context, bail};
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use retour::GenericDetour;
 use scopeguard::defer;
 use windows::{
@@ -13,8 +13,9 @@ use windows::{
             },
             Dxgi::{
                 Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC},
-                CreateDXGIFactory1, DXGI_PRESENT, DXGI_SWAP_CHAIN_DESC,
-                DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIFactory1,
+                CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
+                DXGI_SWAP_CHAIN_DESC, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIFactory1,
+                IDXGISwapChain1,
             },
         },
         System::LibraryLoader::GetModuleHandleA,
@@ -27,45 +28,86 @@ use windows::{
 };
 
 pub fn hook() -> anyhow::Result<()> {
-    let original = get_dxgi_present_addr()?;
-    let hook = unsafe { Hook::new(original, hooked)? };
-    unsafe { hook.enable()? };
-    *HOOK.lock() = Some(hook);
+    let (present, present1) = get_dxgi_addr()?;
+    let mut hook = HOOK.write();
+
+    let present_hook = unsafe { PresentHook::new(present, hooked_present)? };
+    unsafe { present_hook.enable()? };
+    hook.present = Some(present_hook);
+
+    if let Some(present1) = present1 {
+        let present1_hook = unsafe { Present1Hook::new(present1, hooked_present1)? };
+        unsafe { present1_hook.enable()? };
+        hook.present1 = Some(present1_hook);
+    }
 
     Ok(())
 }
 
 pub fn cleanup_hook() -> anyhow::Result<()> {
-    let Some(hook) = HOOK.lock().take() else {
-        return Ok(());
+    let mut hook = HOOK.write();
+
+    if let Some(present_hook) = hook.present.take() {
+        unsafe { present_hook.disable()? };
     };
 
-    unsafe { hook.disable()? };
+    if let Some(present1_hook) = hook.present1.take() {
+        unsafe { present1_hook.disable()? };
+    };
 
     Ok(())
 }
 
 type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
+type Present1Fn = unsafe extern "system" fn(
+    *mut c_void,
+    u32,
+    DXGI_PRESENT,
+    *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT;
 
-type Hook = GenericDetour<PresentFn>;
-static HOOK: Mutex<Option<Hook>> = Mutex::new(None);
+type PresentHook = GenericDetour<PresentFn>;
+type Present1Hook = GenericDetour<Present1Fn>;
 
-unsafe extern "system" fn hooked(
+struct Hook {
+    present: Option<PresentHook>,
+    present1: Option<Present1Hook>,
+}
+
+static HOOK: RwLock<Hook> = RwLock::new(Hook {
+    present: None,
+    present1: None,
+});
+
+unsafe extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
 ) -> HRESULT {
-    let Some(ref mut hook) = *HOOK.lock() else {
+    let Some(ref hook) = HOOK.read().present else {
         return HRESULT(0);
     };
 
-    println!("Present called");
+    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT(0) {}
 
     unsafe { hook.call(this, sync_interval, flags) }
 }
 
-/// Get pointer to IDXGISwapChain::Present by creating dummy swapchain
-fn get_dxgi_present_addr() -> anyhow::Result<PresentFn> {
+unsafe extern "system" fn hooked_present1(
+    this: *mut c_void,
+    sync_interval: u32,
+    flags: DXGI_PRESENT,
+    present_params: *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT {
+    let Some(ref present) = HOOK.read().present1 else {
+        return HRESULT(0);
+    };
+
+    unsafe { present.call(this, sync_interval, flags, present_params) }
+}
+
+/// Get pointer to IDXGISwapChain::Present and IDXGISwapChain1::Present1 by creating dummy swapchain
+fn get_dxgi_addr() -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
     extern "system" fn window_proc(
         hwnd: HWND,
         msg: u32,
@@ -81,7 +123,7 @@ fn get_dxgi_present_addr() -> anyhow::Result<PresentFn> {
     let class_name = s!("dummy window class");
     let name = s!("dummy window");
 
-    let present_addr = unsafe {
+    let (present_addr, present1_addr) = unsafe {
         let h_instance = GetModuleHandleA(None)?.into();
 
         if RegisterClassA(&WNDCLASSA {
@@ -150,9 +192,15 @@ fn get_dxgi_present_addr() -> anyhow::Result<PresentFn> {
             Some(&mut swapchain),
             Some(&mut device),
         )?;
+        let swapchain = swapchain.context("SwapChain creation failed")?;
 
-        Interface::vtable(&swapchain.context("SwapChain creation failed")?).Present
+        let present = Interface::vtable(&swapchain).Present;
+        let present1 = swapchain
+            .cast::<IDXGISwapChain1>()
+            .ok()
+            .map(|swapchain1| Interface::vtable(&swapchain1).Present1);
+        (present, present1)
     };
 
-    Ok(present_addr)
+    Ok((present_addr, present1_addr))
 }
