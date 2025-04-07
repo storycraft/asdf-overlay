@@ -357,8 +357,7 @@ dependencies = [
 [[package]]
 name = "dll-syringe"
 version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdc807201d54de75e9bd7ad199d0031048625059f84acfc94506bdb13c0b4f59"
+source = "git+https://github.com/fry/dll-syringe?rev=0a8b18e#0a8b18efccbfd5b31553d7be8e8e48ecb1991ff4"
 dependencies = [
  "cstr",
  "goblin",

@@ -10,9 +10,14 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 asdf-overlay-common = { workspace = true }
 tokio = { workspace = true }
 
-dll-syringe = { version = "0.15.2", default-features = false, features = ["into-x86-from-x64", "syringe", "rpc-raw"] }
 anyhow = "1.0.97"
 futures = "0.3.31"
+
+[dependencies.dll-syringe]
+git = "https://github.com/fry/dll-syringe"
+rev = "0a8b18e"
+default-features = false
+features = ["into-x86-from-x64", "syringe", "rpc-raw"]
 
 [dev-dependencies]
 asdf-overlay = { workspace = true }
