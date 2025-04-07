@@ -2,7 +2,7 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
-use std::{path::PathBuf, sync::LazyLock};
+use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::prelude::*;
@@ -10,15 +10,14 @@ use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
-use scopeguard::defer;
 use tokio::runtime::Runtime;
 use windows::Win32::{
-    Foundation::CloseHandle,
+    Foundation::HANDLE,
     System::{
         SystemInformation::{
             IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
         },
-        Threading::{IsWow64Process2, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+        Threading::IsWow64Process2,
     },
 };
 
@@ -35,18 +34,19 @@ impl Manager {
         }
     }
 
-    async fn attach(&self, dll_dir: PathBuf, pid: u32, timeout: Option<Duration>) -> anyhow::Result<u32> {
-        let id = self.next_id.fetch_add(1, Ordering::AcqRel);
+    async fn attach(
+        &self,
+        dll_dir: PathBuf,
+        pid: u32,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<u32> {
+        let process = OwnedProcess::from_pid(pid)
+            .with_context(|| format!("cannot find process pid: {pid}"))?;
 
         let dll_path = {
-            let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }?;
-            defer!(unsafe {
-                _ = CloseHandle(handle);
-            });
-
             let mut output: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_UNKNOWN;
             unsafe {
-                IsWow64Process2(handle, &mut output, None)?;
+                IsWow64Process2(HANDLE(process.as_raw_handle()), &mut output, None)?;
             }
 
             if output == IMAGE_FILE_MACHINE_I386 {
@@ -56,15 +56,19 @@ impl Manager {
             }
         };
 
-        let process = OwnedProcess::from_pid(pid)
-            .with_context(|| format!("cannot find process pid: {pid}"))?;
-        let conn = inject(process, Some({
-            let mut dll = dll_dir;
-            dll.push(dll_path);
-            dll
-        }), timeout)
-            .await
-            .context("cannot inject to the process")?;
+        let conn = inject(
+            process,
+            Some({
+                let mut dll = dll_dir;
+                dll.push(dll_path);
+                dll
+            }),
+            timeout,
+        )
+        .await
+        .context("cannot inject to the process")?;
+
+        let id = self.next_id.fetch_add(1, Ordering::AcqRel);
         self.map.insert(id, tokio::sync::Mutex::new(conn));
 
         Ok(id)
