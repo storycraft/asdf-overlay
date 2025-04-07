@@ -3,7 +3,6 @@ use asdf_overlay_common::{
     message::{Request, Response},
 };
 use scopeguard::defer;
-use tokio::select;
 
 use crate::hook::{
     dxgi,
@@ -43,19 +42,13 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 pub async fn main() -> anyhow::Result<()> {
     let client = IpcClientConn::connect().await?;
 
-    let opengl_hooked = opengl::hook().is_ok();
+    _ = opengl::hook();
     defer!(opengl::cleanup_hook().expect("opengl hook cleanup failed"));
 
-    let dxgi_hooked = dxgi::hook().is_ok();
+    _ = dxgi::hook();
     defer!(dxgi::cleanup_hook().expect("dxgi hook cleanup failed"));
 
-    if !opengl_hooked || !dxgi_hooked {
-        return Ok(());
-    }
-
-    select! {
-        _ = run_client(client) => {}
-    };
+    _ = run_client(client).await;
 
     Ok(())
 }
