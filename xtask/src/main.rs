@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
 fn build_dlls() -> anyhow::Result<()> {
     fn build_dll(target: &str) -> Option<Utf8PathBuf> {
         let mut command = Command::new("cargo")
-            .args(&[
+            .args([
                 "build",
                 "--release",
                 "-p",
@@ -42,19 +42,16 @@ fn build_dlls() -> anyhow::Result<()> {
 
         let reader = std::io::BufReader::new(command.stdout.take().unwrap());
         for message in cargo_metadata::Message::parse_stream(reader) {
-            match message.unwrap() {
-                Message::CompilerArtifact(artifact) => {
-                    if artifact.target.name != "asdf_overlay"
-                        || !artifact.target.crate_types.contains(&CrateType::CDyLib)
-                    {
-                        continue;
-                    }
-
-                    if dll.is_none() {
-                        dll = artifact.filenames.first().cloned();
-                    }
+            if let Message::CompilerArtifact(artifact) = message.unwrap() {
+                if artifact.target.name != "asdf_overlay"
+                    || !artifact.target.crate_types.contains(&CrateType::CDyLib)
+                {
+                    continue;
                 }
-                _ => (),
+
+                if dll.is_none() {
+                    dll = artifact.filenames.first().cloned();
+                }
             }
         }
 

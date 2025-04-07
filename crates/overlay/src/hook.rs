@@ -1,2 +1,2 @@
+pub mod dxgi;
 pub mod opengl;
-pub mod dx11;

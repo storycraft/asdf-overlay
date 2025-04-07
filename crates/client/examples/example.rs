@@ -8,7 +8,8 @@ use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let name = env::args().nth(1)
+    let name = env::args()
+        .nth(1)
         .context("processs name is not provided")?;
 
     let mut conn = inject(

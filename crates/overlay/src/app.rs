@@ -1,4 +1,3 @@
-use anyhow::Context;
 use asdf_overlay_common::{
     ipc::client::IpcClientConn,
     message::{Request, Response},
@@ -6,7 +5,10 @@ use asdf_overlay_common::{
 use scopeguard::defer;
 use tokio::select;
 
-use crate::hook::opengl::{RENDERER, cleanup_hook, hook};
+use crate::hook::{
+    dxgi,
+    opengl::{self, RENDERER},
+};
 
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     loop {
@@ -41,8 +43,11 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 pub async fn main() -> anyhow::Result<()> {
     let client = IpcClientConn::connect().await?;
 
-    hook().context("hook failed")?;
-    defer!(cleanup_hook().expect("hook cleanup failed"));
+    let _ = opengl::hook();
+    defer!(opengl::cleanup_hook().expect("opengl hook cleanup failed"));
+
+    let _ = dxgi::hook();
+    defer!(dxgi::cleanup_hook().expect("dxgi hook cleanup failed"));
 
     select! {
         _ = run_client(client) => {}

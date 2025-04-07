@@ -15,7 +15,7 @@ tokio = { workspace = true, features = ["full"] }
 
 anyhow = "1.0.97"
 parking_lot = "0.12.3"
-retour = "0.3"
+retour = { version = "0.3", features = ["thiscall-abi"] }
 gl = "0.14.0"
 serde = "1.0.219"
 tokio-util = "0.7.14"
@@ -32,7 +32,10 @@ features = [
     "Win32_System_Console",
     "Win32_System_LibraryLoader",
     "Win32_Graphics_Gdi",
-    "Win32_Graphics_OpenGL"
+    "Win32_Graphics_OpenGL",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D10"
 ]
 
 [build-dependencies]
