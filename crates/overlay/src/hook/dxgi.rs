@@ -8,7 +8,7 @@ use windows::{
         Foundation::{HMODULE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
             Direct3D10::{
-                D3D10_DRIVER_TYPE_NULL, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
+                D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
                 ID3D10Device,
             },
             Direct3D11::ID3D11Device,
@@ -237,7 +237,7 @@ fn get_dxgi_addr() -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
 
         D3D10CreateDeviceAndSwapChain(
             &adapter,
-            D3D10_DRIVER_TYPE_NULL,
+            D3D10_DRIVER_TYPE_HARDWARE,
             HMODULE(ptr::null_mut()),
             0,
             D3D10_SDK_VERSION,
