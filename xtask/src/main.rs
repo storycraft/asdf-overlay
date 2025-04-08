@@ -63,7 +63,7 @@ fn build_dlls() -> anyhow::Result<()> {
         let x86_task = scope.spawn(|| build_dll("i686-pc-windows-msvc"));
         // let aarch64_task = scope.spawn(|| build_dll("aarch64-pc-windows-msvc"));
 
-        (x64_task.join(), x86_task.join(), aarch64_task.join())
+        (x64_task.join(), x86_task.join(), /* aarch64_task.join() */)
     });
     let x64_path = tasks
         .0
