@@ -32,7 +32,7 @@ impl Overlay {
     }
 
     pub fn with<R>(f: impl FnOnce(&Self) -> R) -> R {
-        f(&*CURRENT.read().as_ref().expect("Overlay is not initialized"))
+        f(CURRENT.read().as_ref().expect("Overlay is not initialized"))
     }
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Self) -> R) -> R {

@@ -1,11 +1,11 @@
 #![windows_subsystem = "windows"]
 
-#[allow(unsafe_op_in_unsafe_fn)]
+#[allow(unsafe_op_in_unsafe_fn, clippy::all)]
 mod wgl {
     include!(concat!(env!("OUT_DIR"), "/wgl_bindings.rs"));
 }
 
-#[allow(non_camel_case_types, non_snake_case, unused)]
+#[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
 mod detours {
     include!(concat!(env!("OUT_DIR"), "/detours_bindings.rs"));
 }

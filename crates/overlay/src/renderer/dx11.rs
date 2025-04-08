@@ -1,7 +1,6 @@
 use core::{
     mem,
     slice::{self},
-    u32,
 };
 
 use anyhow::Context;
@@ -84,7 +83,7 @@ impl Dx11Renderer {
             let mut vs_blob = None;
             D3DCompile(
                 TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.as_bytes().len(),
+                TEXTURE_SHADER.len(),
                 None,
                 None,
                 None,
@@ -113,7 +112,7 @@ impl Dx11Renderer {
             let mut ps_blob = None;
             D3DCompile(
                 TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.as_bytes().len(),
+                TEXTURE_SHADER.len(),
                 None,
                 None,
                 None,
@@ -183,7 +182,7 @@ impl Dx11Renderer {
                 data: Vec::new(),
 
                 input_layout,
-                vertex_buffer: vertex_buffer,
+                vertex_buffer,
                 texture: None,
 
                 vertex_shader,

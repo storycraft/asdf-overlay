@@ -116,8 +116,8 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         get_client_size(desc.OutputWindow).unwrap_or_default()
     };
 
-    if let Some(_) = device.cast::<ID3D12Device>().ok() {
-    } else if let Some(device) = device.cast::<ID3D11Device>().ok() {
+    if let Ok(_) = device.cast::<ID3D12Device>() {
+    } else if let Ok(device) = device.cast::<ID3D11Device>() {
         let mut renderer = RENDERER.dx11.lock();
         let renderer = renderer
             .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
@@ -134,7 +134,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
 
             Ok::<_, anyhow::Error>(())
         });
-    } else if let Some(_) = device.cast::<ID3D10Device>().ok() {
+    } else if let Ok(_) = device.cast::<ID3D10Device>() {
     }
 }
 

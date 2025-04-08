@@ -54,6 +54,7 @@ fn build_dlls() -> anyhow::Result<()> {
                 }
             }
         }
+        command.wait().expect("cargo process exited unexpectedly");
 
         dll
     }
