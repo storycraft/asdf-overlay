@@ -25,7 +25,8 @@
     "lib/**/*",
     "index.node",
     "asdf_overlay-x64.dll",
-    "asdf_overlay-x86.dll"
+    "asdf_overlay-x86.dll",
+    "asdf_overlay-aarch64.dll"
   ],
   "devDependencies": {
     "@neon-rs/cli": "^0.1.82",

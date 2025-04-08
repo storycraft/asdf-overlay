@@ -14,6 +14,7 @@ Electron overlay solution for Windows
 ## Pre-requirement
 1. node, pnpm package manager
 2. rust, cargo, msvc
+3. Install x86_64-pc-windows-msvc, i686-pc-windows-msvc, aarch64-pc-windows-msvc rustc targets
 
 ### Installing node dependencies
 ```bash
@@ -24,7 +25,6 @@ pnpm install
 ```bash
 pnpm build
 ```
-To build for 32bit use `i686-pc-windows-msvc` target
 
 > [!WARNING]
 > DLL and the client must be built using same rust compiler or it may misbehaviour

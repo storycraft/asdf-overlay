@@ -70,6 +70,12 @@ unsafe extern "system" fn hooked_present(
     unsafe { hook.call(this, sync_interval, flags) }
 }
 
+macro_rules! test {
+    () => {
+        "system"
+    };
+}
+
 unsafe extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,

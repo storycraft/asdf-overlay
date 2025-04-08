@@ -1,23 +1,23 @@
+mod util;
+
 use core::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
 use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
-use anyhow::Context as AnyhowContext;
+use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::prelude::*;
 use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
+use util::get_process_arch;
 use windows::Win32::{
     Foundation::HANDLE,
-    System::{
-        SystemInformation::{
-            IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
-        },
-        Threading::IsWow64Process2,
+    System::SystemInformation::{
+        IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386,
     },
 };
 
@@ -43,17 +43,11 @@ impl Manager {
         let process = OwnedProcess::from_pid(pid)
             .with_context(|| format!("cannot find process pid: {pid}"))?;
 
-        let dll_path = {
-            let mut output: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_UNKNOWN;
-            unsafe {
-                IsWow64Process2(HANDLE(process.as_raw_handle()), &mut output, None)?;
-            }
-
-            if output == IMAGE_FILE_MACHINE_I386 {
-                "asdf_overlay-x86.dll"
-            } else {
-                "asdf_overlay-x64.dll"
-            }
+        let dll_path = match get_process_arch(HANDLE(process.as_raw_handle())) {
+            IMAGE_FILE_MACHINE_AMD64 => "asdf_overlay-x64.dll",
+            IMAGE_FILE_MACHINE_I386 => "asdf_overlay-x86.dll",
+            IMAGE_FILE_MACHINE_ARM64 => "asdf_overlay-aarch64.dll",
+            arch => bail!("Unsupported arch: {}", arch.0),
         };
 
         let conn = inject(

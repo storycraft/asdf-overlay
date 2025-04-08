@@ -61,8 +61,9 @@ fn build_dlls() -> anyhow::Result<()> {
     let tasks = thread::scope(|scope| {
         let x64_task = scope.spawn(|| build_dll("x86_64-pc-windows-msvc"));
         let x86_task = scope.spawn(|| build_dll("i686-pc-windows-msvc"));
+        // let aarch64_task = scope.spawn(|| build_dll("aarch64-pc-windows-msvc"));
 
-        (x64_task.join(), x86_task.join())
+        (x64_task.join(), x86_task.join(), aarch64_task.join())
     });
     let x64_path = tasks
         .0
@@ -72,9 +73,14 @@ fn build_dlls() -> anyhow::Result<()> {
         .1
         .expect("i686 target build failed")
         .context("i686 build has no output")?;
+    // let aarch64_path = tasks
+    //     .2
+    //     .expect("aarch64 target build failed")
+    //     .context("aarch64 build has no output")?;
 
     fs::copy(x64_path, "./asdf_overlay-x64.dll")?;
     fs::copy(x86_path, "./asdf_overlay-x86.dll")?;
+    // fs::copy(aarch64_path, "./asdf_overlay-aarch64.dll")?;
 
     Ok(())
 }
