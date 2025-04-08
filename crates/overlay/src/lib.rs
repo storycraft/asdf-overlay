@@ -2,7 +2,12 @@
 
 #[allow(unsafe_op_in_unsafe_fn)]
 mod wgl {
-    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+    include!(concat!(env!("OUT_DIR"), "/wgl_bindings.rs"));
+}
+
+#[allow(non_camel_case_types, non_snake_case, unused)]
+mod detours {
+    include!(concat!(env!("OUT_DIR"), "/detours_bindings.rs"));
 }
 
 mod app;

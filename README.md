@@ -13,7 +13,7 @@ Electron overlay solution for Windows
 
 ## Pre-requirement
 1. node, pnpm package manager
-2. rust, cargo, msvc
+2. rust, cargo, msvc(x64, x86, arm64)
 3. Install x86_64-pc-windows-msvc, i686-pc-windows-msvc, aarch64-pc-windows-msvc rustc targets
 
 ### Installing node dependencies

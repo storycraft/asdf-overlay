@@ -1,8 +1,7 @@
-use core::{ffi::c_void, ptr};
+use core::{ffi::c_void, mem, ptr};
 
 use anyhow::{Context, bail};
 use parking_lot::{Mutex, RwLock};
-use retour::GenericDetour;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -32,6 +31,8 @@ use windows::{
 
 use crate::renderer::dx11::Dx11Renderer;
 
+use super::DetourHook;
+
 type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
 type Present1Fn = unsafe extern "system" fn(
     *mut c_void,
@@ -40,12 +41,9 @@ type Present1Fn = unsafe extern "system" fn(
     *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT;
 
-type PresentHook = GenericDetour<PresentFn>;
-type Present1Hook = GenericDetour<Present1Fn>;
-
 struct Hook {
-    present: Option<PresentHook>,
-    present1: Option<Present1Hook>,
+    present: Option<DetourHook>,
+    present1: Option<DetourHook>,
 }
 
 static HOOK: RwLock<Hook> = RwLock::new(Hook {
@@ -58,7 +56,7 @@ unsafe extern "system" fn hooked_present(
     sync_interval: u32,
     flags: DXGI_PRESENT,
 ) -> HRESULT {
-    let Some(ref hook) = HOOK.read().present else {
+    let Some(ref present) = HOOK.read().present else {
         return HRESULT(0);
     };
 
@@ -67,13 +65,9 @@ unsafe extern "system" fn hooked_present(
         draw_overlay(unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() });
     }
 
-    unsafe { hook.call(this, sync_interval, flags) }
-}
-
-macro_rules! test {
-    () => {
-        "system"
-    };
+    unsafe {
+        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
+    }
 }
 
 unsafe extern "system" fn hooked_present1(
@@ -82,7 +76,7 @@ unsafe extern "system" fn hooked_present1(
     flags: DXGI_PRESENT,
     present_params: *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT {
-    let Some(ref present) = HOOK.read().present1 else {
+    let Some(ref present1) = HOOK.read().present1 else {
         return HRESULT(0);
     };
 
@@ -91,7 +85,14 @@ unsafe extern "system" fn hooked_present1(
         draw_overlay(unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() });
     }
 
-    unsafe { present.call(this, sync_interval, flags, present_params) }
+    unsafe {
+        mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
+            this,
+            sync_interval,
+            flags,
+            present_params,
+        )
+    }
 }
 
 pub static RENDERER: Renderers = Renderers {
@@ -136,13 +137,11 @@ pub fn hook() -> anyhow::Result<()> {
     let (present, present1) = get_dxgi_addr()?;
     let mut hook = HOOK.write();
 
-    let present_hook = unsafe { PresentHook::new(present, hooked_present)? };
-    unsafe { present_hook.enable()? };
+    let present_hook = unsafe { DetourHook::attach(present as _, hooked_present as _)? };
     hook.present = Some(present_hook);
 
     if let Some(present1) = present1 {
-        let present1_hook = unsafe { Present1Hook::new(present1, hooked_present1)? };
-        unsafe { present1_hook.enable()? };
+        let present1_hook = unsafe { DetourHook::attach(present1 as _, hooked_present1 as _)? };
         hook.present1 = Some(present1_hook);
     }
 
@@ -152,13 +151,8 @@ pub fn hook() -> anyhow::Result<()> {
 pub fn cleanup_hook() -> anyhow::Result<()> {
     let mut hook = HOOK.write();
 
-    if let Some(present_hook) = hook.present.take() {
-        unsafe { present_hook.disable()? };
-    };
-
-    if let Some(present1_hook) = hook.present1.take() {
-        unsafe { present1_hook.disable()? };
-    };
+    hook.present.take();
+    hook.present1.take();
 
     RENDERER.dx11.lock().take();
 

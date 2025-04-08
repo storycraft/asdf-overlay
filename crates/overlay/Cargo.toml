@@ -15,7 +15,6 @@ tokio = { workspace = true, features = ["full"] }
 
 anyhow = "1.0.97"
 parking_lot = "0.12.3"
-retour = { version = "0.3", features = ["thiscall-abi"] }
 gl = "0.14.0"
 serde = "1.0.219"
 tokio-util = "0.7.14"
@@ -26,6 +25,7 @@ scopeguard = "1.2.0"
 [dependencies.windows]
 version = "0.61.1"
 features = [
+    "Win32_System_Threading",
     "Win32_Foundation",
     "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
@@ -42,4 +42,8 @@ features = [
 ]
 
 [build-dependencies]
+camino = "1.1.9"
+anyhow = "1.0.97"
 gl_generator = "0.14.0"
+bindgen = "0.71.0"
+cc = "1.2.18"

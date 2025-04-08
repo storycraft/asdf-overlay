@@ -6,7 +6,6 @@ use std::ffi::CString;
 use anyhow::Context;
 use cx::OverlayGlContext;
 use parking_lot::{Mutex, RwLock};
-use retour::GenericDetour;
 use windows::{
     Win32::{
         Foundation::{HMODULE, RECT},
@@ -22,22 +21,18 @@ use windows::{
 
 use crate::{renderer::opengl::OpenglRenderer, wgl};
 
+use super::DetourHook;
+
 pub fn hook() -> anyhow::Result<()> {
     let original = get_opengl_wglswapbuffers_addr()?;
-    let hook = unsafe { Hook::new(original, hooked)? };
-    unsafe { hook.enable()? };
+    let hook = unsafe { DetourHook::attach(original as _, hooked as _)? };
     *HOOK.write() = Some(hook);
 
     Ok(())
 }
 
 pub fn cleanup_hook() -> anyhow::Result<()> {
-    let Some(hook) = HOOK.write().take() else {
-        return Ok(());
-    };
-
-    unsafe { hook.disable()? };
-
+    HOOK.write().take();
     RENDERER.lock().take();
 
     Ok(())
@@ -59,9 +54,7 @@ fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
     Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
 }
 
-type Hook = GenericDetour<WglSwapBuffersFn>;
-
-static HOOK: RwLock<Option<Hook>> = RwLock::new(None);
+static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
 
 pub static RENDERER: Mutex<Option<OpenglRenderer>> = Mutex::new(None);
 static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
@@ -88,7 +81,7 @@ unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
         renderer.draw(((rect.right - rect.left) as _, (rect.bottom - rect.top) as _));
     });
 
-    unsafe { hook.call(hdc) }
+    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
 fn setup_gl() -> anyhow::Result<()> {
