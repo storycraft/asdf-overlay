@@ -8,6 +8,7 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::prelude::*;
+use asdf_overlay_common::size::PercentLength;
 use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
@@ -68,22 +69,9 @@ impl Manager {
         Ok(id)
     }
 
-    async fn reposition(&self, id: u32, x: f32, y: f32) -> anyhow::Result<()> {
+    async fn request(&self, id: u32, request: &Request) -> anyhow::Result<()> {
         let conn = self.map.get(&id).context("invalid id")?;
-        conn.lock()
-            .await
-            .request(&Request::UpdatePosition(Position { x, y }))
-            .await?;
-
-        Ok(())
-    }
-
-    async fn update_bitmap(&self, id: u32, width: u32, data: Vec<u8>) -> anyhow::Result<()> {
-        let conn = self.map.get(&id).context("invalid id")?;
-        conn.lock()
-            .await
-            .request(&Request::UpdateBitmap(Bitmap { width, data }))
-            .await?;
+        conn.lock().await.request(&request).await?;
 
         Ok(())
     }
@@ -139,7 +127,15 @@ fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.reposition(id, x, y).await;
+        let res = MANAGER
+            .request(
+                id,
+                &Request::UpdatePosition(Position {
+                    x: PercentLength::Length(x),
+                    y: PercentLength::Length(y),
+                }),
+            )
+            .await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
@@ -160,7 +156,9 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.update_bitmap(id, width, data).await;
+        let res = MANAGER
+            .request(id, &Request::UpdateBitmap(Bitmap { width, data }))
+            .await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
