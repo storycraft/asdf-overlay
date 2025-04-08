@@ -2,12 +2,42 @@ import path from 'node:path';
 
 const addon: {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
+
+  overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetMargin(
+    id: number,
+    top: PercentLength,
+    right: PercentLength,
+    bottom: PercentLength,
+    left: PercentLength
+  ): Promise<void>,
+
   overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
-  overlayReposition(id: number, x: number, y: number): Promise<void>,
+
   overlayDestroy(id: number): void,
 } = require('../index.node');
 
 const idSym: unique symbol = Symbol("id");
+
+export type PercentLength = {
+  ty: 'percent' | 'length',
+  value: number,
+}
+
+export function percent(value: number): PercentLength {
+  return {
+    ty: 'percent',
+    value,
+  };
+}
+
+export function length(value: number): PercentLength {
+  return {
+    ty: 'length',
+    value,
+  };
+}
 
 export class Overlay {
   readonly [idSym]: number;
@@ -18,11 +48,36 @@ export class Overlay {
 
   /**
    * Update overlay position relative to window
-   * @param x x position. 0 is left
-   * @param y y position. 0 is top
+   * @param x x position
+   * @param y y position
    */
-  async reposition(x: number, y: number) {
-    await addon.overlayReposition(this[idSym], x, y);
+  async setPosition(x: PercentLength, y: PercentLength) {
+    await addon.overlaySetPosition(this[idSym], x, y);
+  }
+
+  /**
+   * Update overlay anchor
+   * @param x x anchor
+   * @param y y anchor
+   */
+  async setAnchor(x: PercentLength, y: PercentLength) {
+    await addon.overlaySetAnchor(this[idSym], x, y);
+  }
+
+  /**
+   * Update overlay margin
+   * @param top top margin
+   * @param right right margin
+   * @param bottom bottom margin
+   * @param left left margin
+   */
+  async setMargin(
+    top: PercentLength,
+    right: PercentLength,
+    bottom: PercentLength,
+    left: PercentLength,
+  ) {
+    await addon.overlaySetMargin(this[idSym], top, right, bottom, left);
   }
 
   /**

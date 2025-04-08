@@ -1,4 +1,5 @@
 mod util;
+mod wrapper;
 
 use core::{
     sync::atomic::{AtomicU32, Ordering},
@@ -8,19 +9,19 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::prelude::*;
-use asdf_overlay_common::size::PercentLength;
 use dashmap::DashMap;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
-use util::get_process_arch;
+use util::{get_process_arch, request_promise};
 use windows::Win32::{
     Foundation::HANDLE,
     System::SystemInformation::{
         IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386,
     },
 };
+use wrapper::percent_length_from_object;
 
 struct Manager {
     next_id: AtomicU32,
@@ -71,7 +72,7 @@ impl Manager {
 
     async fn request(&self, id: u32, request: &Request) -> anyhow::Result<()> {
         let conn = self.map.get(&id).context("invalid id")?;
-        conn.lock().await.request(&request).await?;
+        conn.lock().await.request(request).await?;
 
         Ok(())
     }
@@ -117,33 +118,55 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-fn overlay_reposition(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let x = cx.argument::<JsNumber>(1)?.value(&mut cx) as f32;
-    let y = cx.argument::<JsNumber>(2)?.value(&mut cx) as f32;
+    let x = cx.argument::<JsObject>(1)?;
+    let x = percent_length_from_object(&mut cx, &x)?;
+    let y = cx.argument::<JsObject>(2)?;
+    let y = percent_length_from_object(&mut cx, &y)?;
 
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
+    Ok(request_promise(
+        &mut cx,
+        id,
+        Request::UpdatePosition(Position { x, y }),
+    )?)
+}
 
-    let (deferred, promise) = cx.promise();
-    rt.spawn(async move {
-        let res = MANAGER
-            .request(
-                id,
-                &Request::UpdatePosition(Position {
-                    x: PercentLength::Length(x),
-                    y: PercentLength::Length(y),
-                }),
-            )
-            .await;
+fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let x = cx.argument::<JsObject>(1)?;
+    let x = percent_length_from_object(&mut cx, &x)?;
+    let y = cx.argument::<JsObject>(2)?;
+    let y = percent_length_from_object(&mut cx, &y)?;
 
-        deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => cx.throw_error(format!("{err:?}")),
-        });
-    });
+    Ok(request_promise(
+        &mut cx,
+        id,
+        Request::UpdateAnchor(Anchor { x, y }),
+    )?)
+}
 
-    Ok(promise)
+fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let top = cx.argument::<JsObject>(1)?;
+    let top = percent_length_from_object(&mut cx, &top)?;
+    let right = cx.argument::<JsObject>(2)?;
+    let right = percent_length_from_object(&mut cx, &right)?;
+    let bottom = cx.argument::<JsObject>(3)?;
+    let bottom = percent_length_from_object(&mut cx, &bottom)?;
+    let left = cx.argument::<JsObject>(4)?;
+    let left = percent_length_from_object(&mut cx, &left)?;
+
+    Ok(request_promise(
+        &mut cx,
+        id,
+        Request::UpdateMargin(Margin {
+            top,
+            right,
+            bottom,
+            left,
+        }),
+    )?)
 }
 
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -151,22 +174,11 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
-
-    let (deferred, promise) = cx.promise();
-    rt.spawn(async move {
-        let res = MANAGER
-            .request(id, &Request::UpdateBitmap(Bitmap { width, data }))
-            .await;
-
-        deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => cx.throw_error(format!("{err:?}")),
-        });
-    });
-
-    Ok(promise)
+    Ok(request_promise(
+        &mut cx,
+        id,
+        Request::UpdateBitmap(Bitmap { width, data }),
+    )?)
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
@@ -181,8 +193,13 @@ fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("attach", attach)?;
+
+    cx.export_function("overlaySetPosition", overlay_set_position)?;
+    cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
+    cx.export_function("overlaySetMargin", overlay_set_margin)?;
+
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
-    cx.export_function("overlayReposition", overlay_reposition)?;
+
     cx.export_function("overlayDestroy", overlay_destroy)?;
     Ok(())
 }

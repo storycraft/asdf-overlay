@@ -1,3 +1,9 @@
+use asdf_overlay_common::message::Request;
+use neon::{
+    prelude::{Context, FunctionContext},
+    result::JsResult,
+    types::{JsPromise, JsUndefined},
+};
 use windows::Win32::{
     Foundation::HANDLE,
     System::{
@@ -5,6 +11,8 @@ use windows::Win32::{
         Threading::IsWow64Process2,
     },
 };
+
+use crate::{MANAGER, runtime};
 
 pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     let mut native_output = IMAGE_FILE_MACHINE_UNKNOWN;
@@ -18,4 +26,21 @@ pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     } else {
         native_output
     }
+}
+
+pub fn request_promise<'a>(cx: &mut FunctionContext<'a>, id: u32, request: Request) -> JsResult<'a, JsPromise> {
+    let rt = runtime(cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = MANAGER.request(id, &request).await;
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(_) => Ok(JsUndefined::new(&mut cx)),
+            Err(err) => cx.throw_error(format!("{err:?}")),
+        });
+    });
+
+    Ok(promise)
 }
