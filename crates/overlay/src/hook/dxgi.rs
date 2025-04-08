@@ -60,7 +60,7 @@ unsafe extern "system" fn hooked_present(
         return HRESULT(0);
     };
 
-    let test = flags & DXGI_PRESENT_TEST != DXGI_PRESENT(0);
+    let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
     if !test {
         draw_overlay(unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() });
     }
@@ -80,7 +80,7 @@ unsafe extern "system" fn hooked_present1(
         return HRESULT(0);
     };
 
-    let test = flags & DXGI_PRESENT_TEST != DXGI_PRESENT(0);
+    let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
     if !test {
         draw_overlay(unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() });
     }
