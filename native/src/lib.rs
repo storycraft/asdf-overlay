@@ -72,7 +72,7 @@ impl Manager {
         let conn = self.map.get(&id).context("invalid id")?;
         conn.lock()
             .await
-            .request(&Request::Position(UpdatePosition { x, y }))
+            .request(&Request::UpdatePosition(Position { x, y }))
             .await?;
 
         Ok(())
@@ -82,7 +82,7 @@ impl Manager {
         let conn = self.map.get(&id).context("invalid id")?;
         conn.lock()
             .await
-            .request(&Request::Bitmap(UpdateBitmap { width, data }))
+            .request(&Request::UpdateBitmap(Bitmap { width, data }))
             .await?;
 
         Ok(())

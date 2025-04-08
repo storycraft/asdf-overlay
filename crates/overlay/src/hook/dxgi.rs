@@ -5,7 +5,7 @@ use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{HMODULE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Foundation::{HMODULE, HWND, LPARAM, LRESULT, WPARAM},
         Graphics::{
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
@@ -22,14 +22,14 @@ use windows::{
         },
         System::LibraryLoader::GetModuleHandleA,
         UI::WindowsAndMessaging::{
-            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect,
-            RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
+            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, RegisterClassA,
+            UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
         },
     },
     core::{BOOL, HRESULT, IUnknown, Interface, s},
 };
 
-use crate::renderer::dx11::Dx11Renderer;
+use crate::{app::Overlay, renderer::dx11::Dx11Renderer, util::get_client_size};
 
 use super::DetourHook;
 
@@ -108,18 +108,12 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         return;
     };
 
-    let size = {
+    let screen = {
         let Ok(desc) = (unsafe { swapchain.GetDesc() }) else {
             return;
         };
 
-        let mut rect = RECT::default();
-        unsafe { GetClientRect(desc.OutputWindow, &mut rect).unwrap() };
-
-        (
-            (rect.right - rect.left) as u32,
-            (rect.bottom - rect.top) as u32,
-        )
+        get_client_size(desc.OutputWindow).unwrap_or_default()
     };
 
     if let Some(_) = device.cast::<ID3D12Device>().ok() {
@@ -128,7 +122,18 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         let renderer = renderer
             .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
 
-        _ = renderer.draw(&device, swapchain, size);
+        _ = Overlay::with(|overlay| {
+            let size = renderer.size();
+
+            renderer.draw(
+                &device,
+                swapchain,
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
+                screen,
+            )?;
+
+            Ok::<_, anyhow::Error>(())
+        });
     } else if let Some(_) = device.cast::<ID3D10Device>().ok() {
     }
 }

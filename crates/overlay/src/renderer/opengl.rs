@@ -14,8 +14,6 @@ static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
-    pub position: (f32, f32),
-
     size: (u32, u32),
     data: Vec<u8>,
     texture_size_outdated: bool,
@@ -100,8 +98,6 @@ impl OpenglRenderer {
         }
 
         Self {
-            position: (0.0, 0.0),
-
             size: (0, 0),
             data: Vec::new(),
             texture_size_outdated: true,
@@ -112,6 +108,10 @@ impl OpenglRenderer {
             texture,
             program,
         }
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        self.size
     }
 
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
@@ -130,11 +130,11 @@ impl OpenglRenderer {
         self.texture_outdated = true;
     }
 
-    pub fn draw(&mut self, screen: (u32, u32)) {
+    pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) {
         let vertices = {
             let pos = (
-                (self.position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(self.position.1 / screen.1 as f32) * 2.0 + 1.0,
+                (position.0 / screen.0 as f32) * 2.0 - 1.0,
+                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
             );
             let size = (
                 (self.size.0 as f32 / screen.0 as f32) * 2.0,

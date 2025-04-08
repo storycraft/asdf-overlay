@@ -3,7 +3,10 @@ use std::env::{self, current_exe};
 
 use anyhow::Context;
 use asdf_overlay_client::{inject, process::OwnedProcess};
-use asdf_overlay_common::message::{Request, UpdateBitmap, UpdatePosition};
+use asdf_overlay_common::{
+    message::{Bitmap, Position, Request},
+    size::PercentLength,
+};
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -29,15 +32,18 @@ async fn main() -> anyhow::Result<()> {
 
     sleep(Duration::from_secs(1)).await;
 
-    conn.request(&Request::Position(UpdatePosition { x: 100.0, y: 100.0 }))
-        .await?;
+    conn.request(&Request::UpdatePosition(Position {
+        x: PercentLength::Length(100.0),
+        y: PercentLength::Length(100.0),
+    }))
+    .await?;
 
     let mut data = Vec::new();
     for i in 0..200 {
         data.resize(i * i * 4, 0);
         rand::fill(&mut data[..]);
 
-        conn.request(&Request::Bitmap(UpdateBitmap {
+        conn.request(&Request::UpdateBitmap(Bitmap {
             width: i as _,
             data: data.clone(),
         }))
@@ -45,8 +51,11 @@ async fn main() -> anyhow::Result<()> {
         sleep(Duration::from_millis(10)).await;
     }
 
-    conn.request(&Request::Position(UpdatePosition { x: 200.0, y: 200.0 }))
-        .await?;
+    conn.request(&Request::UpdatePosition(Position {
+        x: PercentLength::Length(200.0),
+        y: PercentLength::Length(200.0),
+    }))
+    .await?;
 
     sleep(Duration::from_secs(1)).await;
 

@@ -64,8 +64,6 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 2] = [
 ];
 
 pub struct Dx11Renderer {
-    pub position: (f32, f32),
-
     context: ID3D11DeviceContext,
 
     size: (u32, u32),
@@ -179,8 +177,6 @@ impl Dx11Renderer {
             let blend_state = blend_state.context("Cannot create blend state")?;
 
             Ok(Self {
-                position: (0.0, 0.0),
-
                 context,
 
                 size: (0, 0),
@@ -195,6 +191,10 @@ impl Dx11Renderer {
                 blend_state,
             })
         }
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        self.size
     }
 
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
@@ -213,6 +213,7 @@ impl Dx11Renderer {
         &mut self,
         device: &ID3D11Device,
         swapchain: &IDXGISwapChain,
+        position: (f32, f32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
         if self.size.0 == 0 || self.size.1 == 0 {
@@ -221,8 +222,8 @@ impl Dx11Renderer {
 
         let vertices = {
             let pos = (
-                (self.position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(self.position.1 / screen.1 as f32) * 2.0 + 1.0,
+                (position.0 / screen.0 as f32) * 2.0 - 1.0,
+                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
             );
             let size = (
                 (self.size.0 as f32 / screen.0 as f32) * 2.0,
