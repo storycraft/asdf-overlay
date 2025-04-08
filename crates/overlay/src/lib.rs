@@ -13,6 +13,7 @@ mod detours {
 mod app;
 mod hook;
 mod renderer;
+mod util;
 
 use app::main;
 use core::ffi::c_void;
