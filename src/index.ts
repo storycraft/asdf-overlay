@@ -4,16 +4,12 @@ import { Addon, PercentLength } from './addon';
 
 export * from './util';
 
-if (platform !== 'win32') {
-  throw new Error(`Unsupported platform: ${platform}`);
-}
-
 const addon = loadAddon();
 
 function loadAddon(): Addon {
   switch (arch) {
-    case 'arm64': return require('../native-arm64.node');
-    case 'x64': return require('../native-x64.node');
+    case 'arm64': return require('../addon-aarch64.node');
+    case 'x64': return require('../addon-x64.node');
 
     default: throw new Error(`Unsupported arch: ${arch}`);
   }
