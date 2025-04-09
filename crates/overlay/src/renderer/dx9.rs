@@ -1,4 +1,7 @@
-use core::{mem, ptr};
+use core::{
+    mem,
+    ptr::{self, copy_nonoverlapping},
+};
 
 use anyhow::Context;
 use scopeguard::defer;
@@ -150,14 +153,14 @@ impl Dx9Renderer {
 
                         for y in 0..self.size.1 as isize {
                             let line_size = self.size.0 as usize * 4;
-                            let data_offset = y * line_size as isize;
+                            let src_offset = y * line_size as isize;
+                            let dest_offset = y * rect.Pitch as isize;
 
-                            rect.pBits
-                                .byte_offset(y * rect.Pitch as isize)
-                                .copy_from_nonoverlapping(
-                                    self.data.as_ptr().offset(data_offset).cast(),
-                                    line_size,
-                                );
+                            copy_nonoverlapping(
+                                self.data.as_ptr().offset(src_offset),
+                                rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                                line_size,
+                            );
                         }
                     }
 
