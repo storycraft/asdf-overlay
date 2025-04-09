@@ -5,11 +5,10 @@
   "main": "./lib/index.js",
   "scripts": {
     "test": "tsc && cargo test",
-    "build-dll": "cargo run -p xtask --release build-dll",
-    "cargo-build": "cargo build -p asdf-overlay-node --message-format=json-render-diagnostics > node_modules/cargo.log",
-    "postcargo-build": "neon dist < node_modules/cargo.log",
-    "debug": "npm run cargo-build -- --release && tsc",
-    "build": "npm run cargo-build -- --release && npm run build-dll && tsc",
+    "build-dll": "cargo xtask build-dll",
+    "cargo-build": "cargo xtask build-node",
+    "debug": "npm run cargo-build || npm run build-dll || tsc",
+    "build": "npm run cargo-build || npm run build-dll || tsc",
     "prepack": "npm run build"
   },
   "author": "storycraft <storycraft@pancake.sh>",
@@ -18,18 +17,22 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "default": "./lib/*.js"
     }
   },
   "types": "./lib/index.d.ts",
   "files": [
     "lib/**/*",
-    "index.node",
+    "addon-x64.node",
+    "addon-arm64.node",
     "asdf_overlay-x64.dll",
     "asdf_overlay-x86.dll",
     "asdf_overlay-aarch64.dll"
   ],
   "devDependencies": {
-    "@neon-rs/cli": "^0.1.82",
     "@tsconfig/node20": "^20.1.4",
     "@types/node": "^22.14.0",
     "typescript": "^5.3.3"

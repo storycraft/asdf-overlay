@@ -1,43 +1,25 @@
 import path from 'node:path';
+import { arch, platform } from 'node:process';
+import { Addon, PercentLength } from './addon';
 
-const addon: {
-  attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
+export * from './util';
 
-  overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
-  overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,
-  overlaySetMargin(
-    id: number,
-    top: PercentLength,
-    right: PercentLength,
-    bottom: PercentLength,
-    left: PercentLength
-  ): Promise<void>,
+if (platform !== 'win32') {
+  throw new Error(`Unsupported platform: ${platform}`);
+}
 
-  overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
+const addon = loadAddon();
 
-  overlayDestroy(id: number): void,
-} = require('../index.node');
+function loadAddon(): Addon {
+  switch (arch) {
+    case 'arm64': return require('../native-arm64.node');
+    case 'x64': return require('../native-x64.node');
+
+    default: throw new Error(`Unsupported arch: ${arch}`);
+  }
+}
 
 const idSym: unique symbol = Symbol("id");
-
-export type PercentLength = {
-  ty: 'percent' | 'length',
-  value: number,
-}
-
-export function percent(value: number): PercentLength {
-  return {
-    ty: 'percent',
-    value,
-  };
-}
-
-export function length(value: number): PercentLength {
-  return {
-    ty: 'length',
-    value,
-  };
-}
 
 export class Overlay {
   readonly [idSym]: number;
