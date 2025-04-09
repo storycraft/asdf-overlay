@@ -175,9 +175,6 @@ fn get_dxgi_addr() -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
 
-    let dxgi_dll = s!("dxgi.dll");
-    unsafe { GetModuleHandleA(dxgi_dll)? };
-
     let class_name = s!("dummy window class");
     let name = s!("dummy window");
 
