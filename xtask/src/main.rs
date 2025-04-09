@@ -54,7 +54,7 @@ fn build_node() -> anyhow::Result<()> {
 
 fn build_dlls() -> anyhow::Result<()> {
     fn build_dll(target: &str) -> Option<Utf8PathBuf> {
-        cargo_artifacts("asdf_overlay", target)
+        cargo_artifacts("asdf-overlay", target)
     }
 
     let tasks = thread::scope(|scope| {
