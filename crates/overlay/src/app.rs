@@ -71,6 +71,8 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                             renderer.update_texture(update_bitmap.width, update_bitmap.data);
                         } else if let Some(ref mut renderer) = *dxgi::RENDERER.dx11.lock() {
                             renderer.update_texture(update_bitmap.width, update_bitmap.data);
+                        } else if let Some(ref mut renderer) = *dx9::RENDERER.lock() {
+                            renderer.update_texture(update_bitmap.width, update_bitmap.data);
                         }
                     }
 

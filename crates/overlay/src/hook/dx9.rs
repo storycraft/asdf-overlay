@@ -6,21 +6,21 @@ use windows::{
     Win32::{
         Foundation::HWND,
         Graphics::Direct3D9::{
-            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-            D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9,
-            IDirect3DDevice9,
+            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DBACKBUFFER_TYPE_MONO,
+            D3DCREATE_SOFTWARE_VERTEXPROCESSING, D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS,
+            D3DSURFACE_DESC, D3DSWAPEFFECT_DISCARD, Direct3DCreate9, IDirect3DDevice9,
         },
     },
     core::{BOOL, HRESULT, Interface},
 };
 
-use crate::renderer::dx9::Dx9Renderer;
+use crate::{app::Overlay, renderer::dx9::Dx9Renderer};
 
 use super::DetourHook;
 
 type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 
-static RENDERER: Mutex<Option<Dx9Renderer>> = Mutex::new(None);
+pub static RENDERER: Mutex<Option<Dx9Renderer>> = Mutex::new(None);
 
 unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let Some(ref end_scene) = *HOOK.read() else {
@@ -28,12 +28,28 @@ unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     };
 
     {
-        let device = unsafe { &*this.cast::<IDirect3DDevice9>() };
+        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this).unwrap() };
+
+        let screen = {
+            let desc = unsafe {
+                let mut desc = D3DSURFACE_DESC::default();
+                let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
+                surface.GetDesc(&mut desc).unwrap();
+
+                desc
+            };
+
+            (desc.Width, desc.Height)
+        };
 
         let mut renderer = RENDERER.lock();
         let renderer = renderer
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
-        _ = renderer.draw(device);
+        let position = Overlay::with(|overlay| {
+            let size = renderer.size();
+            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+        });
+        _ = renderer.draw(device, position, screen);
     }
 
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
