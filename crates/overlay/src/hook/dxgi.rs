@@ -105,19 +105,12 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         let mut renderer = RENDERER.dx11.lock();
         let renderer = renderer
             .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
-
-        _ = Overlay::with(|overlay| {
+        let position = Overlay::with(|overlay| {
             let size = renderer.size();
-
-            renderer.draw(
-                &device,
-                swapchain,
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
-                screen,
-            )?;
-
-            Ok::<_, anyhow::Error>(())
+            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
+
+        _ = renderer.draw(&device, swapchain, position, screen);
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
     }
 }
