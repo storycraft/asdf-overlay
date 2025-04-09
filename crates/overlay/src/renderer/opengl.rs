@@ -54,7 +54,7 @@ impl OpenglRenderer {
                 gl::FLOAT,
                 gl::FALSE,
                 mem::size_of::<Vertex>() as _,
-                ptr::null::<c_void>(),
+                ptr::null::<c_void>().with_addr(mem::offset_of!(Vertex, pos)),
             );
             gl::EnableVertexAttribArray(0);
 
@@ -64,7 +64,7 @@ impl OpenglRenderer {
                 gl::FLOAT,
                 gl::FALSE,
                 mem::size_of::<Vertex>() as _,
-                ptr::null::<c_void>().with_addr(mem::size_of::<(f32, f32)>()),
+                ptr::null::<c_void>().with_addr(mem::offset_of!(Vertex, texture_pos)),
             );
             gl::EnableVertexAttribArray(1);
 
