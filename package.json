@@ -13,6 +13,10 @@
   },
   "author": "storycraft <storycraft@pancake.sh>",
   "license": "MIT OR Apache-2.0",
+  "os": [
+    "win32"
+  ],
+  "cpu": ["x64", "arm64"],
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
