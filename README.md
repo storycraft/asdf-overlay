@@ -5,7 +5,7 @@ Electron overlay solution for Windows
 
 ## Supported API
 * [x] OpenGL
-* [ ] DX9
+* [x] DX9
 * [ ] DX10
 * [x] DX11
 * [ ] DX12
