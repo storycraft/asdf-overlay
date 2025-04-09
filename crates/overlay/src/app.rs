@@ -5,7 +5,6 @@ use asdf_overlay_common::{
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
-use windows::Win32::System::Console::{AllocConsole, FreeConsole};
 
 use crate::{
     hook::{dx9, dxgi, opengl},

@@ -3,19 +3,24 @@ use core::{ffi::c_void, mem, ptr};
 use anyhow::Context;
 use parking_lot::{Mutex, RwLock};
 use windows::{
-    core::{IUnknown, Interface, BOOL, HRESULT}, Win32::{
+    Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
             Direct3D10::{
-                D3D10CreateDeviceAndSwapChain, ID3D10Device, D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION
+                D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
+                ID3D10Device,
             },
             Direct3D11::ID3D11Device,
             Direct3D12::ID3D12Device,
             Dxgi::{
-                Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC}, CreateDXGIFactory1, IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST, DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT
+                Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC},
+                CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
+                DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1,
             },
         },
-    }
+    },
+    core::{BOOL, HRESULT, IUnknown, Interface},
 };
 
 use crate::{app::Overlay, renderer::dx11::Dx11Renderer, util::get_client_size};

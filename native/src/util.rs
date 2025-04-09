@@ -28,7 +28,11 @@ pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     }
 }
 
-pub fn request_promise<'a>(cx: &mut FunctionContext<'a>, id: u32, request: Request) -> JsResult<'a, JsPromise> {
+pub fn request_promise<'a>(
+    cx: &mut FunctionContext<'a>,
+    id: u32,
+    request: Request,
+) -> JsResult<'a, JsPromise> {
     let rt = runtime(cx)?;
     let channel = cx.channel();
 
