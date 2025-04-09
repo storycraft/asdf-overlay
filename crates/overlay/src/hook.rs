@@ -1,5 +1,6 @@
 pub mod dxgi;
 pub mod opengl;
+pub mod dx9;
 
 use core::{
     error::Error,

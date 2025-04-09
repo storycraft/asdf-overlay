@@ -1,32 +1,21 @@
 use core::{ffi::c_void, mem, ptr};
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use parking_lot::{Mutex, RwLock};
-use scopeguard::defer;
 use windows::{
-    Win32::{
-        Foundation::{HMODULE, HWND, LPARAM, LRESULT, WPARAM},
+    core::{IUnknown, Interface, BOOL, HRESULT}, Win32::{
+        Foundation::{HMODULE, HWND},
         Graphics::{
             Direct3D10::{
-                D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
-                ID3D10Device,
+                D3D10CreateDeviceAndSwapChain, ID3D10Device, D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION
             },
             Direct3D11::ID3D11Device,
             Direct3D12::ID3D12Device,
             Dxgi::{
-                Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC},
-                CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
-                DXGI_SWAP_CHAIN_DESC, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIFactory1,
-                IDXGISwapChain, IDXGISwapChain1,
+                Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC}, CreateDXGIFactory1, IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST, DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT
             },
         },
-        System::LibraryLoader::GetModuleHandleA,
-        UI::WindowsAndMessaging::{
-            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, RegisterClassA,
-            UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
-        },
-    },
-    core::{BOOL, HRESULT, IUnknown, Interface, s},
+    }
 };
 
 use crate::{app::Overlay, renderer::dx11::Dx11Renderer, util::get_client_size};
@@ -138,8 +127,8 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
     }
 }
 
-pub fn hook() -> anyhow::Result<()> {
-    let (present, present1) = get_dxgi_addr()?;
+pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    let (present, present1) = get_dxgi_addr(dummy_hwnd)?;
     let mut hook = HOOK.write();
 
     let present_hook = unsafe { DetourHook::attach(present as _, hooked_present as _)? };
@@ -165,62 +154,14 @@ pub fn cleanup_hook() -> anyhow::Result<()> {
 }
 
 /// Get pointer to IDXGISwapChain::Present and IDXGISwapChain1::Present1 by creating dummy swapchain
-fn get_dxgi_addr() -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
-    extern "system" fn window_proc(
-        hwnd: HWND,
-        msg: u32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-    }
-
-    let class_name = s!("dummy window class");
-    let name = s!("dummy window");
-
+fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
     let (present_addr, present1_addr) = unsafe {
-        let h_instance = GetModuleHandleA(None)?.into();
-
-        if RegisterClassA(&WNDCLASSA {
-            style: CS_OWNDC,
-            hInstance: h_instance,
-            lpszClassName: class_name,
-            lpfnWndProc: Some(window_proc),
-            ..Default::default()
-        }) == 0
-        {
-            bail!("failed to register window class");
-        }
-        defer!({
-            let _ = UnregisterClassA(class_name, Some(h_instance));
-        });
-
-        let hwnd = CreateWindowExA(
-            WINDOW_EX_STYLE(0),
-            class_name,
-            name,
-            WS_POPUP,
-            0,
-            0,
-            2,
-            2,
-            None,
-            None,
-            Some(h_instance),
-            None,
-        )?;
-        defer!({
-            let _ = DestroyWindow(hwnd);
-        });
-
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;
         let adapter = factory.EnumAdapters1(0)?;
 
         let desc = DXGI_SWAP_CHAIN_DESC {
             BufferCount: 2,
             BufferDesc: DXGI_MODE_DESC {
-                Width: 2,
-                Height: 2,
                 Format: DXGI_FORMAT_R8G8B8A8_UNORM,
                 ..Default::default()
             },
@@ -229,8 +170,9 @@ fn get_dxgi_addr() -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
                 ..Default::default()
             },
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-            OutputWindow: hwnd,
+            OutputWindow: dummy_hwnd,
             Windowed: BOOL(1),
+            SwapEffect: DXGI_SWAP_EFFECT_DISCARD,
             ..Default::default()
         };
 
