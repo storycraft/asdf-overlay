@@ -35,16 +35,6 @@ type Present1Fn = unsafe extern "system" fn(
     *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT;
 
-struct Hook {
-    present: Option<DetourHook>,
-    present1: Option<DetourHook>,
-}
-
-static HOOK: RwLock<Hook> = RwLock::new(Hook {
-    present: None,
-    present1: None,
-});
-
 unsafe extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
@@ -131,6 +121,16 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
     }
 }
+
+struct Hook {
+    present: Option<DetourHook>,
+    present1: Option<DetourHook>,
+}
+
+static HOOK: RwLock<Hook> = RwLock::new(Hook {
+    present: None,
+    present1: None,
+});
 
 pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     let (present, present1) = get_dxgi_addr(dummy_hwnd)?;

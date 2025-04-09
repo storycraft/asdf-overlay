@@ -138,7 +138,7 @@ impl Dx11Renderer {
 
             let mut context = None;
             device.CreateDeferredContext(0, Some(&mut context))?;
-            let context = context.context("Cannot create overlay context")?;
+            let context = context.context("cannot create overlay context")?;
 
             let mut vertex_buffer = None;
             device.CreateBuffer(
@@ -153,7 +153,7 @@ impl Dx11Renderer {
                 None,
                 Some(&mut vertex_buffer),
             )?;
-            let vertex_buffer = vertex_buffer.context("Cannot create vertex buffer")?;
+            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
 
             let mut blend_state = None;
             device.CreateBlendState(
@@ -173,7 +173,7 @@ impl Dx11Renderer {
                 },
                 Some(&mut blend_state),
             )?;
-            let blend_state = blend_state.context("Cannot create blend state")?;
+            let blend_state = blend_state.context("cannot create blend state")?;
 
             Ok(Self {
                 context,
@@ -317,7 +317,7 @@ impl Dx11Renderer {
                         }),
                         Some(&mut texture),
                     )?;
-                    let texture = texture.context("Cannot create texture")?;
+                    let texture = texture.context("cannot create texture")?;
 
                     let mut res = None;
                     device.CreateShaderResourceView(
@@ -334,7 +334,7 @@ impl Dx11Renderer {
                         }),
                         Some(&mut res),
                     )?;
-                    let res = res.context("Cannot create resource view")?;
+                    let res = res.context("cannot create resource view")?;
 
                     &mut self.texture.insert((texture, res)).1
                 }

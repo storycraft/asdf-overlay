@@ -22,39 +22,6 @@ use crate::{app::Overlay, renderer::opengl::OpenglRenderer, util::get_client_siz
 
 use super::DetourHook;
 
-pub fn hook() -> anyhow::Result<()> {
-    let original = get_opengl_wglswapbuffers_addr()?;
-    let hook = unsafe { DetourHook::attach(original as _, hooked as _)? };
-    *HOOK.write() = Some(hook);
-
-    Ok(())
-}
-
-pub fn cleanup_hook() -> anyhow::Result<()> {
-    HOOK.write().take();
-    RENDERER.lock().take();
-
-    Ok(())
-}
-
-type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
-
-fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
-    // Grab a handle to opengl32.dll
-    let opengl32dll = CString::new("opengl32.dll")?;
-    let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };
-
-    let wglswapbuffers = CString::new("wglSwapBuffers")?;
-    let func = unsafe {
-        GetProcAddress(opengl32module, PCSTR(wglswapbuffers.as_ptr() as *mut _))
-            .context("wglSwapBuffers not found")?
-    };
-
-    Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
-}
-
-static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
-
 pub static RENDERER: Mutex<Option<OpenglRenderer>> = Mutex::new(None);
 static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
@@ -85,6 +52,40 @@ unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
     });
 
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+}
+
+
+type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
+
+static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
+
+pub fn hook() -> anyhow::Result<()> {
+    let original = get_opengl_wglswapbuffers_addr()?;
+    let hook = unsafe { DetourHook::attach(original as _, hooked as _)? };
+    *HOOK.write() = Some(hook);
+
+    Ok(())
+}
+
+pub fn cleanup_hook() -> anyhow::Result<()> {
+    HOOK.write().take();
+    RENDERER.lock().take();
+
+    Ok(())
+}
+
+fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
+    // Grab a handle to opengl32.dll
+    let opengl32dll = CString::new("opengl32.dll")?;
+    let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };
+
+    let wglswapbuffers = CString::new("wglSwapBuffers")?;
+    let func = unsafe {
+        GetProcAddress(opengl32module, PCSTR(wglswapbuffers.as_ptr() as *mut _))
+            .context("wglSwapBuffers not found")?
+    };
+
+    Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
 }
 
 fn setup_gl() -> anyhow::Result<()> {
