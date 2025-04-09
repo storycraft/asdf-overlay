@@ -7,8 +7,8 @@
     "test": "tsc && cargo test",
     "build-dll": "cargo xtask build-dll",
     "cargo-build": "cargo xtask build-node",
-    "debug": "npm run cargo-build || npm run build-dll || tsc",
-    "build": "npm run cargo-build || npm run build-dll || tsc",
+    "debug": "npm run cargo-build && npm run build-dll && tsc",
+    "build": "npm run cargo-build && npm run build-dll && tsc",
     "prepack": "npm run build"
   },
   "author": "storycraft <storycraft@pancake.sh>",
