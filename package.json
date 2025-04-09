@@ -31,7 +31,7 @@
   "files": [
     "lib/**/*",
     "addon-x64.node",
-    "addon-arm64.node",
+    "addon-aarch64.node",
     "asdf_overlay-x64.dll",
     "asdf_overlay-x86.dll",
     "asdf_overlay-aarch64.dll"
