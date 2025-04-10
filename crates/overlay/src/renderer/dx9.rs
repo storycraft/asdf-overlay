@@ -190,7 +190,7 @@ impl Dx9Renderer {
                     _ = vertex_buffer.Unlock();
                 });
 
-                *ptr.cast::<VertexArray>() = vertices;
+                ptr.cast::<VertexArray>().write(vertices);
             }
 
             // disable srgb gamma correction enabled in some games
