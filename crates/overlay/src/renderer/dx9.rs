@@ -6,7 +6,10 @@ use core::{
 use anyhow::Context;
 use scopeguard::defer;
 use windows::Win32::Graphics::Direct3D9::{
-    IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9, IDirect3DVertexBuffer9, D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW, D3DLOCKED_RECT, D3DLOCK_DISCARD, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE, D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DSBT_ALL, D3DUSAGE_DYNAMIC, D3DUSAGE_WRITEONLY
+    D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
+    D3DLOCK_DISCARD, D3DLOCKED_RECT, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
+    D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DSBT_ALL, D3DUSAGE_DYNAMIC, D3DUSAGE_WRITEONLY,
+    IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9, IDirect3DVertexBuffer9,
 };
 
 #[derive(Clone, Copy)]
@@ -40,6 +43,7 @@ pub struct Dx9Renderer {
 
     vertex_buffer: IDirect3DVertexBuffer9,
     texture: Option<IDirect3DTexture9>,
+    texture_outdated: bool,
     state_block: IDirect3DStateBlock9,
 }
 
@@ -65,6 +69,7 @@ impl Dx9Renderer {
 
                 vertex_buffer,
                 texture: None,
+                texture_outdated: true,
                 state_block,
             })
         }
@@ -81,10 +86,14 @@ impl Dx9Renderer {
 
         let size = (width, (data.len() / width as usize / 4) as u32);
 
-        self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
-        self.size = size;
+        if self.size != size {
+            self.texture.take();
+            self.size = size;
+            self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
+        }
+
         self.data = data;
-        self.texture.take();
+        self.texture_outdated = true;
     }
 
     pub fn draw(
@@ -140,31 +149,32 @@ impl Dx9Renderer {
                         &mut texture,
                         ptr::null_mut(),
                     )?;
-                    let texture = texture.context("cannot create texture")?;
-
-                    {
-                        let mut rect = D3DLOCKED_RECT::default();
-                        texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
-                        defer!({
-                            _ = texture.UnlockRect(0);
-                        });
-
-                        for y in 0..self.size.1 as isize {
-                            let line_size = self.size.0 as usize * 4;
-                            let src_offset = y * line_size as isize;
-                            let dest_offset = y * rect.Pitch as isize;
-
-                            copy_nonoverlapping(
-                                self.data.as_ptr().offset(src_offset),
-                                rect.pBits.cast::<u8>().byte_offset(dest_offset),
-                                line_size,
-                            );
-                        }
-                    }
-
-                    self.texture.insert(texture)
+                    self.texture
+                        .insert(texture.context("cannot create texture")?)
                 }
             };
+
+            if self.texture_outdated {
+                self.texture_outdated = false;
+
+                let mut rect = D3DLOCKED_RECT::default();
+                texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
+                defer!({
+                    _ = texture.UnlockRect(0);
+                });
+
+                for y in 0..self.size.1 as isize {
+                    let line_size = self.size.0 as usize * 4;
+                    let src_offset = y * line_size as isize;
+                    let dest_offset = y * rect.Pitch as isize;
+
+                    copy_nonoverlapping(
+                        self.data.as_ptr().offset(src_offset),
+                        rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                        line_size,
+                    );
+                }
+            }
 
             {
                 let vertex_buffer = &self.vertex_buffer;
