@@ -6,10 +6,7 @@ use core::{
 use anyhow::Context;
 use scopeguard::defer;
 use windows::Win32::Graphics::Direct3D9::{
-    D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
-    D3DLOCK_DISCARD, D3DLOCKED_RECT, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
-    D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DSBT_ALL, D3DUSAGE_DYNAMIC, D3DUSAGE_WRITEONLY,
-    IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9, IDirect3DVertexBuffer9,
+    IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9, IDirect3DVertexBuffer9, D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW, D3DLOCKED_RECT, D3DLOCK_DISCARD, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE, D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC, D3DUSAGE_WRITEONLY
 };
 
 #[derive(Clone, Copy)]
@@ -192,6 +189,8 @@ impl Dx9Renderer {
                 *ptr.cast::<VertexArray>() = vertices;
             }
 
+            // disable srgb gamma correction enabled in some games
+            device.SetRenderState(D3DRS_SRGBWRITEENABLE, 0)?;
             device.SetRenderState(D3DRS_ALPHABLENDENABLE, 1)?;
             device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
             device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA.0 as _)?;
