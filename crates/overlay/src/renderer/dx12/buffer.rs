@@ -3,6 +3,7 @@ use core::{ffi::c_void, ptr};
 use anyhow::Context;
 use windows::Win32::Graphics::{Direct3D12::*, Dxgi::Common::DXGI_SAMPLE_DESC};
 
+#[derive(Debug)]
 pub struct UploadBuffer {
     buffer: ID3D12Resource,
     ptr: *mut (),
@@ -49,14 +50,18 @@ impl UploadBuffer {
         }
     }
 
-    pub unsafe fn write(&self, value: *const [u8]) {
-        unsafe {
-            ptr::copy_nonoverlapping(value.cast::<u8>(), self.ptr.cast(), value.len());
-        }
-    }
-
     pub fn buffer(&self) -> &ID3D12Resource {
         &self.buffer
+    }
+
+    pub fn get_mapped_ptr(&self) -> *mut () {
+        self.ptr
+    }
+    
+    pub fn unmap(&self) {
+        unsafe {
+            self.buffer.Unmap(0, None);
+        }
     }
 }
 

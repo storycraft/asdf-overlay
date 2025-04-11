@@ -1,6 +1,7 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
+use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -51,13 +52,18 @@ pub unsafe extern "system" fn hooked_present(
         return HRESULT(0);
     };
 
+    let call_present = move || unsafe {
+        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
+    };
+
     let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
     if !test {
-        draw_overlay(unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() });
-    }
-
-    unsafe {
-        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
+        draw_overlay(
+            unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() },
+            call_present,
+        )
+    } else {
+        call_present()
     }
 }
 
@@ -111,29 +117,32 @@ pub unsafe extern "system" fn hooked_present1(
         return HRESULT(0);
     };
 
-    let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-    if !test {
-        draw_overlay(unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() });
-    }
-
-    unsafe {
+    let call_present1 = move || unsafe {
         mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
             this,
             sync_interval,
             flags,
             present_params,
         )
+    };
+
+    let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
+    if !test {
+        draw_overlay(
+            unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() },
+            call_present1,
+        )
+    } else {
+        call_present1()
     }
 }
 
-fn draw_overlay(swapchain: &IDXGISwapChain) {
-    let Ok(device) = (unsafe { swapchain.GetDevice::<IUnknown>() }) else {
-        return;
-    };
+fn draw_overlay(swapchain: &IDXGISwapChain, present: impl FnOnce() -> HRESULT) -> HRESULT {
+    let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = {
         let Ok(desc) = (unsafe { swapchain.GetDesc() }) else {
-            return;
+            return present();
         };
 
         get_client_size(desc.OutputWindow).unwrap_or_default()
@@ -152,6 +161,11 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
 
         if let Some(queue) = get_queue_for(&device) {
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
+            defer!({
+                _ = renderer.post_present();
+            });
+
+            return present();
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
         let mut renderer = Renderers::get().dx11.lock();
@@ -165,6 +179,8 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         _ = renderer.draw(&device, swapchain, position, screen);
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
     }
+
+    present()
 }
 
 /// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain

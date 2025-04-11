@@ -1,16 +1,18 @@
 mod buffer;
-mod guard;
+mod fence;
 mod rtv;
+mod texture;
 
 use anyhow::Context;
+use buffer::UploadBuffer;
 use core::{
     array,
     mem::{self, ManuallyDrop},
-    ptr,
+    ptr::{self, copy_nonoverlapping},
     slice::{self},
     str,
 };
-use guard::RendererGuard;
+use fence::FenceGuard;
 use rtv::RtvDescriptors;
 use windows::{
     Win32::{
@@ -22,7 +24,7 @@ use windows::{
             },
             Direct3D12::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
+                Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
                 IDXGISwapChain, IDXGISwapChain3,
             },
         },
@@ -148,9 +150,10 @@ pub struct Dx12Renderer {
     pipeline: ID3D12PipelineState,
     vertex_buffer: ID3D12Resource,
     texture: Option<ID3D12Resource>,
+    texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
-    guard: RendererGuard,
+    guard: FenceGuard,
 }
 
 impl Dx12Renderer {
@@ -247,7 +250,6 @@ impl Dx12Renderer {
                     Quality: 0,
                 },
                 SampleMask: u32::MAX,
-                NodeMask: 1,
                 ..Default::default()
             };
             pipeline_desc.RTVFormats[0] = swapchain_desc.BufferDesc.Format;
@@ -281,6 +283,15 @@ impl Dx12Renderer {
             )?;
             let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
 
+            let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
+                &D3D12_DESCRIPTOR_HEAP_DESC {
+                    NumDescriptors: 1,
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                    Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+                    ..Default::default()
+                },
+            )?;
+
             Ok(Self {
                 sig,
                 rtv,
@@ -291,9 +302,10 @@ impl Dx12Renderer {
                 pipeline,
                 vertex_buffer,
                 texture: None,
+                texture_descriptor,
 
                 command_list,
-                guard: RendererGuard::new(device)?,
+                guard: FenceGuard::new(device)?,
             })
         }
     }
@@ -372,6 +384,49 @@ impl Dx12Renderer {
             command_alloc.Reset()?;
             command_list.Reset(command_alloc, &self.pipeline)?;
 
+            if self.texture.is_none() {
+                let desc = D3D12_RESOURCE_DESC {
+                    Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+                    Width: self.size.0 as _,
+                    Height: self.size.1 as _,
+                    DepthOrArraySize: 1,
+                    MipLevels: 1,
+                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    ..Default::default()
+                };
+
+                let mut texture = None;
+                device.CreateCommittedResource::<ID3D12Resource>(
+                    &D3D12_HEAP_PROPERTIES {
+                        Type: D3D12_HEAP_TYPE_DEFAULT,
+                        ..Default::default()
+                    },
+                    D3D12_HEAP_FLAG_NONE,
+                    &desc,
+                    D3D12_RESOURCE_STATE_COPY_DEST,
+                    None,
+                    &mut texture,
+                )?;
+                let texture = texture.context("cannot create texture")?;
+                upload_bgra_texture(
+                    device,
+                    queue,
+                    command_alloc,
+                    command_list,
+                    &texture,
+                    &self.texture_descriptor,
+                    &self.data,
+                    &self.pipeline,
+                )?;
+
+                self.texture = Some(texture);
+            };
+
+            // todo: upload buffer
             let mut mapped_vertex_buffer = ptr::null_mut();
             self.vertex_buffer
                 .Map(0, None, Some(&mut mapped_vertex_buffer))?;
@@ -379,6 +434,13 @@ impl Dx12Renderer {
             self.vertex_buffer.Unmap(0, None);
 
             command_list.SetGraphicsRootSignature(&self.sig);
+
+            command_list.SetDescriptorHeaps(&[Some(self.texture_descriptor.clone())]);
+            command_list.SetGraphicsRootDescriptorTable(
+                0,
+                self.texture_descriptor.GetGPUDescriptorHandleForHeapStart(),
+            );
+
             command_list.RSSetViewports(&[D3D12_VIEWPORT {
                 TopLeftX: 0.0,
                 TopLeftY: 0.0,
@@ -394,102 +456,14 @@ impl Dx12Renderer {
                 bottom: screen.1 as _,
             }]);
 
-            command_list.ResourceBarrier(&[D3D12_RESOURCE_BARRIER {
-                Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-                Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                Anonymous: D3D12_RESOURCE_BARRIER_0 {
-                    Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-                        pResource: wrap_com_manually_drop(&backbuffer),
-                        Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        StateBefore: D3D12_RESOURCE_STATE_PRESENT,
-                        StateAfter: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                    }),
-                },
-            }]);
+            command_list.ResourceBarrier(&[transition(
+                &backbuffer,
+                D3D12_RESOURCE_STATE_PRESENT,
+                D3D12_RESOURCE_STATE_RENDER_TARGET,
+            )]);
 
             let render_target_desc = self.rtv.desc_for(backbuffer_index as _);
             command_list.OMSetRenderTargets(1, Some(&render_target_desc), true, None);
-
-            // let tex = match self.texture {
-            //     Some(ref mut tex) => tex,
-            //     None => {
-            //         let mut texture = None;
-            //         device.CreateCommittedResource::<ID3D12Resource>(
-            //             &D3D12_HEAP_PROPERTIES {
-            //                 Type: D3D12_HEAP_TYPE_DEFAULT,
-            //                 ..Default::default()
-            //             },
-            //             D3D12_HEAP_FLAG_NONE,
-            //             &D3D12_RESOURCE_DESC {
-            //                 Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-            //                 Width: self.size.0 as _,
-            //                 Height: self.size.1 as _,
-            //                 DepthOrArraySize: 1,
-            //                 MipLevels: 1,
-            //                 Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-            //                 SampleDesc: DXGI_SAMPLE_DESC {
-            //                     Count: 1,
-            //                     Quality: 0,
-            //                 },
-            //                 ..Default::default()
-            //             },
-            //             D3D12_RESOURCE_STATE_COPY_DEST,
-            //             None,
-            //             &mut texture,
-            //         )?;
-            //         let texture = texture.context("cannot create texture")?;
-
-            //         let upload = UploadBuffer::new(device, self.data.len() as _)?;
-            //         upload.write(self.data.as_slice());
-
-            //         // command_list.CopyTextureRegion(
-            //         //     &D3D12_TEXTURE_COPY_LOCATION {
-            //         //         pResource: wrap_com_manually_drop(&texture),
-            //         //         Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-            //         //         Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-            //         //             SubresourceIndex: 0,
-            //         //         },
-            //         //     },
-            //         //     0,
-            //         //     0,
-            //         //     0,
-            //         //     &D3D12_TEXTURE_COPY_LOCATION {
-            //         //         pResource: wrap_com_manually_drop(upload.buffer()),
-            //         //         Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-            //         //         Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-            //         //             PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-            //         //                 Offset: 0,
-            //         //                 Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
-            //         //                     Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-            //         //                     Width: self.size.0,
-            //         //                     Height: self.size.1,
-            //         //                     Depth: 1,
-            //         //                     RowPitch: self.size.0 * 4,
-            //         //                 },
-            //         //             },
-            //         //         },
-            //         //     },
-            //         //     None,
-            //         // );
-
-            //         command_list.ResourceBarrier(&[D3D12_RESOURCE_BARRIER {
-            //             Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-            //             Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-            //             Anonymous: D3D12_RESOURCE_BARRIER_0 {
-            //                 Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-            //                     pResource: wrap_com_manually_drop(&texture),
-            //                     Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-            //                     StateBefore: D3D12_RESOURCE_STATE_COPY_DEST,
-            //                     StateAfter: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            //                 }),
-            //             },
-            //         }]);
-
-            //         self.texture.insert(texture)
-            //     }
-            // };
-
-            // command_list.SetGraphicsRootShaderResourceView(0, tex.GetGPUVirtualAddress());
             command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);
             command_list.IASetVertexBuffers(
                 0,
@@ -501,23 +475,23 @@ impl Dx12Renderer {
             );
             command_list.DrawInstanced(4, 1, 0, 0);
 
-            command_list.ResourceBarrier(&[D3D12_RESOURCE_BARRIER {
-                Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-                Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-                Anonymous: D3D12_RESOURCE_BARRIER_0 {
-                    Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-                        pResource: wrap_com_manually_drop(&backbuffer),
-                        Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        StateBefore: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                        StateAfter: D3D12_RESOURCE_STATE_PRESENT,
-                    }),
-                },
-            }]);
+            command_list.ResourceBarrier(&[transition(
+                &backbuffer,
+                D3D12_RESOURCE_STATE_RENDER_TARGET,
+                D3D12_RESOURCE_STATE_PRESENT,
+            )]);
 
             command_list.Close()?;
+
             call_original_execute_command_lists(&queue, &[Some(command_list.clone().into())]);
-            self.guard.queue(&queue)?;
         }
+        self.guard.queue(&queue)?;
+
+        Ok(())
+    }
+
+    pub fn post_present(&mut self) -> anyhow::Result<()> {
+        self.guard.wait()?;
 
         Ok(())
     }
@@ -525,6 +499,121 @@ impl Dx12Renderer {
 
 impl Drop for Dx12Renderer {
     fn drop(&mut self) {
-        self.guard.cleanup().expect("error while waiting gpu queue");
+        self.guard.wait().expect("error while waiting gpu queue");
     }
+}
+
+unsafe fn transition(
+    res: &ID3D12Resource,
+    from: D3D12_RESOURCE_STATES,
+    to: D3D12_RESOURCE_STATES,
+) -> D3D12_RESOURCE_BARRIER {
+    D3D12_RESOURCE_BARRIER {
+        Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        Anonymous: D3D12_RESOURCE_BARRIER_0 {
+            Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
+                pResource: unsafe { wrap_com_manually_drop(res) },
+                Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                StateBefore: from,
+                StateAfter: to,
+            }),
+        },
+    }
+}
+
+// todo optimization
+unsafe fn upload_bgra_texture(
+    device: &ID3D12Device,
+    queue: &ID3D12CommandQueue,
+    command_alloc: &ID3D12CommandAllocator,
+    command_list: &ID3D12GraphicsCommandList,
+    texture: &ID3D12Resource,
+    texture_descriptor: &ID3D12DescriptorHeap,
+    data: &[u8],
+    pso: &ID3D12PipelineState,
+) -> anyhow::Result<()> {
+    let mut fence = FenceGuard::new(device)?;
+
+    unsafe {
+        let desc = texture.GetDesc();
+        let mut footprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
+        let mut total_bytes = 0;
+        let mut num_rows = 0;
+        let mut row_byte_size = 0;
+        device.GetCopyableFootprints(
+            &desc,
+            0,
+            1,
+            0,
+            Some(&mut footprint),
+            Some(&mut num_rows),
+            Some(&mut row_byte_size),
+            Some(&mut total_bytes),
+        );
+
+        let dst = D3D12_TEXTURE_COPY_LOCATION {
+            pResource: wrap_com_manually_drop(&texture),
+            Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+            Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                SubresourceIndex: 0,
+            },
+        };
+
+        let upload = UploadBuffer::new(device, total_bytes)?;
+        let ptr = upload.get_mapped_ptr().cast::<u8>();
+
+        let pitch = footprint.Footprint.RowPitch as usize;
+        for y in 0..num_rows as usize {
+            let data_offset = y * row_byte_size as usize;
+            copy_nonoverlapping::<u8>(
+                data[data_offset..].as_ptr(),
+                ptr.byte_add(pitch * y as usize),
+                row_byte_size as _,
+            );
+        }
+
+        let src = D3D12_TEXTURE_COPY_LOCATION {
+            pResource: wrap_com_manually_drop(upload.buffer()),
+            Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+            Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                PlacedFootprint: footprint,
+            },
+        };
+
+        command_list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
+
+        command_list.ResourceBarrier(&[transition(
+            &texture,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        )]);
+
+        device.CreateShaderResourceView(
+            texture,
+            Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                Format: desc.Format,
+                ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                    Texture2D: D3D12_TEX2D_SRV {
+                        MipLevels: 1,
+                        ..Default::default()
+                    },
+                },
+            }),
+            texture_descriptor.GetCPUDescriptorHandleForHeapStart(),
+        );
+
+        command_list.Close()?;
+        call_original_execute_command_lists(&queue, &[Some(command_list.clone().into())]);
+
+        fence.queue(&queue)?;
+        fence.wait()?;
+
+        command_alloc.Reset()?;
+        command_list.Reset(command_alloc, pso)?;
+    }
+
+    Ok(())
 }

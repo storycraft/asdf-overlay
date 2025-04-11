@@ -1,19 +1,22 @@
-use scopeguard::defer;
+use core::u32;
+
 use windows::Win32::{
-    Foundation::CloseHandle,
+    Foundation::{CloseHandle, HANDLE},
     Graphics::Direct3D12::*,
     System::Threading::{CreateEventA, WaitForSingleObject},
 };
 
-pub struct RendererGuard {
+pub struct FenceGuard {
     fence: ID3D12Fence,
+    event: HANDLE,
     val: u64,
 }
 
-impl RendererGuard {
+impl FenceGuard {
     pub fn new(device: &ID3D12Device) -> anyhow::Result<Self> {
         Ok(Self {
             fence: unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? },
+            event: unsafe { CreateEventA(None, false, false, None)? },
             val: 0,
         })
     }
@@ -27,16 +30,22 @@ impl RendererGuard {
         Ok(())
     }
 
-    pub fn cleanup(&self) -> anyhow::Result<()> {
+    pub fn wait(&self) -> anyhow::Result<()> {
         unsafe {
-            let event = CreateEventA(None, false, false, None)?;
-            defer!({
-                _ = CloseHandle(event);
-            });
-            self.fence.SetEventOnCompletion(self.val, event)?;
-            WaitForSingleObject(event, u32::MAX);
+            self.fence.SetEventOnCompletion(self.val, self.event)?;
+            WaitForSingleObject(self.event, u32::MAX);
         }
 
         Ok(())
+    }
+}
+
+unsafe impl Send for FenceGuard {}
+
+impl Drop for FenceGuard {
+    fn drop(&mut self) {
+        unsafe {
+            _ = CloseHandle(self.event);
+        }
     }
 }
