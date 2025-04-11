@@ -18,11 +18,15 @@ use windows::{
     core::{BOOL, PCSTR},
 };
 
-use crate::{app::Overlay, renderer::opengl::OpenglRenderer, util::get_client_size, wgl};
+use crate::{
+    app::Overlay,
+    renderer::{Renderers, opengl::OpenglRenderer},
+    util::get_client_size,
+    wgl,
+};
 
 use super::DetourHook;
 
-pub static RENDERER: Mutex<Option<OpenglRenderer>> = Mutex::new(None);
 static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
 unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
@@ -34,7 +38,7 @@ unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
     let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
 
     cx.with(HDC(hdc), || {
-        let mut renderer = RENDERER.lock();
+        let mut renderer = Renderers::get().opengl.lock();
         let renderer = renderer.get_or_insert_with(|| {
             setup_gl().unwrap();
 
@@ -54,24 +58,21 @@ unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
-
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
 static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
 
 pub fn hook() -> anyhow::Result<()> {
-    let original = get_opengl_wglswapbuffers_addr()?;
-    let hook = unsafe { DetourHook::attach(original as _, hooked as _)? };
-    *HOOK.write() = Some(hook);
+    if let Ok(wgl_swap_buffers) = get_opengl_wglswapbuffers_addr() {
+        let hook = unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked as _)? };
+        *HOOK.write() = Some(hook);
+    }
 
     Ok(())
 }
 
-pub fn cleanup_hook() -> anyhow::Result<()> {
+pub fn cleanup() {
     HOOK.write().take();
-    RENDERER.lock().take();
-
-    Ok(())
 }
 
 fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {

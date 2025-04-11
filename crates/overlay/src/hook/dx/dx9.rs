@@ -1,7 +1,6 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
-use parking_lot::{Mutex, RwLock};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -14,16 +13,17 @@ use windows::{
     core::{BOOL, HRESULT, Interface},
 };
 
-use crate::{app::Overlay, renderer::dx9::Dx9Renderer};
+use crate::{
+    app::Overlay,
+    renderer::{Renderers, dx9::Dx9Renderer},
+};
 
-use super::DetourHook;
+use super::HOOK;
 
-type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
+pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 
-pub static RENDERER: Mutex<Option<Dx9Renderer>> = Mutex::new(None);
-
-unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
-    let Some(ref end_scene) = *HOOK.read() else {
+pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
+    let Some(ref end_scene) = HOOK.read().end_scene else {
         return HRESULT(0);
     };
 
@@ -42,7 +42,7 @@ unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             (desc.Width, desc.Height)
         };
 
-        let mut renderer = RENDERER.lock();
+        let mut renderer = Renderers::get().dx9.lock();
         let renderer = renderer
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
         let position = Overlay::with(|overlay| {
@@ -55,26 +55,8 @@ unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
 }
 
-static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
-
-pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
-    let end_scene = get_end_scene_addr(dummy_hwnd)?;
-
-    let present_hook = unsafe { DetourHook::attach(end_scene as _, hooked_end_scene as _)? };
-    *HOOK.write() = Some(present_hook);
-
-    Ok(())
-}
-
-pub fn cleanup_hook() -> anyhow::Result<()> {
-    HOOK.write().take();
-    RENDERER.lock().take();
-
-    Ok(())
-}
-
 /// Get pointer to IDirect3DDevice9::EndScene by creating dummy device
-fn get_end_scene_addr(dummy_hwnd: HWND) -> anyhow::Result<EndSceneFn> {
+pub fn get_end_scene_addr(dummy_hwnd: HWND) -> anyhow::Result<EndSceneFn> {
     let device = unsafe {
         let dx9 = Direct3DCreate9(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
 

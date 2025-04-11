@@ -1,6 +1,7 @@
-pub mod dx9;
-pub mod dxgi;
-pub mod opengl;
+mod opengl;
+mod dx;
+
+pub use dx::util::call_original_execute_command_lists;
 
 use core::{
     error::Error,
@@ -8,14 +9,27 @@ use core::{
 };
 use std::os::raw::c_void;
 
-use windows::Win32::System::Threading::GetCurrentThread;
+use anyhow::Context;
+use windows::Win32::{Foundation::HWND, System::Threading::GetCurrentThread};
 
 use crate::detours::{
     DetourAttach, DetourDetach, DetourTransactionBegin, DetourTransactionCommit,
     DetourUpdateThread, LONG,
 };
 
-pub struct DetourHook {
+pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    dx::hook(dummy_hwnd).context("Direct3D hook initialization failed")?;
+    opengl::hook().context("OpenGL hook initialization failed")?;
+
+    Ok(())
+}
+
+pub fn cleanup() {
+    dx::cleanup();
+    opengl::cleanup();
+}
+
+struct DetourHook {
     func: *mut (),
     detour: *mut (),
 }

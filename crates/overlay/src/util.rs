@@ -1,3 +1,5 @@
+use core::mem::{self, ManuallyDrop};
+
 use anyhow::bail;
 use scopeguard::defer;
 use windows::{
@@ -9,8 +11,14 @@ use windows::{
             RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
         },
     },
-    core::{PCSTR, s},
+    core::{Interface, PCSTR, s},
 };
+
+// Cloning COM objects for ManuallyDrop<Option<T>> never decrease ref count and leak wtf
+// as per: https://github.com/microsoft/windows-rs/blob/83d4e0b4d49d004f52523614f292bc1526142052/crates/samples/windows/direct3d12/src/main.rs#L493
+pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Option<T>> {
+    unsafe { mem::transmute_copy(inf) }
+}
 
 pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     let mut rect = RECT::default();

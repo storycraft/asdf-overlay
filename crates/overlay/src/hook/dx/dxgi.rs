@@ -1,7 +1,6 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
-use parking_lot::{Mutex, RwLock};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -13,29 +12,37 @@ use windows::{
             Direct3D11::ID3D11Device,
             Direct3D12::ID3D12Device,
             Dxgi::{
-                Common::{DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC},
+                Common::{
+                    DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_SAMPLE_DESC,
+                },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1,
+                IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1, IDXGISwapChain3,
             },
         },
     },
     core::{BOOL, HRESULT, IUnknown, Interface},
 };
 
-use crate::{app::Overlay, renderer::dx11::Dx11Renderer, util::get_client_size};
+use crate::{
+    app::Overlay,
+    renderer::{Renderers, dx11::Dx11Renderer, dx12::Dx12Renderer},
+    util::get_client_size,
+};
 
-use super::DetourHook;
+use super::{HOOK, dx12::get_queue_for};
 
-type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
-type Present1Fn = unsafe extern "system" fn(
+pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
+pub type Present1Fn = unsafe extern "system" fn(
     *mut c_void,
     u32,
     DXGI_PRESENT,
     *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT;
+pub type ResizeBuffersFn =
+    unsafe extern "system" fn(*mut c_void, u32, u32, u32, DXGI_FORMAT, u32) -> HRESULT;
 
-unsafe extern "system" fn hooked_present(
+pub unsafe extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -54,7 +61,47 @@ unsafe extern "system" fn hooked_present(
     }
 }
 
-unsafe extern "system" fn hooked_present1(
+pub unsafe extern "system" fn hooked_resize_buffers(
+    this: *mut c_void,
+    buffer_count: u32,
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    flags: u32,
+) -> HRESULT {
+    let Some(ref resize_buffers) = HOOK.read().resize_buffers else {
+        return HRESULT(0);
+    };
+
+    let res = unsafe {
+        mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
+            this,
+            buffer_count,
+            width,
+            height,
+            format,
+            flags,
+        )
+    };
+    if res.is_err() {
+        return res;
+    }
+
+    if let Some(ref mut renderer) = *Renderers::get().dx12.lock() {
+        let (device, swapchain) = unsafe {
+            let swapchain = IDXGISwapChain::from_raw_borrowed(&this).unwrap();
+            let device = swapchain.GetDevice::<ID3D12Device>().unwrap();
+
+            (device, swapchain)
+        };
+
+        renderer.resize(&device, swapchain);
+    }
+
+    res
+}
+
+pub unsafe extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -79,14 +126,6 @@ unsafe extern "system" fn hooked_present1(
     }
 }
 
-pub static RENDERER: Renderers = Renderers {
-    dx11: Mutex::new(None),
-};
-
-pub struct Renderers {
-    pub dx11: Mutex<Option<Dx11Renderer>>,
-}
-
 fn draw_overlay(swapchain: &IDXGISwapChain) {
     let Ok(device) = (unsafe { swapchain.GetDevice::<IUnknown>() }) else {
         return;
@@ -100,9 +139,22 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         get_client_size(desc.OutputWindow).unwrap_or_default()
     };
 
-    if let Ok(_) = device.cast::<ID3D12Device>() {
+    if let Ok(device) = device.cast::<ID3D12Device>() {
+        let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
+        let mut renderer = Renderers::get().dx12.lock();
+        let renderer = renderer.get_or_insert_with(|| {
+            Dx12Renderer::new(&device, &swapchain).expect("renderer creation failed")
+        });
+        let position = Overlay::with(|overlay| {
+            let size = renderer.size();
+            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+        });
+
+        if let Some(queue) = get_queue_for(&device) {
+            _ = dbg!(renderer.draw(&device, &swapchain, &queue, position, screen));
+        }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
-        let mut renderer = RENDERER.dx11.lock();
+        let mut renderer = Renderers::get().dx11.lock();
         let renderer = renderer
             .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
         let position = Overlay::with(|overlay| {
@@ -115,45 +167,11 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
     }
 }
 
-struct Hook {
-    present: Option<DetourHook>,
-    present1: Option<DetourHook>,
-}
-
-static HOOK: RwLock<Hook> = RwLock::new(Hook {
-    present: None,
-    present1: None,
-});
-
-pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
-    let (present, present1) = get_dxgi_addr(dummy_hwnd)?;
-    let mut hook = HOOK.write();
-
-    let present_hook = unsafe { DetourHook::attach(present as _, hooked_present as _)? };
-    hook.present = Some(present_hook);
-
-    if let Some(present1) = present1 {
-        let present1_hook = unsafe { DetourHook::attach(present1 as _, hooked_present1 as _)? };
-        hook.present1 = Some(present1_hook);
-    }
-
-    Ok(())
-}
-
-pub fn cleanup_hook() -> anyhow::Result<()> {
-    let mut hook = HOOK.write();
-
-    hook.present.take();
-    hook.present1.take();
-
-    RENDERER.dx11.lock().take();
-
-    Ok(())
-}
-
-/// Get pointer to IDXGISwapChain::Present and IDXGISwapChain1::Present1 by creating dummy swapchain
-fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<(PresentFn, Option<Present1Fn>)> {
-    let (present_addr, present1_addr) = unsafe {
+/// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain
+pub fn get_dxgi_addr(
+    dummy_hwnd: HWND,
+) -> anyhow::Result<(PresentFn, ResizeBuffersFn, Option<Present1Fn>)> {
+    unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;
         let adapter = factory.EnumAdapters1(0)?;
 
@@ -189,13 +207,14 @@ fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<(PresentFn, Option<Present1
         )?;
         let swapchain = swapchain.context("SwapChain creation failed")?;
 
-        let present = Interface::vtable(&swapchain).Present;
+        let swapchain_vtable = Interface::vtable(&swapchain);
+        let present = swapchain_vtable.Present;
+        let resize_buffers = swapchain_vtable.ResizeBuffers;
         let present1 = swapchain
             .cast::<IDXGISwapChain1>()
             .ok()
             .map(|swapchain1| Interface::vtable(&swapchain1).Present1);
-        (present, present1)
-    };
 
-    Ok((present_addr, present1_addr))
+        Ok((present, resize_buffers, present1))
+    }
 }

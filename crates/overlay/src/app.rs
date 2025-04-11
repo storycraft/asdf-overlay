@@ -6,10 +6,7 @@ use asdf_overlay_common::{
 use parking_lot::RwLock;
 use scopeguard::defer;
 
-use crate::{
-    hook::{dx9, dxgi, opengl},
-    util::with_dummy_hwnd,
-};
+use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
 
 pub struct Overlay {
     position: Position,
@@ -66,14 +63,8 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                         Overlay::with_mut(|overlay| overlay.margin = margin);
                     }
 
-                    Request::UpdateBitmap(update_bitmap) => {
-                        if let Some(ref mut renderer) = *opengl::RENDERER.lock() {
-                            renderer.update_texture(update_bitmap.width, update_bitmap.data);
-                        } else if let Some(ref mut renderer) = *dxgi::RENDERER.dx11.lock() {
-                            renderer.update_texture(update_bitmap.width, update_bitmap.data);
-                        } else if let Some(ref mut renderer) = *dx9::RENDERER.lock() {
-                            renderer.update_texture(update_bitmap.width, update_bitmap.data);
-                        }
+                    Request::UpdateBitmap(bitmap) => {
+                        Renderers::get().update_texture(bitmap);
                     }
 
                     Request::Direct(_) => {}
@@ -94,20 +85,16 @@ pub async fn main() -> anyhow::Result<()> {
 
     let client = IpcClientConn::connect().await?;
 
-    with_dummy_hwnd(|dummy_hwnd| {
-        opengl::hook().context("opengl hook failed")?;
-        dxgi::hook(dummy_hwnd).context("dxgi hook failed")?;
-        dx9::hook(dummy_hwnd).context("dx9 hook failed")?;
+    defer!({
+        hook::cleanup();
+        Renderers::get().cleanup();
+    });
 
+    with_dummy_hwnd(|dummy_hwnd| {
+        hook::install(dummy_hwnd).context("hook initialization failed")?;
         Ok::<_, anyhow::Error>(())
     })
     .context("failed to create dummy window")??;
-
-    defer!({
-        opengl::cleanup_hook().expect("opengl hook cleanup failed");
-        dxgi::cleanup_hook().expect("dxgi hook cleanup failed");
-        dx9::cleanup_hook().expect("dx9 hook cleanup failed");
-    });
 
     _ = run_client(client).await;
 
