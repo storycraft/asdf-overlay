@@ -45,6 +45,7 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
 
     unsafe {
         let queue = ID3D12CommandQueue::from_raw_borrowed(&this).unwrap();
+
         let mut device = None;
         queue.GetDevice::<ID3D12Device>(&mut device).unwrap();
         let device = device.unwrap();

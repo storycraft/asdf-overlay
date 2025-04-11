@@ -41,7 +41,8 @@ features = [
     "Win32_Graphics_Direct3D10",
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Direct3D12",
-    "Win32_Graphics_Direct3D_Fxc"
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Security"
 ]
 
 [build-dependencies]

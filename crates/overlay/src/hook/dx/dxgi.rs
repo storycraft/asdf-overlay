@@ -151,7 +151,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain) {
         });
 
         if let Some(queue) = get_queue_for(&device) {
-            _ = dbg!(renderer.draw(&device, &swapchain, &queue, position, screen));
+            _ = renderer.draw(&device, &swapchain, &queue, position, screen);
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
         let mut renderer = Renderers::get().dx11.lock();
