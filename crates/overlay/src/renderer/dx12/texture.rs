@@ -5,7 +5,7 @@ use windows::Win32::Graphics::{Direct3D12::*, Dxgi::Common::{DXGI_FORMAT_B8G8R8A
 
 use crate::util::wrap_com_manually_drop;
 
-use super::{buffer::UploadBuffer, fence::FenceGuard};
+use super::{buffer::UploadBuffer, sync::FenceGuard};
 
 pub struct OverlayTexture {
     size: (u32, u32),

@@ -1,5 +1,5 @@
 mod buffer;
-mod fence;
+mod sync;
 mod rtv;
 mod texture;
 
@@ -12,7 +12,7 @@ use core::{
     slice::{self},
     str,
 };
-use fence::FenceGuard;
+use sync::FenceGuard;
 use rtv::RtvDescriptors;
 use windows::{
     Win32::{
