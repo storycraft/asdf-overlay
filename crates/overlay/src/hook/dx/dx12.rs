@@ -27,7 +27,11 @@ static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, FxBuildHasher>> =
     Lazy::new(|| DashMap::with_hasher(FxBuildHasher::default()));
 
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
-    Some(QUEUE_MAP.remove(DeviceKey::of(device))?.1)
+    Some(QUEUE_MAP.remove(&DeviceKey::of(device))?.1)
+}
+
+pub fn cleanup() {
+    QUEUE_MAP.clear();
 }
 
 pub unsafe extern "system" fn hooked_execute_command_lists(
@@ -42,11 +46,11 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
     unsafe {
         let queue = ID3D12CommandQueue::from_raw_borrowed(&this).unwrap();
         let mut device = None;
-        queue.GetDevice(&mut device).unwrap();
-        QUEUE_MAP.insert(DeviceKey(device.unwrap()), queue.clone());
-    };
+        queue.GetDevice::<ID3D12Device>(&mut device).unwrap();
+        let device = device.unwrap();
 
-    unsafe {
+        QUEUE_MAP.insert(DeviceKey::of(&device), queue.clone());
+
         mem::transmute::<*const (), ExecuteCommandListsFn>(execute_command_lists.original_fn())(
             this,
             num_command_lists,
@@ -74,16 +78,19 @@ pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn>
 
 #[derive(PartialEq, Eq)]
 #[repr(transparent)]
-pub struct DeviceKey(ID3D12Device);
+struct DeviceKey(*const ());
 
 impl DeviceKey {
-    pub fn of(device: &ID3D12Device) -> &Self {
-        unsafe { &*(device as *const ID3D12Device).cast::<Self>() }
+    pub fn of(device: &ID3D12Device) -> Self {
+        DeviceKey(device.as_raw() as _)
     }
 }
 
 impl Hash for DeviceKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.as_raw().hash(state);
+        self.0.hash(state);
     }
 }
+
+unsafe impl Send for DeviceKey {}
+unsafe impl Sync for DeviceKey {}

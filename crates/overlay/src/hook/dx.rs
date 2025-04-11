@@ -8,6 +8,7 @@ use windows::Win32::Foundation::HWND;
 
 use super::DetourHook;
 
+#[derive(Default)]
 struct Hook {
     present: Option<DetourHook>,
     present1: Option<DetourHook>,
@@ -41,9 +42,11 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     let (present, resize_buffers, present1) = dxgi::get_dxgi_addr(dummy_hwnd)?;
     let present_hook = unsafe { DetourHook::attach(present as _, dxgi::hooked_present as _)? };
     hook.present = Some(present_hook);
+
     let resize_buffers_hook =
         unsafe { DetourHook::attach(resize_buffers as _, dxgi::hooked_resize_buffers as _)? };
     hook.resize_buffers = Some(resize_buffers_hook);
+
     if let Some(present1) = present1 {
         let present1_hook =
             unsafe { DetourHook::attach(present1 as _, dxgi::hooked_present1 as _)? };
@@ -63,10 +66,6 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 }
 
 pub fn cleanup() {
-    let mut hook = HOOK.write();
-    hook.present.take();
-    hook.present1.take();
-    hook.resize_buffers.take();
-    hook.execute_command_lists.take();
-    hook.end_scene.take();
+    *HOOK.write() = Hook::default();
+    dx12::cleanup();
 }
