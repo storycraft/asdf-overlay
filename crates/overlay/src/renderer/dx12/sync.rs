@@ -19,7 +19,7 @@ impl RendererFence {
         Ok(Self {
             fence: unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? },
             event: unsafe { CreateEventA(None, false, false, None)? },
-            fence_val: [0; MAX_RENDER_TARGETS],
+            fence_val: [1; MAX_RENDER_TARGETS],
             back_buffer_index: MAX_RENDER_TARGETS - 1,
             last_queue: None,
         })
