@@ -1,5 +1,5 @@
-mod opengl;
 mod dx;
+mod opengl;
 
 pub use dx::util::call_original_execute_command_lists;
 

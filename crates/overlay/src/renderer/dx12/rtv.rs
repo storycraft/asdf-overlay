@@ -30,11 +30,7 @@ impl RtvDescriptors {
         }
     }
 
-    pub unsafe fn reset(
-        &self,
-        device: &ID3D12Device,
-        swapchain: &IDXGISwapChain,
-    ) {
+    pub unsafe fn reset(&self, device: &ID3D12Device, swapchain: &IDXGISwapChain) {
         for i in 0..MAX_RENDER_TARGETS {
             unsafe {
                 let Ok(ref backbuffer) = swapchain.GetBuffer::<ID3D12Resource>(i as _) else {

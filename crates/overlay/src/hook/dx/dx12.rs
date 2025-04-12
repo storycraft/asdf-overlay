@@ -24,7 +24,7 @@ use super::HOOK;
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
 static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, FxBuildHasher>> =
-    Lazy::new(|| DashMap::with_hasher(FxBuildHasher::default()));
+    Lazy::new(|| DashMap::with_hasher(FxBuildHasher));
 
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(QUEUE_MAP.remove(&DeviceKey::of(device))?.1)

@@ -1,12 +1,9 @@
-use core::u32;
-
 use windows::Win32::{
     Foundation::{CloseHandle, HANDLE},
     Graphics::Direct3D12::*,
     System::Threading::{CreateEventA, WaitForSingleObject},
 };
 
-use super::MAX_RENDER_TARGETS;
 
 pub struct FenceGuard {
     fence: ID3D12Fence,

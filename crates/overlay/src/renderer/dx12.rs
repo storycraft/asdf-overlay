@@ -1,7 +1,6 @@
 mod buffer;
-mod sync;
 mod rtv;
-mod texture;
+mod sync;
 
 use anyhow::Context;
 use buffer::UploadBuffer;
@@ -12,8 +11,8 @@ use core::{
     slice::{self},
     str,
 };
-use sync::FenceGuard;
 use rtv::RtvDescriptors;
+use sync::FenceGuard;
 use windows::{
     Win32::{
         Foundation::RECT,
@@ -483,9 +482,9 @@ impl Dx12Renderer {
 
             command_list.Close()?;
 
-            call_original_execute_command_lists(&queue, &[Some(command_list.clone().into())]);
+            call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
-        self.guard.queue(&queue)?;
+        self.guard.queue(queue)?;
 
         Ok(())
     }
@@ -553,7 +552,7 @@ unsafe fn upload_bgra_texture(
         );
 
         let dst = D3D12_TEXTURE_COPY_LOCATION {
-            pResource: wrap_com_manually_drop(&texture),
+            pResource: wrap_com_manually_drop(texture),
             Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
             Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
                 SubresourceIndex: 0,
@@ -568,7 +567,7 @@ unsafe fn upload_bgra_texture(
             let data_offset = y * row_byte_size as usize;
             copy_nonoverlapping::<u8>(
                 data[data_offset..].as_ptr(),
-                ptr.byte_add(pitch * y as usize),
+                ptr.byte_add(pitch * y),
                 row_byte_size as _,
             );
         }
@@ -584,7 +583,7 @@ unsafe fn upload_bgra_texture(
         command_list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
 
         command_list.ResourceBarrier(&[transition(
-            &texture,
+            texture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         )]);
@@ -606,9 +605,9 @@ unsafe fn upload_bgra_texture(
         );
 
         command_list.Close()?;
-        call_original_execute_command_lists(&queue, &[Some(command_list.clone().into())]);
+        call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
 
-        fence.queue(&queue)?;
+        fence.queue(queue)?;
         fence.wait()?;
 
         command_alloc.Reset()?;

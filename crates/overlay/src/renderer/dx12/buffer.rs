@@ -57,12 +57,6 @@ impl UploadBuffer {
     pub fn get_mapped_ptr(&self) -> *mut () {
         self.ptr
     }
-    
-    pub fn unmap(&self) {
-        unsafe {
-            self.buffer.Unmap(0, None);
-        }
-    }
 }
 
 impl Drop for UploadBuffer {
