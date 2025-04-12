@@ -432,6 +432,7 @@ impl Dx12Renderer {
             self.vertex_buffer
                 .Map(0, None, Some(&mut mapped_vertex_buffer))?;
             mapped_vertex_buffer.cast::<VertexArray>().write(vertices);
+            self.vertex_buffer.Unmap(0, None);
             self.vertex_buffer_guard.wait(queue)?;
 
             command_list.SetGraphicsRootSignature(&self.sig);
