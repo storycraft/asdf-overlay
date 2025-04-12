@@ -8,7 +8,7 @@ Electron overlay solution for Windows
 * [x] DX9
 * [ ] DX10
 * [x] DX11
-* [ ] DX12
+* [x] DX12
 * [ ] Vulkan
 
 ## Pre-requirement
