@@ -1,6 +1,7 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
+use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -30,7 +31,10 @@ use crate::{
     util::get_client_size,
 };
 
-use super::{HOOK, dx12::get_queue_for};
+use super::{
+    HOOK,
+    dx12::{self, get_queue_for},
+};
 
 pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
 pub type Present1Fn = unsafe extern "system" fn(
@@ -51,20 +55,24 @@ pub unsafe extern "system" fn hooked_present(
         return HRESULT(0);
     };
 
-    let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
     Renderers::with(move |renderers| {
-        if !test {
-            draw_overlay(renderers, unsafe {
-                IDXGISwapChain::from_raw_borrowed(&this).unwrap()
-            });
-        }
-
-        unsafe {
+        let call_present = move || unsafe {
             mem::transmute::<*const (), PresentFn>(present.original_fn())(
                 this,
                 sync_interval,
                 flags,
             )
+        };
+
+        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
+        if !test {
+            draw_overlay(
+                renderers,
+                unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() },
+                call_present,
+            )
+        } else {
+            call_present()
         }
     })
 }
@@ -80,6 +88,8 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     let Some(ref resize_buffers) = HOOK.read().resize_buffers else {
         return HRESULT(0);
     };
+
+    dx12::clear();
 
     let res = unsafe {
         mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
@@ -122,30 +132,38 @@ pub unsafe extern "system" fn hooked_present1(
     };
 
     Renderers::with(move |renderers| {
-        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-        if !test {
-            draw_overlay(renderers, unsafe {
-                IDXGISwapChain1::from_raw_borrowed(&this).unwrap()
-            });
-        }
-
-        unsafe {
+        let call_present1 = move || unsafe {
             mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
                 this,
                 sync_interval,
                 flags,
                 present_params,
             )
+        };
+
+        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
+        if !test {
+            draw_overlay(
+                renderers,
+                unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() },
+                call_present1,
+            )
+        } else {
+            call_present1()
         }
     })
 }
 
-fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
+fn draw_overlay(
+    renderers: &mut Renderers,
+    swapchain: &IDXGISwapChain,
+    call_present: impl FnOnce() -> HRESULT,
+) -> HRESULT {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = {
         let Ok(desc) = (unsafe { swapchain.GetDesc() }) else {
-            return;
+            return call_present();
         };
 
         get_client_size(desc.OutputWindow).unwrap_or_default()
@@ -165,6 +183,11 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
 
         if let Some(queue) = get_queue_for(&device) {
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
+            defer!({
+                _ = renderer.post_present(&swapchain);
+            });
+
+            return call_present();
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
         let renderer = renderers
@@ -178,6 +201,8 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
         _ = renderer.draw(&device, swapchain, position, screen);
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
     }
+
+    call_present()
 }
 
 /// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain

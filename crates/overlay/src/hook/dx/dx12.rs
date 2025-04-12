@@ -30,6 +30,10 @@ pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(QUEUE_MAP.remove(&DeviceKey::of(device))?.1)
 }
 
+pub fn clear() {
+    QUEUE_MAP.clear();
+}
+
 pub fn cleanup() {
     QUEUE_MAP.clear();
 }
