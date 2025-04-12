@@ -12,7 +12,7 @@ use core::{
     str,
 };
 use rtv::RtvDescriptors;
-use sync::FenceGuard;
+use sync::{FenceGuard, RendererGuard};
 use windows::{
     Win32::{
         Foundation::RECT,
@@ -153,6 +153,7 @@ pub struct Dx12Renderer {
     texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
+    guard: RendererGuard,
 }
 
 impl Dx12Renderer {
@@ -305,6 +306,7 @@ impl Dx12Renderer {
                 texture_descriptor,
 
                 command_list,
+                guard: RendererGuard::new(device)?,
             })
         }
     }
@@ -484,8 +486,15 @@ impl Dx12Renderer {
 
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
+        self.guard.register(queue)?;
 
         Ok(())
+    }
+}
+
+impl Drop for Dx12Renderer {
+    fn drop(&mut self) {
+        self.guard.wait_pending().expect("error while waiting gpu");
     }
 }
 
