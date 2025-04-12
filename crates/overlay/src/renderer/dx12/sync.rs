@@ -4,8 +4,6 @@ use windows::Win32::{
     System::Threading::{CreateEventA, WaitForSingleObject},
 };
 
-use super::MAX_RENDER_TARGETS;
-
 pub struct FenceGuard {
     fence: ID3D12Fence,
     event: HANDLE,
