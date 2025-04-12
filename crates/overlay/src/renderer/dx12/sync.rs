@@ -4,7 +4,6 @@ use windows::Win32::{
     System::Threading::{CreateEventA, WaitForSingleObject},
 };
 
-
 pub struct FenceGuard {
     fence: ID3D12Fence,
     event: HANDLE,
@@ -20,17 +19,10 @@ impl FenceGuard {
         })
     }
 
-    pub fn queue(&mut self, queue: &ID3D12CommandQueue) -> anyhow::Result<()> {
+    pub fn wait(&mut self, queue: &ID3D12CommandQueue) -> anyhow::Result<()> {
         self.val += 1;
         unsafe {
             queue.Signal(&self.fence, self.val)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn wait(&self) -> anyhow::Result<()> {
-        unsafe {
             self.fence.SetEventOnCompletion(self.val, self.event)?;
             WaitForSingleObject(self.event, u32::MAX);
         }

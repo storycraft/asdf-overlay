@@ -64,7 +64,9 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                     }
 
                     Request::UpdateBitmap(bitmap) => {
-                        Renderers::get().update_texture(bitmap);
+                        Renderers::with(|renderer| {
+                            renderer.update_texture(bitmap);
+                        });
                     }
 
                     Request::Direct(_) => {}
@@ -86,8 +88,10 @@ pub async fn main() -> anyhow::Result<()> {
     let client = IpcClientConn::connect().await?;
 
     defer!({
-        hook::cleanup();
-        Renderers::get().cleanup();
+        Renderers::with(|renderer| {
+            hook::cleanup();
+            renderer.cleanup();
+        });
     });
 
     with_dummy_hwnd(|dummy_hwnd| {

@@ -42,14 +42,16 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             (desc.Width, desc.Height)
         };
 
-        let mut renderer = Renderers::get().dx9.lock();
-        let renderer = renderer
-            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
-        let position = Overlay::with(|overlay| {
-            let size = renderer.size();
-            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+        Renderers::with(|renderers| {
+            let renderer = renderers.dx9.get_or_insert_with(|| {
+                Dx9Renderer::new(device).expect("Dx9Renderer creation failed")
+            });
+            let position = Overlay::with(|overlay| {
+                let size = renderer.size();
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+            });
+            _ = renderer.draw(device, position, screen);
         });
-        _ = renderer.draw(device, position, screen);
     }
 
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }

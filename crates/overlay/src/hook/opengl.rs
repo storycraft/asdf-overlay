@@ -38,24 +38,25 @@ unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
     let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
 
     cx.with(HDC(hdc), || {
-        let mut renderer = Renderers::get().opengl.lock();
-        let renderer = renderer.get_or_insert_with(|| {
-            setup_gl().unwrap();
+        Renderers::with(|renderers| {
+            let renderer = renderers.opengl.get_or_insert_with(|| {
+                setup_gl().unwrap();
 
-            OpenglRenderer::new()
-        });
+                OpenglRenderer::new()
+            });
 
-        let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
-        Overlay::with(|overlay| {
-            let size = renderer.size();
-            renderer.draw(
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
-                screen,
-            );
-        });
-    });
+            let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
+            Overlay::with(|overlay| {
+                let size = renderer.size();
+                renderer.draw(
+                    overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
+                    screen,
+                );
 
-    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+                unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+            })
+        })
+    })
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;

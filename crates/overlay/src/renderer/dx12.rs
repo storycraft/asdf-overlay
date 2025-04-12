@@ -148,11 +148,11 @@ pub struct Dx12Renderer {
 
     pipeline: ID3D12PipelineState,
     vertex_buffer: ID3D12Resource,
+    vertex_buffer_guard: FenceGuard,
     texture: Option<ID3D12Resource>,
     texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
-    guard: FenceGuard,
 }
 
 impl Dx12Renderer {
@@ -300,11 +300,11 @@ impl Dx12Renderer {
 
                 pipeline,
                 vertex_buffer,
+                vertex_buffer_guard: FenceGuard::new(device)?,
                 texture: None,
                 texture_descriptor,
 
                 command_list,
-                guard: FenceGuard::new(device)?,
             })
         }
     }
@@ -430,7 +430,7 @@ impl Dx12Renderer {
             self.vertex_buffer
                 .Map(0, None, Some(&mut mapped_vertex_buffer))?;
             mapped_vertex_buffer.cast::<VertexArray>().write(vertices);
-            self.vertex_buffer.Unmap(0, None);
+            self.vertex_buffer_guard.wait(queue)?;
 
             command_list.SetGraphicsRootSignature(&self.sig);
 
@@ -484,21 +484,8 @@ impl Dx12Renderer {
 
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
-        self.guard.queue(queue)?;
 
         Ok(())
-    }
-
-    pub fn post_present(&mut self) -> anyhow::Result<()> {
-        self.guard.wait()?;
-
-        Ok(())
-    }
-}
-
-impl Drop for Dx12Renderer {
-    fn drop(&mut self) {
-        self.guard.wait().expect("error while waiting gpu queue");
     }
 }
 
@@ -606,9 +593,7 @@ unsafe fn upload_bgra_texture(
 
         command_list.Close()?;
         call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
-
-        fence.queue(queue)?;
-        fence.wait()?;
+        fence.wait(queue)?;
 
         command_alloc.Reset()?;
         command_list.Reset(command_alloc, pso)?;
