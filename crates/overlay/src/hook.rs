@@ -17,6 +17,7 @@ use crate::detours::{
     DetourUpdateThread, LONG,
 };
 
+#[tracing::instrument]
 pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     dx::hook(dummy_hwnd).context("Direct3D hook initialization failed")?;
     opengl::hook().context("OpenGL hook initialization failed")?;
@@ -24,17 +25,20 @@ pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 pub fn cleanup() {
     dx::cleanup();
     opengl::cleanup();
 }
 
+#[derive(Debug)]
 struct DetourHook {
     func: *mut (),
     detour: *mut (),
 }
 
 impl DetourHook {
+    #[tracing::instrument]
     pub unsafe fn attach(func: *mut (), detour: *mut ()) -> DetourResult<Self> {
         let mut func = func.cast::<c_void>();
 

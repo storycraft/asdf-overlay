@@ -6,6 +6,7 @@ use windows::Win32::{
 
 use super::MAX_RENDER_TARGETS;
 
+#[derive(Debug)]
 pub struct RendererFence {
     fence: ID3D12Fence,
     event: HANDLE,

@@ -22,6 +22,7 @@ use super::HOOK;
 
 pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 
+#[tracing::instrument]
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let Some(ref end_scene) = HOOK.read().end_scene else {
         return HRESULT(0);

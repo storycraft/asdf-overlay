@@ -38,9 +38,7 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
 
         move || {
             let dll_module = dll_module;
-            if let Err(err) = rt.block_on(main()) {
-                eprintln!("dll error: {err}");
-            }
+            rt.block_on(main());
             drop(rt);
 
             unsafe {
@@ -59,7 +57,8 @@ pub extern "system" fn DllMain(dll_module: HINSTANCE, reason: u32, _reserved: *m
         DLL_PROCESS_ATTACH => attach(dll_module),
         _ => Ok(()),
     } {
-        eprintln!("dll attach failed. {err}");
+        #[cfg(debug_assertions)]
+        eprintln!("dll initialization failed. {err}");
     }
 
     BOOL(1)

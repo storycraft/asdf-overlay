@@ -139,6 +139,7 @@ const RASTERIZER_STATE: D3D12_RASTERIZER_DESC = D3D12_RASTERIZER_DESC {
 
 const MAX_RENDER_TARGETS: usize = D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT as _;
 
+#[derive(Debug)]
 pub struct Dx12Renderer {
     sig: ID3D12RootSignature,
     rtv: RtvDescriptors,
@@ -156,6 +157,7 @@ pub struct Dx12Renderer {
 }
 
 impl Dx12Renderer {
+    #[tracing::instrument]
     pub fn new(device: &ID3D12Device, swapchain: &IDXGISwapChain3) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
@@ -313,12 +315,14 @@ impl Dx12Renderer {
         self.size
     }
 
+    #[tracing::instrument]
     pub fn resize(&self, device: &ID3D12Device, swapchain: &IDXGISwapChain) {
         unsafe {
             self.rtv.reset(device, swapchain);
         }
     }
 
+    #[tracing::instrument]
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
         if width == 0 || data.len() < width as _ {
             return;
@@ -331,6 +335,7 @@ impl Dx12Renderer {
         self.texture.take();
     }
 
+    #[tracing::instrument]
     pub fn draw(
         &mut self,
         device: &ID3D12Device,
@@ -491,6 +496,7 @@ impl Dx12Renderer {
         Ok(())
     }
 
+    #[tracing::instrument]
     pub fn post_present(&mut self, swapchain: &IDXGISwapChain3) -> anyhow::Result<()> {
         self.fence
             .sync_next_frame(unsafe { swapchain.GetCurrentBackBufferIndex() as _ })?;

@@ -13,6 +13,7 @@ type VertexArray = [Vertex; 4];
 static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
+#[derive(Debug)]
 pub struct OpenglRenderer {
     size: (u32, u32),
     data: Vec<u8>,
@@ -26,6 +27,7 @@ pub struct OpenglRenderer {
 }
 
 impl OpenglRenderer {
+    #[tracing::instrument]
     pub fn new() -> Self {
         let mut vertex_buffer = 0;
         let mut vao = 0;
@@ -114,6 +116,7 @@ impl OpenglRenderer {
         self.size
     }
 
+    #[tracing::instrument]
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
         if width == 0 || data.len() < width as _ {
             return;
@@ -130,6 +133,7 @@ impl OpenglRenderer {
         self.texture_outdated = true;
     }
 
+    #[tracing::instrument]
     pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) {
         let vertices = {
             let pos = (

@@ -29,7 +29,8 @@ use super::DetourHook;
 
 static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
-unsafe extern "system" fn hooked(hdc: *mut c_void) -> BOOL {
+#[tracing::instrument]
+unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     let Some(ref hook) = *HOOK.read() else {
         return BOOL(0);
     };
@@ -63,20 +64,23 @@ type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
 static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
 
+#[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
-    if let Ok(wgl_swap_buffers) = get_opengl_wglswapbuffers_addr() {
-        let hook = unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked as _)? };
+    if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
+        let hook = unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
         *HOOK.write() = Some(hook);
     }
 
     Ok(())
 }
 
+#[tracing::instrument]
 pub fn cleanup() {
     HOOK.write().take();
 }
 
-fn get_opengl_wglswapbuffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
+#[tracing::instrument]
+fn get_wgl_swap_buffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
     // Grab a handle to opengl32.dll
     let opengl32dll = CString::new("opengl32.dll")?;
     let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };

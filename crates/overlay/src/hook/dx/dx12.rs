@@ -26,18 +26,22 @@ pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *co
 static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, FxBuildHasher>> =
     Lazy::new(|| DashMap::with_hasher(FxBuildHasher));
 
+#[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(QUEUE_MAP.remove(&DeviceKey::of(device))?.1)
 }
 
+#[tracing::instrument]
 pub fn clear() {
     QUEUE_MAP.clear();
 }
 
+#[tracing::instrument]
 pub fn cleanup() {
     QUEUE_MAP.clear();
 }
 
+#[tracing::instrument]
 pub unsafe extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,
@@ -65,6 +69,7 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
 }
 
 /// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT type by creating dummy device
+#[tracing::instrument]
 pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
     unsafe {
         let mut device = None;

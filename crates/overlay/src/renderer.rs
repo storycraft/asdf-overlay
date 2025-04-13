@@ -17,6 +17,7 @@ static RENDERER: Mutex<Renderers> = Mutex::new(Renderers {
     dx9: None,
 });
 
+#[derive(Debug)]
 pub struct Renderers {
     pub dx12: Option<Dx12Renderer>,
     pub dx11: Option<Dx11Renderer>,
@@ -25,6 +26,7 @@ pub struct Renderers {
 }
 
 impl Renderers {
+    #[tracing::instrument]
     pub fn update_texture(&mut self, bitmap: Bitmap) {
         if let Some(ref mut renderer) = self.dx12 {
             renderer.update_texture(bitmap.width, bitmap.data);
@@ -42,6 +44,7 @@ impl Renderers {
         f(&mut RENDERER.lock())
     }
 
+    #[tracing::instrument]
     pub fn cleanup(&mut self) {
         self.dx12.take();
         self.dx11.take();

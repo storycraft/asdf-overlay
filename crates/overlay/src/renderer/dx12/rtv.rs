@@ -2,6 +2,7 @@ use windows::Win32::Graphics::{Direct3D12::*, Dxgi::IDXGISwapChain};
 
 use super::MAX_RENDER_TARGETS;
 
+#[derive(Debug)]
 pub struct RtvDescriptors {
     rtv_descriptor_heap: ID3D12DescriptorHeap,
     descriptor_size: usize,

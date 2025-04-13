@@ -25,6 +25,7 @@ static HOOK: RwLock<Hook> = RwLock::new(Hook {
     end_scene: None,
 });
 
+#[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     let mut hook = HOOK.write();
 
@@ -65,6 +66,7 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 pub fn cleanup() {
     *HOOK.write() = Hook::default();
     dx12::cleanup();

@@ -62,6 +62,7 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 2] = [
     },
 ];
 
+#[derive(Debug)]
 pub struct Dx11Renderer {
     context: ID3D11DeviceContext,
 
@@ -78,6 +79,7 @@ pub struct Dx11Renderer {
 }
 
 impl Dx11Renderer {
+    #[tracing::instrument]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
             let mut vs_blob = None;
@@ -196,6 +198,7 @@ impl Dx11Renderer {
         self.size
     }
 
+    #[tracing::instrument]
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
         if width == 0 || data.len() < width as _ {
             return;
@@ -208,6 +211,7 @@ impl Dx11Renderer {
         self.texture.take();
     }
 
+    #[tracing::instrument]
     pub fn draw(
         &mut self,
         device: &ID3D11Device,

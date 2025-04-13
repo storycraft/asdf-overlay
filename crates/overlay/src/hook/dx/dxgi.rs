@@ -46,6 +46,7 @@ pub type Present1Fn = unsafe extern "system" fn(
 pub type ResizeBuffersFn =
     unsafe extern "system" fn(*mut c_void, u32, u32, u32, DXGI_FORMAT, u32) -> HRESULT;
 
+#[tracing::instrument]
 pub unsafe extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
@@ -77,6 +78,7 @@ pub unsafe extern "system" fn hooked_present(
     })
 }
 
+#[tracing::instrument]
 pub unsafe extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
@@ -121,6 +123,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     res
 }
 
+#[tracing::instrument]
 pub unsafe extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
@@ -154,6 +157,7 @@ pub unsafe extern "system" fn hooked_present1(
     })
 }
 
+#[tracing::instrument(skip(call_present))]
 fn draw_overlay(
     renderers: &mut Renderers,
     swapchain: &IDXGISwapChain,
@@ -206,6 +210,7 @@ fn draw_overlay(
 }
 
 /// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain
+#[tracing::instrument]
 pub fn get_dxgi_addr(
     dummy_hwnd: HWND,
 ) -> anyhow::Result<(PresentFn, ResizeBuffersFn, Option<Present1Fn>)> {

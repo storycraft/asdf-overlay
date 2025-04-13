@@ -5,6 +5,7 @@ use asdf_overlay_common::{
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
+use tracing::error;
 
 use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
 
@@ -78,7 +79,8 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     }
 }
 
-pub async fn main() -> anyhow::Result<()> {
+#[tracing::instrument]
+pub async fn run_overlay() -> anyhow::Result<()> {
     *CURRENT.write() = Some(Overlay {
         position: Position::default(),
         anchor: Anchor::default(),
@@ -103,4 +105,23 @@ pub async fn main() -> anyhow::Result<()> {
     _ = run_client(client).await;
 
     Ok(())
+}
+
+pub async fn main() {
+    #[cfg(debug_assertions)]
+    fn setup_tracing() {
+        use std::io;
+        use tracing::level_filters::LevelFilter;
+
+        tracing_subscriber::fmt::fmt()
+            .with_writer(io::stderr)
+            .with_max_level(LevelFilter::TRACE)
+            .init();
+    }
+    #[cfg(debug_assertions)]
+    setup_tracing();
+
+    if let Err(err) = run_overlay().await {
+        error!("{:?}", err);
+    }
 }
