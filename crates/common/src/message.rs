@@ -1,8 +1,10 @@
+use core::fmt::Debug;
+
 use bincode::{Decode, Encode};
 
 use crate::size::PercentLength;
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Derive, Encode, Decode)]
 pub enum Request {
     /// Change overlay position
     UpdatePosition(Position),
@@ -48,9 +50,10 @@ impl Margin {
     }
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(derive_more::Debug, Encode, Decode)]
 pub struct Bitmap {
     pub width: u32,
+    #[debug(skip)]
     pub data: Vec<u8>,
 }
 
