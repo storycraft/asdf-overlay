@@ -489,6 +489,9 @@ impl Dx12Renderer {
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
         self.fence.register(queue)?;
+        // wait for previous frame
+        // todo: remove after fixing crash
+        self.fence.wait_gpu(queue)?;
 
         Ok(())
     }
