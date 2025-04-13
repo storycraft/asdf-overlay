@@ -1,6 +1,7 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
+use tracing::{debug, trace};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -27,6 +28,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let Some(ref end_scene) = HOOK.read().end_scene else {
         return HRESULT(0);
     };
+    trace!("EndScene called");
 
     {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this).unwrap() };
@@ -80,6 +82,8 @@ pub fn get_end_scene_addr(dummy_hwnd: HWND) -> anyhow::Result<EndSceneFn> {
 
         device.context("cannot create IDirect3DDevice9")?
     };
+    let addr = Interface::vtable(&device).EndScene;
+    debug!("IDirect3DDevice9::EndScene found: {:p}", addr);
 
-    Ok(Interface::vtable(&device).EndScene)
+    Ok(addr)
 }

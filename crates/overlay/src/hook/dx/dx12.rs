@@ -8,6 +8,7 @@ use anyhow::Context;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use rustc_hash::FxBuildHasher;
+use tracing::{debug, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -50,15 +51,22 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
     let Some(ref execute_command_lists) = HOOK.read().execute_command_lists else {
         return;
     };
+    trace!("ExecuteCommandLists called");
 
     unsafe {
         let queue = ID3D12CommandQueue::from_raw_borrowed(&this).unwrap();
 
-        let mut device = None;
-        queue.GetDevice::<ID3D12Device>(&mut device).unwrap();
-        let device = device.unwrap();
+        if queue.GetDesc().Type == D3D12_COMMAND_LIST_TYPE_DIRECT {
+            let mut device = None;
+            queue.GetDevice::<ID3D12Device>(&mut device).unwrap();
+            let device = device.unwrap();
 
-        QUEUE_MAP.insert(DeviceKey::of(&device), queue.clone());
+            trace!(
+                "found DIRECT command queue {:?} for device {:?}",
+                queue, device
+            );
+            QUEUE_MAP.insert(DeviceKey::of(&device), queue.clone());
+        }
 
         mem::transmute::<*const (), ExecuteCommandListsFn>(execute_command_lists.original_fn())(
             this,
@@ -81,8 +89,10 @@ pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn>
             Flags: D3D12_COMMAND_QUEUE_FLAG_NONE,
             ..Default::default()
         })?;
+        let addr = Interface::vtable(&queue).ExecuteCommandLists;
+        debug!("ID3D12CommandQueue::ExecuteCommandLists found: {:p}", addr);
 
-        Ok(Interface::vtable(&queue).ExecuteCommandLists)
+        Ok(addr)
     }
 }
 
