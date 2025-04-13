@@ -53,12 +53,19 @@ fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "system" fn DllMain(dll_module: HINSTANCE, reason: u32, _reserved: *mut c_void) -> BOOL {
-    if let Err(err) = match reason {
+    let res = match reason {
         DLL_PROCESS_ATTACH => attach(dll_module),
         _ => Ok(()),
-    } {
-        #[cfg(debug_assertions)]
+    };
+
+    #[cfg(debug_assertions)]
+    if let Err(err) = res {
         eprintln!("dll initialization failed. {err}");
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        _ = res;
     }
 
     BOOL(1)
