@@ -35,21 +35,16 @@ pub async fn inject(
 ) -> anyhow::Result<IpcServerConn> {
     let pid = process.pid()?;
 
-    let server = create_ipc_server(pid.get()).await?;
+    let server = create_ipc_server(pid.get())?;
     {
         let injector = Syringe::for_process(process);
         injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
     }
 
-    let writable = server.writable();
+    let connect = IpcServerConn::connect(server);
     let timeout = sleep(timeout.unwrap_or(Duration::MAX));
-
     select! {
-        _ = writable => {
-            Ok(IpcServerConn::new(server))
-        }
-        _ = timeout => {
-            bail!("client wait timeout")
-        }
+        res = connect => res,
+        _ = timeout => bail!("client wait timeout"),
     }
 }

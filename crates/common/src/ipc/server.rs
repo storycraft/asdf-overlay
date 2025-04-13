@@ -14,15 +14,12 @@ use crate::message::{Request, Response};
 
 use super::{Frame, create_name};
 
-pub async fn create_ipc_server(pid: u32) -> anyhow::Result<NamedPipeServer> {
+pub fn create_ipc_server(pid: u32) -> anyhow::Result<NamedPipeServer> {
     let name = create_name(pid);
 
-    let server = ServerOptions::new()
+    Ok(ServerOptions::new()
         .first_pipe_instance(true)
-        .create(name)?;
-    server.connect().await?;
-
-    Ok(server)
+        .create(name)?)
 }
 
 pub struct IpcServerConn {
@@ -34,7 +31,9 @@ pub struct IpcServerConn {
 }
 
 impl IpcServerConn {
-    pub fn new(server: NamedPipeServer) -> Self {
+    pub async fn connect(server: NamedPipeServer) -> anyhow::Result<Self> {
+        server.connect().await?;
+
         let (mut rx, tx) = split(server);
         let map = Arc::new(DashMap::<u32, oneshot::Sender<Response>>::new());
 
@@ -60,13 +59,13 @@ impl IpcServerConn {
             }
         });
 
-        IpcServerConn {
+        Ok(IpcServerConn {
             next_id: 0,
             tx,
             buf: Vec::new(),
             map,
             read_task,
-        }
+        })
     }
 
     pub async fn request(&mut self, req: &Request) -> anyhow::Result<Response> {
