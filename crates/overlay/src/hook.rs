@@ -63,7 +63,6 @@ impl DetourHook {
 }
 
 impl Drop for DetourHook {
-    #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
         let mut func = self.func.cast::<c_void>();
 
