@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs,
     process::{Command, Stdio},
     thread,
@@ -9,27 +10,31 @@ use camino::Utf8PathBuf;
 use cargo_metadata::Message;
 use clap::Parser;
 
-#[derive(Parser, Clone, Copy)]
+#[derive(Parser, Clone)]
 enum Action {
     #[command(about = "Build overlay dlls")]
-    BuildDll,
+    BuildDll {
+        #[arg(last(true))]
+        cargo_args: Vec<String>,
+    },
     #[command(about = "Build node natives")]
-    BuildNode,
+    BuildNode {
+        #[arg(last(true))]
+        cargo_args: Vec<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
     match Action::parse() {
-        Action::BuildDll => build_dlls()?,
-        Action::BuildNode => build_node()?,
+        Action::BuildDll { cargo_args } => build_dlls(&cargo_args)?,
+        Action::BuildNode { cargo_args } => build_node(&cargo_args)?,
     }
 
     Ok(())
 }
 
-fn build_node() -> anyhow::Result<()> {
-    fn build_dll(target: &str) -> Option<Utf8PathBuf> {
-        cargo_artifacts("asdf-overlay-node", target)
-    }
+fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
+    let build_dll = |target| cargo_artifacts("asdf-overlay-node", target, cargo_args);
 
     let tasks = thread::scope(|scope| {
         let x64_task = scope.spawn(|| build_dll("x86_64-pc-windows-msvc"));
@@ -52,10 +57,8 @@ fn build_node() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_dlls() -> anyhow::Result<()> {
-    fn build_dll(target: &str) -> Option<Utf8PathBuf> {
-        cargo_artifacts("asdf-overlay", target)
-    }
+fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
+    let build_dll = |target| cargo_artifacts("asdf-overlay", target, cargo_args);
 
     let tasks = thread::scope(|scope| {
         let x64_task = scope.spawn(|| build_dll("x86_64-pc-windows-msvc"));
@@ -84,11 +87,15 @@ fn build_dlls() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cargo_artifacts(project: &str, target: &str) -> Option<Utf8PathBuf> {
+fn cargo_artifacts(
+    project: &str,
+    target: &str,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Option<Utf8PathBuf> {
     let mut command = Command::new("cargo")
+        .arg("build")
+        .args(args)
         .args([
-            "build",
-            "--release",
             "-p",
             project,
             "--message-format=json-render-diagnostics",

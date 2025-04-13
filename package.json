@@ -5,8 +5,8 @@
   "main": "./lib/index.js",
   "scripts": {
     "test": "tsc && cargo test",
-    "build-dll": "cargo xtask build-dll",
-    "cargo-build": "cargo xtask build-node",
+    "build-dll": "cargo xtask build-dll -- --release",
+    "cargo-build": "cargo xtask build-node -- --release",
     "debug": "npm run cargo-build && npm run build-dll && tsc",
     "build": "npm run cargo-build && npm run build-dll && tsc",
     "prepack": "npm run build"
