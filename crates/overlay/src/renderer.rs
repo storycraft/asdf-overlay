@@ -9,7 +9,7 @@ use dx11::Dx11Renderer;
 use dx12::Dx12Renderer;
 use opengl::OpenglRenderer;
 use parking_lot::Mutex;
-use tracing::trace;
+use tracing::{debug, trace};
 
 static RENDERER: Mutex<Renderers> = Mutex::new(Renderers {
     dx12: None,
@@ -65,6 +65,6 @@ impl Renderers {
             self.dx9.take();
         }
 
-        trace!("renderer cleanup finished");
+        debug!("renderer cleanup finished");
     }
 }

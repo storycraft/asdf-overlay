@@ -6,7 +6,7 @@ use std::ffi::CString;
 use anyhow::Context;
 use cx::OverlayGlContext;
 use parking_lot::{Mutex, RwLock};
-use tracing::trace;
+use tracing::{debug, trace};
 use windows::{
     Win32::{
         Foundation::HMODULE,
@@ -43,8 +43,10 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     cx.with(HDC(hdc), || {
         Renderers::with(|renderers| {
             let renderer = renderers.opengl.get_or_insert_with(|| {
+                debug!("setting up opengl");
                 setup_gl().unwrap();
 
+                debug!("initializing opengl renderer");
                 OpenglRenderer::new()
             });
 
@@ -98,14 +100,16 @@ fn get_wgl_swap_buffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
     Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
 }
 
+#[tracing::instrument]
 fn setup_gl() -> anyhow::Result<()> {
     let opengl32dll = CString::new("opengl32.dll")?;
     let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };
 
+    #[tracing::instrument]
     fn loader(module: HMODULE, s: &str) -> *const c_void {
         let name = CString::new(s).unwrap();
 
-        unsafe {
+        let addr = unsafe {
             let addr = PCSTR(name.as_ptr() as _);
             let fn_ptr = wglGetProcAddress(addr);
             if let Some(ptr) = fn_ptr {
@@ -113,7 +117,10 @@ fn setup_gl() -> anyhow::Result<()> {
             } else {
                 GetProcAddress(module, addr).map_or(std::ptr::null(), |fn_ptr| fn_ptr as *const _)
             }
-        }
+        };
+        trace!("found: {:p}", addr);
+
+        addr
     }
 
     wgl::load_with(|s| loader(opengl32module, s));

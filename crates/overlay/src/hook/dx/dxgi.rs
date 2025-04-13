@@ -2,7 +2,7 @@ use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
 use scopeguard::defer;
-use tracing::trace;
+use tracing::{debug, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -181,6 +181,7 @@ fn draw_overlay(
         let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
 
         let renderer = renderers.dx12.get_or_insert_with(|| {
+            debug!("initializing dx12 renderer");
             Dx12Renderer::new(&device, &swapchain).expect("renderer creation failed")
         });
 
@@ -200,9 +201,10 @@ fn draw_overlay(
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
         trace!("using dx11 renderer");
-        let renderer = renderers
-            .dx11
-            .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
+        let renderer = renderers.dx11.get_or_insert_with(|| {
+            debug!("initializing dx11 renderer");
+            Dx11Renderer::new(&device).expect("renderer creation failed")
+        });
         let position = Overlay::with(|overlay| {
             let size = renderer.size();
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
