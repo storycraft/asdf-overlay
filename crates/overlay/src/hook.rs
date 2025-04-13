@@ -11,11 +11,10 @@ use core::{
 use std::os::raw::c_void;
 
 use anyhow::Context;
-use windows::Win32::{Foundation::HWND, System::Threading::GetCurrentThread};
+use windows::Win32::Foundation::HWND;
 
 use crate::detours::{
-    DetourAttach, DetourDetach, DetourTransactionBegin, DetourTransactionCommit,
-    DetourUpdateThread, LONG,
+    DetourAttach, DetourDetach, DetourTransactionBegin, DetourTransactionCommit, LONG,
 };
 
 #[tracing::instrument]
