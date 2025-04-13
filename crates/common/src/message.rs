@@ -4,7 +4,7 @@ use bincode::{Decode, Encode};
 
 use crate::size::PercentLength;
 
-#[derive(Derive, Encode, Decode)]
+#[derive(Debug, Encode, Decode)]
 pub enum Request {
     /// Change overlay position
     UpdatePosition(Position),
