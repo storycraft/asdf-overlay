@@ -10,7 +10,6 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 tokio = { workspace = true, features = ["io-util"] }
 
 bincode = { version = "2.0.1", features = ["derive"] }
-parity-tokio-ipc = "0.9.0"
 winapi = { version = "0.3", features = ["winerror"] }
 anyhow = "1.0.97"
 parking_lot = "0.12.3"

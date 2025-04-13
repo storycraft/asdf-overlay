@@ -1,16 +1,15 @@
 pub mod prelude;
 
-use core::{future::pending, pin::pin, time::Duration};
+use core::time::Duration;
 use std::{env::current_exe, path::PathBuf};
 
-use anyhow::{Context, bail};
-use asdf_overlay_common::ipc::server::{IpcServerConn, listen};
+use anyhow::bail;
+use asdf_overlay_common::ipc::server::{IpcServerConn, create_ipc_server};
 pub use dll_syringe::process;
 use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},
 };
-use futures::StreamExt;
 use tokio::{select, time::sleep};
 
 fn default_dll_path() -> PathBuf {
@@ -36,32 +35,21 @@ pub async fn inject(
 ) -> anyhow::Result<IpcServerConn> {
     let pid = process.pid()?;
 
-    let task = async {
-        {
-            let injector = Syringe::for_process(process);
-            injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
-        }
+    let server = create_ipc_server(pid.get()).await?;
+    {
+        let injector = Syringe::for_process(process);
+        injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
+    }
 
-        pending::<anyhow::Result<IpcServerConn>>().await
-    };
+    let writable = server.writable();
+    let timeout = sleep(timeout.unwrap_or(Duration::MAX));
 
-    let stream = listen(pid.get())?;
-    let timeout = timeout.unwrap_or(Duration::MAX);
-
-    let mut stream = pin!(stream);
     select! {
-        biased;
-
-        res = stream.next() => {
-            Ok(res.context("server closed unexpectedly")??)
+        _ = writable => {
+            Ok(IpcServerConn::new(server))
         }
-
-        _ = sleep(timeout) => {
+        _ = timeout => {
             bail!("client wait timeout")
-        },
-
-        res = task => {
-            res
         }
     }
 }

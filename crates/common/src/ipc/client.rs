@@ -1,8 +1,8 @@
 use std::process;
 
-use parity_tokio_ipc::{Connection, Endpoint};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
+    net::windows::named_pipe::{ClientOptions, NamedPipeClient},
     sync::mpsc::{Sender, channel},
     task::JoinHandle,
 };
@@ -12,7 +12,7 @@ use crate::message::{Request, Response};
 use super::{Frame, create_name};
 
 pub struct IpcClientConn {
-    rx: ReadHalf<Connection>,
+    rx: ReadHalf<NamedPipeClient>,
     buf: Vec<u8>,
     chan: Sender<(u32, Response)>,
     write_task: JoinHandle<anyhow::Result<()>>,
@@ -22,7 +22,7 @@ impl IpcClientConn {
     pub async fn connect() -> anyhow::Result<Self> {
         let name = create_name(process::id());
 
-        let (rx, mut tx) = split(Endpoint::connect(name).await?);
+        let (rx, mut tx) = split(ClientOptions::new().open(name)?);
         let (chan_tx, mut chan_rx) = channel(4);
 
         let write_task = tokio::spawn({

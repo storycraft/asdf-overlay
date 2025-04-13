@@ -67,7 +67,8 @@ static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
-        let hook = unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
+        let hook =
+            unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
         *HOOK.write() = Some(hook);
     }
 
