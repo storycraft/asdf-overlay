@@ -58,11 +58,11 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                     overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
                     screen,
                 );
-
-                unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
             })
         })
-    })
+    });
+
+    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;

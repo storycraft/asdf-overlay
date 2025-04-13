@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 
+use scopeguard::defer;
 use windows::Win32::Graphics::{
     Gdi::HDC,
     OpenGL::{HGLRC, wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglMakeCurrent},
@@ -20,10 +21,8 @@ impl OverlayGlContext {
         let original_cx = unsafe { wglGetCurrentContext() };
 
         unsafe { wglMakeCurrent(hdc, HGLRC(self.hglrc)).unwrap() };
-        let res = f();
-        unsafe { wglMakeCurrent(hdc, original_cx).unwrap() };
-
-        res
+        defer!(unsafe { wglMakeCurrent(hdc, original_cx).unwrap() });
+        f()
     }
 }
 
