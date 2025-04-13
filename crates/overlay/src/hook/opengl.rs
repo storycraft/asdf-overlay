@@ -72,6 +72,7 @@ static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
+        debug!("hooking WglSwapBuffers");
         let hook =
             unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
         *HOOK.write() = Some(hook);
@@ -96,6 +97,7 @@ fn get_wgl_swap_buffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
         GetProcAddress(opengl32module, PCSTR(wglswapbuffers.as_ptr() as *mut _))
             .context("wglSwapBuffers not found")?
     };
+    debug!("WglSwapBuffers found: {:p}", func);
 
     Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
 }

@@ -261,11 +261,14 @@ pub fn get_dxgi_addr(
 
         let swapchain_vtable = Interface::vtable(&swapchain);
         let present = swapchain_vtable.Present;
+        debug!("IDXGISwapChain::Present found: {:p}", present);
         let resize_buffers = swapchain_vtable.ResizeBuffers;
-        let present1 = swapchain
-            .cast::<IDXGISwapChain1>()
-            .ok()
-            .map(|swapchain1| Interface::vtable(&swapchain1).Present1);
+        debug!("IDXGISwapChain::ResizeBuffers found: {:p}", present);
+        let present1 = swapchain.cast::<IDXGISwapChain1>().ok().map(|swapchain1| {
+            let present1 = Interface::vtable(&swapchain1).Present1;
+            debug!("IDXGISwapChain1::Present1 found: {:p}", present1);
+            present1
+        });
 
         Ok((present, resize_buffers, present1))
     }
