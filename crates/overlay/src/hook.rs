@@ -45,7 +45,6 @@ impl DetourHook {
 
         unsafe {
             wrap_detour_call(|| DetourTransactionBegin())?;
-            wrap_detour_call(|| DetourUpdateThread(GetCurrentThread().0))?;
             wrap_detour_call(|| DetourAttach(&mut func, detour.cast::<c_void>()))?;
             wrap_detour_call(|| DetourTransactionCommit())?;
         }
@@ -68,7 +67,6 @@ impl Drop for DetourHook {
 
         unsafe {
             wrap_detour_call(|| DetourTransactionBegin()).unwrap();
-            wrap_detour_call(|| DetourUpdateThread(GetCurrentThread().0)).unwrap();
             wrap_detour_call(|| DetourDetach(&mut func, self.detour.cast::<c_void>())).unwrap();
             wrap_detour_call(|| DetourTransactionCommit()).unwrap();
         }
