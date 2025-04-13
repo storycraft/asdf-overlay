@@ -37,7 +37,6 @@ impl Vertex {
 
 type VertexArray = [Vertex; 4];
 
-#[derive(Debug)]
 pub struct Dx9Renderer {
     texture_size: (u32, u32),
     size: (u32, u32),
@@ -82,7 +81,6 @@ impl Dx9Renderer {
         self.size
     }
 
-    #[tracing::instrument]
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
         if width == 0 || data.len() < width as _ {
             return;
@@ -100,7 +98,7 @@ impl Dx9Renderer {
         self.texture_outdated = true;
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(self))]
     pub fn draw(
         &mut self,
         device: &IDirect3DDevice9,

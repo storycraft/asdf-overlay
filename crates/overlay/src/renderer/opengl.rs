@@ -1,5 +1,6 @@
 use core::{ffi::c_void, mem, ptr};
 use gl::types::GLuint;
+use tracing::trace;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -13,7 +14,6 @@ type VertexArray = [Vertex; 4];
 static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
-#[derive(Debug)]
 pub struct OpenglRenderer {
     size: (u32, u32),
     data: Vec<u8>,
@@ -116,7 +116,6 @@ impl OpenglRenderer {
         self.size
     }
 
-    #[tracing::instrument]
     pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
         if width == 0 || data.len() < width as _ {
             return;
@@ -133,7 +132,7 @@ impl OpenglRenderer {
         self.texture_outdated = true;
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(self))]
     pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) {
         let vertices = {
             let pos = (
@@ -230,6 +229,7 @@ impl OpenglRenderer {
 }
 
 impl Drop for OpenglRenderer {
+    #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
         unsafe {
             gl::DeleteVertexArrays(1, &self.vao);
@@ -237,5 +237,6 @@ impl Drop for OpenglRenderer {
             gl::DeleteTextures(1, &self.texture);
             gl::DeleteProgram(self.program);
         }
+        trace!("OpenGL resources freed");
     }
 }

@@ -2,6 +2,7 @@ use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
 use scopeguard::defer;
+use tracing::trace;
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -55,6 +56,7 @@ pub unsafe extern "system" fn hooked_present(
     let Some(ref present) = HOOK.read().present else {
         return HRESULT(0);
     };
+    trace!("Present called");
 
     Renderers::with(move |renderers| {
         let call_present = move || unsafe {
@@ -90,6 +92,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     let Some(ref resize_buffers) = HOOK.read().resize_buffers else {
         return HRESULT(0);
     };
+    trace!("ResizeBuffers called");
 
     dx12::clear();
 
@@ -133,6 +136,7 @@ pub unsafe extern "system" fn hooked_present1(
     let Some(ref present1) = HOOK.read().present1 else {
         return HRESULT(0);
     };
+    trace!("Present1 called");
 
     Renderers::with(move |renderers| {
         let call_present1 = move || unsafe {
@@ -157,7 +161,7 @@ pub unsafe extern "system" fn hooked_present1(
     })
 }
 
-#[tracing::instrument(skip(call_present))]
+#[tracing::instrument(skip(renderers, call_present))]
 fn draw_overlay(
     renderers: &mut Renderers,
     swapchain: &IDXGISwapChain,
@@ -186,6 +190,7 @@ fn draw_overlay(
         });
 
         if let Some(queue) = get_queue_for(&device) {
+            trace!("using dx12 renderer");
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
             defer!({
                 _ = renderer.post_present(&swapchain);
@@ -194,6 +199,7 @@ fn draw_overlay(
             return call_present();
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
+        trace!("using dx11 renderer");
         let renderer = renderers
             .dx11
             .get_or_insert_with(|| Dx11Renderer::new(&device).expect("renderer creation failed"));
@@ -204,6 +210,7 @@ fn draw_overlay(
 
         _ = renderer.draw(&device, swapchain, position, screen);
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
+        trace!("using dx10 renderer");
     }
 
     call_present()

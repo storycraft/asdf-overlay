@@ -2,6 +2,7 @@ mod dx;
 mod opengl;
 
 pub use dx::util::call_original_execute_command_lists;
+use tracing::debug;
 
 use core::{
     error::Error,
@@ -31,7 +32,6 @@ pub fn cleanup() {
     opengl::cleanup();
 }
 
-#[derive(Debug)]
 struct DetourHook {
     func: *mut (),
     detour: *mut (),
@@ -48,6 +48,7 @@ impl DetourHook {
             wrap_detour_call(|| DetourAttach(&mut func, detour.cast::<c_void>()))?;
             wrap_detour_call(|| DetourTransactionCommit())?;
         }
+        debug!("hook attached");
 
         Ok(DetourHook {
             func: func.cast(),
@@ -61,6 +62,7 @@ impl DetourHook {
 }
 
 impl Drop for DetourHook {
+    #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
         let mut func = self.func.cast::<c_void>();
 
@@ -70,6 +72,8 @@ impl Drop for DetourHook {
             wrap_detour_call(|| DetourDetach(&mut func, self.detour.cast::<c_void>())).unwrap();
             wrap_detour_call(|| DetourTransactionCommit()).unwrap();
         }
+
+        debug!("hook detached");
     }
 }
 

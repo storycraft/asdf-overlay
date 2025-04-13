@@ -6,6 +6,7 @@ use std::ffi::CString;
 use anyhow::Context;
 use cx::OverlayGlContext;
 use parking_lot::{Mutex, RwLock};
+use tracing::trace;
 use windows::{
     Win32::{
         Foundation::HMODULE,
@@ -34,6 +35,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     let Some(ref hook) = *HOOK.read() else {
         return BOOL(0);
     };
+    trace!("WglSwapBuffers called");
 
     let mut cx = CX.lock();
     let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
@@ -49,6 +51,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
             Overlay::with(|overlay| {
                 let size = renderer.size();
+                trace!("using opengl renderer");
                 renderer.draw(
                     overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
                     screen,
