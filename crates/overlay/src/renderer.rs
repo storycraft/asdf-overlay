@@ -65,6 +65,6 @@ impl Renderers {
             self.dx9.take();
         }
 
-        debug!("renderer cleanup finished");
+        debug!("renderer cleaned up");
     }
 }

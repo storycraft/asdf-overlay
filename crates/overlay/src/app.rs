@@ -5,7 +5,7 @@ use asdf_overlay_common::{
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
-use tracing::error;
+use tracing::{debug, error, trace};
 
 use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
 
@@ -47,10 +47,13 @@ impl Overlay {
 
 static CURRENT: RwLock<Option<Overlay>> = RwLock::new(None);
 
+#[tracing::instrument(skip(client))]
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     loop {
         client
             .recv(async |message| {
+                trace!("recv: {:?}", message);
+
                 match message {
                     Request::UpdatePosition(position) => {
                         Overlay::with_mut(|overlay| overlay.position = position);
@@ -87,7 +90,9 @@ pub async fn run_overlay() -> anyhow::Result<()> {
         margin: Margin::default(),
     });
 
+    debug!("connecting ipc");
     let client = IpcClientConn::connect().await?;
+    debug!("ipc client connected");
 
     defer!({
         Renderers::with(|renderer| {
@@ -98,12 +103,14 @@ pub async fn run_overlay() -> anyhow::Result<()> {
 
     with_dummy_hwnd(|dummy_hwnd| {
         hook::install(dummy_hwnd).context("hook initialization failed")?;
+        debug!("hook installed");
         Ok::<_, anyhow::Error>(())
     })
     .context("failed to create dummy window")??;
 
     _ = run_client(client).await;
 
+    debug!("exiting");
     Ok(())
 }
 

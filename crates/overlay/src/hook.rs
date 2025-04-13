@@ -30,6 +30,7 @@ pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
 pub fn cleanup() {
     dx::cleanup();
     opengl::cleanup();
+    debug!("hook removed");
 }
 
 struct DetourHook {
