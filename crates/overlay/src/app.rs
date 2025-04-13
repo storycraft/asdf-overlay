@@ -84,6 +84,10 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 
 #[tracing::instrument]
 pub async fn run_overlay() -> anyhow::Result<()> {
+    defer!({
+        debug!("exiting");
+    });
+
     *CURRENT.write() = Some(Overlay {
         position: Position::default(),
         anchor: Anchor::default(),
@@ -109,8 +113,6 @@ pub async fn run_overlay() -> anyhow::Result<()> {
     .context("failed to create dummy window")??;
 
     _ = run_client(client).await;
-
-    debug!("exiting");
     Ok(())
 }
 
