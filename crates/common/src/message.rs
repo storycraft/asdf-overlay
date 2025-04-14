@@ -4,8 +4,9 @@ use bincode::{Decode, Encode};
 
 use crate::size::PercentLength;
 
-#[derive(Debug, Encode, Decode)]
-pub enum Request {
+#[derive(Debug, Encode, Decode, Clone)]
+#[non_exhaustive]
+pub enum ServerRequest {
     /// Change overlay position
     UpdatePosition(Position),
     /// Change overlay anchor
@@ -17,6 +18,19 @@ pub enum Request {
     UpdateBitmap(Bitmap),
     /// Update overlay using shared dx11 texture handle
     Direct(UpdateDirect),
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub enum Response {
+    Success,
+    Failed { message: String },
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+#[non_exhaustive]
+pub enum ClientMessage {
+    #[cfg(debug_assertions)]
+    Log { message: String },
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
@@ -50,21 +64,15 @@ impl Margin {
     }
 }
 
-#[derive(derive_more::Debug, Encode, Decode)]
+#[derive(derive_more::Debug, Encode, Decode, Clone)]
 pub struct Bitmap {
     pub width: u32,
     #[debug(skip)]
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct UpdateDirect {
     pub width: u32,
     pub handle: usize,
-}
-
-#[derive(Debug, Encode, Decode, Clone)]
-pub enum Response {
-    Success,
-    Failed { message: String },
 }

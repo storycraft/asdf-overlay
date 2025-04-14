@@ -70,7 +70,7 @@ impl Manager {
         Ok(id)
     }
 
-    async fn request(&self, id: u32, request: &Request) -> anyhow::Result<()> {
+    async fn request(&self, id: u32, request: ServerRequest) -> anyhow::Result<()> {
         let conn = self.map.get(&id).context("invalid id")?;
         conn.lock().await.request(request).await?;
 
@@ -125,7 +125,7 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdatePosition(Position { x, y }))
+    request_promise(&mut cx, id, ServerRequest::UpdatePosition(Position { x, y }))
 }
 
 fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -135,7 +135,7 @@ fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdateAnchor(Anchor { x, y }))
+    request_promise(&mut cx, id, ServerRequest::UpdateAnchor(Anchor { x, y }))
 }
 
 fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -152,7 +152,7 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     request_promise(
         &mut cx,
         id,
-        Request::UpdateMargin(Margin {
+        ServerRequest::UpdateMargin(Margin {
             top,
             right,
             bottom,
@@ -166,7 +166,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    request_promise(&mut cx, id, Request::UpdateBitmap(Bitmap { width, data }))
+    request_promise(&mut cx, id, ServerRequest::UpdateBitmap(Bitmap { width, data }))
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {

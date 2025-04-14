@@ -1,4 +1,4 @@
-use asdf_overlay_common::message::Request;
+use asdf_overlay_common::message::ServerRequest;
 use neon::{
     prelude::{Context, FunctionContext},
     result::JsResult,
@@ -31,14 +31,14 @@ pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
 pub fn request_promise<'a>(
     cx: &mut FunctionContext<'a>,
     id: u32,
-    request: Request,
+    request: ServerRequest,
 ) -> JsResult<'a, JsPromise> {
     let rt = runtime(cx)?;
     let channel = cx.channel();
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.request(id, &request).await;
+        let res = MANAGER.request(id, request).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
