@@ -15,6 +15,9 @@ mod hook;
 mod renderer;
 mod util;
 
+#[cfg(debug_assertions)]
+mod dbg;
+
 use app::main;
 use core::ffi::c_void;
 use std::thread;

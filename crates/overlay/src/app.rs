@@ -118,19 +118,22 @@ pub async fn run_overlay() -> anyhow::Result<()> {
 
 pub async fn main() {
     #[cfg(debug_assertions)]
-    fn setup_tracing() {
-        use std::io;
-        use tracing::level_filters::LevelFilter;
-
-        tracing_subscriber::fmt::fmt()
-            .with_writer(io::stderr)
-            .with_max_level(LevelFilter::TRACE)
-            .init();
-    }
-    #[cfg(debug_assertions)]
     setup_tracing();
 
     if let Err(err) = run_overlay().await {
         error!("{:?}", err);
     }
+}
+
+#[cfg(debug_assertions)]
+fn setup_tracing() {
+    use tracing::level_filters::LevelFilter;
+
+    use crate::dbg::WinDbgMakeWriter;
+
+    tracing_subscriber::fmt::fmt()
+        .with_ansi(false)
+        .with_max_level(LevelFilter::TRACE)
+        .with_writer(WinDbgMakeWriter::new())
+        .init();
 }
