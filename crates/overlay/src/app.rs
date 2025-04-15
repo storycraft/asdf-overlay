@@ -101,10 +101,8 @@ pub async fn run_overlay() -> anyhow::Result<()> {
     debug!("ipc client connected");
 
     defer!({
-        Renderers::with(|renderer| {
-            hook::cleanup();
-            renderer.cleanup();
-        });
+        hook::cleanup();
+        Renderers::with(Renderers::cleanup);
     });
 
     with_dummy_hwnd(|dummy_hwnd| {
