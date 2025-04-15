@@ -40,6 +40,7 @@ pub fn clear() {
 #[tracing::instrument]
 pub fn cleanup() {
     QUEUE_MAP.clear();
+    QUEUE_MAP.shrink_to_fit();
 }
 
 #[tracing::instrument]
