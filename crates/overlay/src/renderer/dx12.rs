@@ -5,7 +5,6 @@ mod sync;
 use anyhow::Context;
 use buffer::UploadBuffer;
 use core::{
-    array,
     mem::{self, ManuallyDrop},
     ptr::copy_nonoverlapping,
     slice::{self},
@@ -158,7 +157,8 @@ pub struct Dx12Renderer {
     texture: Option<ID3D12Resource>,
     texture_descriptor: ID3D12DescriptorHeap,
 
-    command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
+    command_list: ID3D12GraphicsCommandList,
+    command_alloc: ID3D12CommandAllocator,
     fence: RendererFence,
 }
 
@@ -248,25 +248,16 @@ impl Dx12Renderer {
             let pipeline =
                 device.CreateGraphicsPipelineState::<ID3D12PipelineState>(&pipeline_desc)?;
 
-            let command_list = array::from_fn(|_| {
-                let command_alloc = device
-                    .CreateCommandAllocator::<ID3D12CommandAllocator>(
-                        D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    )
-                    .unwrap();
+            let command_alloc = device
+                .CreateCommandAllocator::<ID3D12CommandAllocator>(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
 
-                let command_list = device
-                    .CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
-                        0,
-                        D3D12_COMMAND_LIST_TYPE_DIRECT,
-                        &command_alloc,
-                        None,
-                    )
-                    .unwrap();
-                command_list.Close().unwrap();
+            let command_list = device.CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
+                0,
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                &command_alloc,
+                None,
+            )?;
 
-                (command_list, command_alloc)
-            });
             let mut fence = RendererFence::new(device)?;
 
             let mut vertex_buffer = None;
@@ -295,12 +286,7 @@ impl Dx12Renderer {
             )?;
             let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
 
-            {
-                let (ref command_list, ref command_alloc) = command_list[0];
-                command_alloc.Reset()?;
-                command_list.Reset(command_alloc, None)?;
-                init_vertex_buffer(device, queue, &mut fence, command_list, &vertex_buffer)?;
-            }
+            init_vertex_buffer(device, queue, &mut fence, &command_list, &vertex_buffer)?;
 
             let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
                 &D3D12_DESCRIPTOR_HEAP_DESC {
@@ -324,6 +310,7 @@ impl Dx12Renderer {
                 texture_descriptor,
 
                 command_list,
+                command_alloc,
                 fence,
             })
         }
@@ -373,13 +360,12 @@ impl Dx12Renderer {
 
         unsafe {
             let backbuffer_index = swapchain.GetCurrentBackBufferIndex();
+
             let backbuffer = swapchain.GetBuffer::<ID3D12Resource>(backbuffer_index)?;
+            let command_list = &self.command_list;
 
-            let (ref command_list, ref command_alloc) =
-                self.command_list[backbuffer_index as usize];
-
-            command_alloc.Reset()?;
-            command_list.Reset(command_alloc, &self.pipeline)?;
+            self.command_alloc.Reset()?;
+            command_list.Reset(&self.command_alloc, &self.pipeline)?;
 
             if self.texture.is_none() {
                 let desc = D3D12_RESOURCE_DESC {
@@ -418,8 +404,8 @@ impl Dx12Renderer {
                     &self.texture_descriptor,
                     &self.data,
                 )?;
-                command_alloc.Reset()?;
-                command_list.Reset(command_alloc, &self.pipeline)?;
+                self.command_alloc.Reset()?;
+                command_list.Reset(&self.command_alloc, &self.pipeline)?;
 
                 self.texture = Some(texture);
             };
@@ -479,17 +465,7 @@ impl Dx12Renderer {
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
         self.fence.register(queue)?;
-        // wait for previous frame
-        // todo: remove after fixing crash
-        self.fence.wait_gpu(queue)?;
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub fn post_present(&mut self, swapchain: &IDXGISwapChain3) -> anyhow::Result<()> {
-        self.fence
-            .sync_next_frame(unsafe { swapchain.GetCurrentBackBufferIndex() as _ })?;
+        self.fence.wait_pending()?;
 
         Ok(())
     }
@@ -543,7 +519,8 @@ unsafe fn init_vertex_buffer(
 
         command_list.Close()?;
         call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
-        fence.wait_gpu(queue)?;
+        fence.register(queue)?;
+        fence.wait_pending()?;
     }
 
     Ok(())
@@ -631,7 +608,8 @@ unsafe fn upload_bgra_texture(
 
         command_list.Close()?;
         call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
-        fence.wait_gpu(queue)?;
+        fence.register(queue)?;
+        fence.wait_pending()?;
     }
 
     Ok(())

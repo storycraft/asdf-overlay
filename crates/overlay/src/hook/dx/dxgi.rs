@@ -1,7 +1,6 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
-use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -62,23 +61,19 @@ pub unsafe extern "system" fn hooked_present(
     trace!("Present called");
 
     Renderers::with(move |renderers| {
-        let call_present = move || unsafe {
+        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
+        if !test {
+            draw_overlay(renderers, unsafe {
+                IDXGISwapChain::from_raw_borrowed(&this).unwrap()
+            });
+        }
+
+        unsafe {
             mem::transmute::<*const (), PresentFn>(present.original_fn())(
                 this,
                 sync_interval,
                 flags,
             )
-        };
-
-        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-        if !test {
-            draw_overlay(
-                renderers,
-                unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() },
-                call_present,
-            )
-        } else {
-            call_present()
         }
     })
 }
@@ -146,39 +141,31 @@ pub unsafe extern "system" fn hooked_present1(
     trace!("Present1 called");
 
     Renderers::with(move |renderers| {
-        let call_present1 = move || unsafe {
+        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
+        if !test {
+            draw_overlay(renderers, unsafe {
+                IDXGISwapChain1::from_raw_borrowed(&this).unwrap()
+            });
+        }
+
+        unsafe {
             mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
                 this,
                 sync_interval,
                 flags,
                 present_params,
             )
-        };
-
-        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-        if !test {
-            draw_overlay(
-                renderers,
-                unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() },
-                call_present1,
-            )
-        } else {
-            call_present1()
         }
     })
 }
 
-#[tracing::instrument(skip(renderers, call_present))]
-fn draw_overlay(
-    renderers: &mut Renderers,
-    swapchain: &IDXGISwapChain,
-    call_present: impl FnOnce() -> HRESULT,
-) -> HRESULT {
+#[tracing::instrument(skip(renderers))]
+fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = {
         let Ok(desc) = (unsafe { swapchain.GetDesc() }) else {
-            return call_present();
+            return;
         };
 
         get_client_size(desc.OutputWindow).unwrap_or_default()
@@ -199,11 +186,6 @@ fn draw_overlay(
             });
             trace!("using dx12 renderer");
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
-            defer!({
-                _ = renderer.post_present(&swapchain);
-            });
-
-            return call_present();
         }
     } else if let Ok(device) = device.cast::<ID3D11Device>() {
         trace!("using dx11 renderer");
@@ -220,8 +202,6 @@ fn draw_overlay(
     } else if let Ok(_) = device.cast::<ID3D10Device>() {
         trace!("using dx10 renderer");
     }
-
-    call_present()
 }
 
 /// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain
