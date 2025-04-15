@@ -86,6 +86,7 @@ pub fn hook() -> anyhow::Result<()> {
 
 #[tracing::instrument]
 pub fn cleanup() {
+    CX.lock().take();
     HOOK.write().take();
 }
 
