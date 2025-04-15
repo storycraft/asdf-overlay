@@ -73,7 +73,9 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                         });
                     }
 
-                    Request::Direct(_) => {}
+                    Request::UpdateShtex(shared) => {
+                        trace!(shared.handle);
+                    }
 
                     _ => {}
                 }
