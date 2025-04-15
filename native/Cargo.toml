@@ -20,6 +20,7 @@ once_cell = "1.21.3"
 dashmap = "6.1.0"
 rustc-hash = "2.1.1"
 mimalloc = "*"
+bytemuck = "1.22.0"
 
 [dependencies.windows]
 version = "0.61.1"

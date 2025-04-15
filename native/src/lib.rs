@@ -9,6 +9,7 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::prelude::*;
+use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
@@ -170,6 +171,18 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     request_promise(&mut cx, id, Request::UpdateBitmap(Bitmap { width, data }))
 }
 
+fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let handle_slice = cx.argument::<JsBuffer>(1)?.as_slice(&mut cx);
+    let handle = pod_read_unaligned::<usize>(handle_slice);
+
+    request_promise(
+        &mut cx,
+        id,
+        Request::UpdateShtex(SharedDx11Handle { handle }),
+    )
+}
+
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
@@ -191,6 +204,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
 
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
+    cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;
 
     cx.export_function("overlayDestroy", overlay_destroy)?;
     Ok(())

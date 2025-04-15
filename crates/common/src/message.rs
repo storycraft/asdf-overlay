@@ -17,7 +17,7 @@ pub enum Request {
     /// Update overlay using bitmap
     UpdateBitmap(Bitmap),
     /// Update overlay using shared dx11 texture handle
-    Direct(UpdateDirect),
+    UpdateShtex(SharedDx11Handle),
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
@@ -65,7 +65,6 @@ pub struct Bitmap {
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub struct UpdateDirect {
-    pub width: u32,
+pub struct SharedDx11Handle {
     pub handle: usize,
 }

@@ -68,6 +68,14 @@ export class Overlay {
   }
 
   /**
+   * Update overlay using D3D11 shared texture.
+   * @param handle NT Handle of shared D3D11 Texture
+   */
+  async updateShtex(handle: Buffer) {
+    await addon.overlayUpdateShtex(this[idSym], handle);
+  }
+
+  /**
    * Destroy overlay
    */
   destroy() {

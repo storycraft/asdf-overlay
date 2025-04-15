@@ -12,6 +12,7 @@ export type Addon = {
     ): Promise<void>,
 
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
+    overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
 
     overlayDestroy(id: number): void,
 };
