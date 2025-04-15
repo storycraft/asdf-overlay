@@ -10,6 +10,7 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::prelude::*;
 use dashmap::DashMap;
+use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
@@ -177,6 +178,9 @@ fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         Err(err) => cx.throw_error(format!("{err:?}")),
     }
 }
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
