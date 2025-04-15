@@ -7,7 +7,7 @@ use buffer::UploadBuffer;
 use core::{
     array,
     mem::{self, ManuallyDrop},
-    ptr::{self, copy_nonoverlapping},
+    ptr::copy_nonoverlapping,
     slice::{self},
     str,
 };
@@ -39,31 +39,24 @@ const TEXTURE_SHADER: &str = include_str!("dx12/shaders/texture.hlsl");
 #[repr(C)]
 struct Vertex {
     pub pos: (f32, f32),
-    pub texture_pos: (f32, f32),
 }
-
 type VertexArray = [Vertex; 4];
-
-const INPUT_DESC: [D3D12_INPUT_ELEMENT_DESC; 2] = [
-    D3D12_INPUT_ELEMENT_DESC {
-        SemanticName: s!("POSITION"),
-        SemanticIndex: 0,
-        Format: DXGI_FORMAT_R32G32_FLOAT,
-        InputSlot: 0,
-        AlignedByteOffset: 0,
-        InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-        InstanceDataStepRate: 0,
-    },
-    D3D12_INPUT_ELEMENT_DESC {
-        SemanticName: s!("TEXCOORD"),
-        SemanticIndex: 0,
-        Format: DXGI_FORMAT_R32G32_FLOAT,
-        InputSlot: 0,
-        AlignedByteOffset: mem::size_of::<(f32, f32)>() as _,
-        InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-        InstanceDataStepRate: 0,
-    },
+const VERTICES: VertexArray = [
+    Vertex { pos: (0.0, 0.0) },
+    Vertex { pos: (1.0, 0.0) },
+    Vertex { pos: (1.0, 1.0) },
+    Vertex { pos: (0.0, 1.0) },
 ];
+
+const INPUT_DESC: [D3D12_INPUT_ELEMENT_DESC; 1] = [D3D12_INPUT_ELEMENT_DESC {
+    SemanticName: s!("POSITION"),
+    SemanticIndex: 0,
+    Format: DXGI_FORMAT_R32G32_FLOAT,
+    InputSlot: 0,
+    AlignedByteOffset: 0,
+    InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+    InstanceDataStepRate: 0,
+}];
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
     BlendEnable: BOOL(1),
@@ -97,23 +90,37 @@ const SAMPLER: D3D12_STATIC_SAMPLER_DESC = D3D12_STATIC_SAMPLER_DESC {
 #[inline]
 fn root_sig() -> D3D12_ROOT_SIGNATURE_DESC {
     D3D12_ROOT_SIGNATURE_DESC {
-        NumParameters: 1,
-        pParameters: &D3D12_ROOT_PARAMETER {
-            ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-            Anonymous: D3D12_ROOT_PARAMETER_0 {
-                DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
-                    NumDescriptorRanges: 1,
-                    pDescriptorRanges: &D3D12_DESCRIPTOR_RANGE {
-                        RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                        NumDescriptors: 1,
-                        BaseShaderRegister: 0,
+        NumParameters: 2,
+        pParameters: [
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    Constants: D3D12_ROOT_CONSTANTS {
+                        ShaderRegister: 0,
                         RegisterSpace: 0,
-                        OffsetInDescriptorsFromTableStart: D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
+                        Num32BitValues: 4,
                     },
                 },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_VERTEX,
             },
-            ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
-        },
+            D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
+                        NumDescriptorRanges: 1,
+                        pDescriptorRanges: &D3D12_DESCRIPTOR_RANGE {
+                            RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                            NumDescriptors: 1,
+                            BaseShaderRegister: 0,
+                            RegisterSpace: 0,
+                            OffsetInDescriptorsFromTableStart: D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
+                        },
+                    },
+                },
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
+            },
+        ]
+        .as_ptr() as _,
         NumStaticSamplers: 1,
         pStaticSamplers: &SAMPLER,
         Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
@@ -157,7 +164,11 @@ pub struct Dx12Renderer {
 
 impl Dx12Renderer {
     #[tracing::instrument]
-    pub fn new(device: &ID3D12Device, swapchain: &IDXGISwapChain3) -> anyhow::Result<Self> {
+    pub fn new(
+        device: &ID3D12Device,
+        queue: &ID3D12CommandQueue,
+        swapchain: &IDXGISwapChain3,
+    ) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
 
@@ -168,26 +179,6 @@ impl Dx12Renderer {
                 0,
                 slice::from_raw_parts(sig.GetBufferPointer().cast::<u8>(), sig.GetBufferSize()),
             )?;
-
-            let command_list = array::from_fn(|_| {
-                let command_alloc = device
-                    .CreateCommandAllocator::<ID3D12CommandAllocator>(
-                        D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    )
-                    .unwrap();
-
-                let command_list = device
-                    .CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
-                        0,
-                        D3D12_COMMAND_LIST_TYPE_DIRECT,
-                        &command_alloc,
-                        None,
-                    )
-                    .unwrap();
-                command_list.Close().unwrap();
-
-                (command_list, command_alloc)
-            });
 
             let rtv = RtvDescriptors::new(device, swapchain)?;
 
@@ -257,10 +248,31 @@ impl Dx12Renderer {
             let pipeline =
                 device.CreateGraphicsPipelineState::<ID3D12PipelineState>(&pipeline_desc)?;
 
+            let command_list = array::from_fn(|_| {
+                let command_alloc = device
+                    .CreateCommandAllocator::<ID3D12CommandAllocator>(
+                        D3D12_COMMAND_LIST_TYPE_DIRECT,
+                    )
+                    .unwrap();
+
+                let command_list = device
+                    .CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
+                        0,
+                        D3D12_COMMAND_LIST_TYPE_DIRECT,
+                        &command_alloc,
+                        None,
+                    )
+                    .unwrap();
+                command_list.Close().unwrap();
+
+                (command_list, command_alloc)
+            });
+            let mut fence = RendererFence::new(device)?;
+
             let mut vertex_buffer = None;
             device.CreateCommittedResource::<ID3D12Resource>(
                 &D3D12_HEAP_PROPERTIES {
-                    Type: D3D12_HEAP_TYPE_UPLOAD,
+                    Type: D3D12_HEAP_TYPE_DEFAULT,
                     ..Default::default()
                 },
                 D3D12_HEAP_FLAG_NONE,
@@ -277,11 +289,18 @@ impl Dx12Renderer {
                     },
                     ..Default::default()
                 },
-                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                D3D12_RESOURCE_STATE_COPY_DEST,
                 None,
                 &mut vertex_buffer,
             )?;
             let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
+
+            {
+                let (ref command_list, ref command_alloc) = command_list[0];
+                command_alloc.Reset()?;
+                command_list.Reset(command_alloc, None)?;
+                init_vertex_buffer(device, queue, &mut fence, &command_list, &vertex_buffer)?;
+            }
 
             let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
                 &D3D12_DESCRIPTOR_HEAP_DESC {
@@ -305,7 +324,7 @@ impl Dx12Renderer {
                 texture_descriptor,
 
                 command_list,
-                fence: RendererFence::new(device)?,
+                fence,
             })
         }
     }
@@ -345,35 +364,12 @@ impl Dx12Renderer {
             return Ok(());
         }
 
-        let vertices = {
-            let pos = (
-                (position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-            );
-            let size = (
-                (self.size.0 as f32 / screen.0 as f32) * 2.0,
-                -(self.size.1 as f32 / screen.1 as f32) * 2.0,
-            );
-
-            [
-                Vertex {
-                    pos,
-                    texture_pos: (0.0, 0.0),
-                },
-                Vertex {
-                    pos: (pos.0 + size.0, pos.1),
-                    texture_pos: (1.0, 0.0),
-                },
-                Vertex {
-                    pos: (pos.0 + size.0, pos.1 + size.1),
-                    texture_pos: (1.0, 1.0),
-                },
-                Vertex {
-                    pos: (pos.0, pos.1 + size.1),
-                    texture_pos: (0.0, 1.0),
-                },
-            ]
-        };
+        let rect: [f32; 4] = [
+            (position.0 / screen.0 as f32) * 2.0 - 1.0,
+            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            (self.size.0 as f32 / screen.0 as f32) * 2.0,
+            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+        ];
 
         unsafe {
             let backbuffer_index = swapchain.GetCurrentBackBufferIndex();
@@ -428,19 +424,12 @@ impl Dx12Renderer {
                 self.texture = Some(texture);
             };
 
-            // todo: upload buffer
-            let mut mapped_vertex_buffer = ptr::null_mut();
-            self.vertex_buffer
-                .Map(0, None, Some(&mut mapped_vertex_buffer))?;
-            mapped_vertex_buffer.cast::<VertexArray>().write(vertices);
-            self.vertex_buffer.Unmap(0, None);
-            self.fence.wait_gpu(queue)?;
-
             command_list.SetGraphicsRootSignature(&self.sig);
+            command_list.SetGraphicsRoot32BitConstants(0, 4, rect.as_ptr().cast(), 0);
 
             command_list.SetDescriptorHeaps(&[Some(self.texture_descriptor.clone())]);
             command_list.SetGraphicsRootDescriptorTable(
-                0,
+                1,
                 self.texture_descriptor.GetGPUDescriptorHandleForHeapStart(),
             );
 
@@ -476,6 +465,7 @@ impl Dx12Renderer {
                     StrideInBytes: mem::size_of::<Vertex>() as _,
                 }]),
             );
+
             command_list.DrawInstanced(4, 1, 0, 0);
 
             command_list.ResourceBarrier(&[transition(
@@ -528,6 +518,35 @@ unsafe fn transition(
             }),
         },
     }
+}
+
+unsafe fn init_vertex_buffer(
+    device: &ID3D12Device,
+    queue: &ID3D12CommandQueue,
+    fence: &mut RendererFence,
+    command_list: &ID3D12GraphicsCommandList,
+    vertex_buffer: &ID3D12Resource,
+) -> anyhow::Result<()> {
+    unsafe {
+        let upload = UploadBuffer::new(device, mem::size_of::<VertexArray>() as _)?;
+        upload
+            .get_mapped_ptr()
+            .cast::<VertexArray>()
+            .write(VERTICES);
+
+        command_list.CopyResource(vertex_buffer, upload.buffer());
+        command_list.ResourceBarrier(&[transition(
+            &vertex_buffer,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+        )]);
+
+        command_list.Close()?;
+        call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
+        fence.wait_gpu(queue)?;
+    }
+
+    Ok(())
 }
 
 // todo optimization

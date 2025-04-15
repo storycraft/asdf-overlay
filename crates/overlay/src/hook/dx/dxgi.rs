@@ -180,17 +180,16 @@ fn draw_overlay(
     if let Ok(device) = device.cast::<ID3D12Device>() {
         let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
 
-        let renderer = renderers.dx12.get_or_insert_with(|| {
-            debug!("initializing dx12 renderer");
-            Dx12Renderer::new(&device, &swapchain).expect("renderer creation failed")
-        });
-
-        let position = Overlay::with(|overlay| {
-            let size = renderer.size();
-            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-        });
-
         if let Some(queue) = get_queue_for(&device) {
+            let renderer = renderers.dx12.get_or_insert_with(|| {
+                debug!("initializing dx12 renderer");
+                Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
+            });
+
+            let position = Overlay::with(|overlay| {
+                let size = renderer.size();
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+            });
             trace!("using dx12 renderer");
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
             defer!({
