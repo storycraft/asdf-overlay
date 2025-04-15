@@ -26,7 +26,7 @@ vs_out vs_main(vs_in input)
 Texture2D overlay : register(t0);
 SamplerState overlaySampler
 {
-	Filter = MIN_MAG_MIP_LINEAR;
+	Filter = MIN_MAG_MIP_POINT;
 	AddressU = Wrap;
 	AddressV = Wrap;
 };
