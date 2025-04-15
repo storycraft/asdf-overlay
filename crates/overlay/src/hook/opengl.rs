@@ -40,11 +40,11 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    Renderers::with(|renderers| {
-        let mut cx = CX.lock();
-        let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
+    let mut cx = CX.lock();
+    let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
 
-        cx.with(HDC(hdc), || {
+    cx.with(HDC(hdc), || {
+        Renderers::with(|renderers| {
             let renderer = renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
@@ -62,10 +62,10 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                     screen,
                 );
             })
-        });
+        })
+    });
 
-        unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
-    })
+    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
@@ -86,8 +86,8 @@ pub fn hook() -> anyhow::Result<()> {
 
 #[tracing::instrument]
 pub fn cleanup() {
-    CX.lock().take();
     HOOK.write().take();
+    CX.lock().take();
 }
 
 #[tracing::instrument]
