@@ -133,6 +133,7 @@ fn setup_tracing() {
 
     tracing_subscriber::fmt::fmt()
         .with_ansi(false)
+        .with_thread_ids(true)
         .with_max_level(LevelFilter::TRACE)
         .with_writer(WinDbgMakeWriter::new())
         .init();
