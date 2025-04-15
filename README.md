@@ -37,5 +37,9 @@ cargo run --example example <process_name>
 ```
 Glitching squares appear and disappear on target process
 
+## Debugging
+Run with debug build.
+Use external debug log viewer (ex: `DebugView`) to see tracing log of injected process
+
 ## License
 This project is dual licensed under MIT or Apache-2.0 License
