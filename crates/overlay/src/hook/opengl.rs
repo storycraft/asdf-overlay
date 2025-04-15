@@ -20,7 +20,11 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay, hook::collect_hook_thread, renderer::{opengl::OpenglRenderer, Renderers}, util::get_client_size, wgl
+    app::Overlay,
+    hook::collect_hook_thread,
+    renderer::{Renderers, opengl::OpenglRenderer},
+    util::get_client_size,
+    wgl,
 };
 
 use super::DetourHook;
@@ -36,11 +40,11 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    let mut cx = CX.lock();
-    let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
+    Renderers::with(|renderers| {
+        let mut cx = CX.lock();
+        let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
 
-    cx.with(HDC(hdc), || {
-        Renderers::with(|renderers| {
+        cx.with(HDC(hdc), || {
             let renderer = renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
@@ -58,10 +62,10 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                     screen,
                 );
             })
-        })
-    });
+        });
 
-    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+        unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+    })
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
