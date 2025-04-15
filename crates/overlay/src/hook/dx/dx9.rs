@@ -15,8 +15,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
-    renderer::{Renderers, dx9::Dx9Renderer},
+    app::Overlay, hook::collect_hook_thread, renderer::{dx9::Dx9Renderer, Renderers}
 };
 
 use super::HOOK;
@@ -25,6 +24,8 @@ pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 
 #[tracing::instrument]
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
+    collect_hook_thread();
+
     let Some(ref end_scene) = HOOK.read().end_scene else {
         return HRESULT(0);
     };

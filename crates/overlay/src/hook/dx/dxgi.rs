@@ -28,6 +28,7 @@ use windows::{
 
 use crate::{
     app::Overlay,
+    hook::collect_hook_thread,
     renderer::{Renderers, dx11::Dx11Renderer, dx12::Dx12Renderer},
     util::get_client_size,
 };
@@ -53,6 +54,8 @@ pub unsafe extern "system" fn hooked_present(
     sync_interval: u32,
     flags: DXGI_PRESENT,
 ) -> HRESULT {
+    collect_hook_thread();
+
     let Some(ref present) = HOOK.read().present else {
         return HRESULT(0);
     };
@@ -89,6 +92,8 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     format: DXGI_FORMAT,
     flags: u32,
 ) -> HRESULT {
+    collect_hook_thread();
+
     let Some(ref resize_buffers) = HOOK.read().resize_buffers else {
         return HRESULT(0);
     };
@@ -133,6 +138,8 @@ pub unsafe extern "system" fn hooked_present1(
     flags: DXGI_PRESENT,
     present_params: *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT {
+    collect_hook_thread();
+
     let Some(ref present1) = HOOK.read().present1 else {
         return HRESULT(0);
     };

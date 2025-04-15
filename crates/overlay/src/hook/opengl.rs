@@ -20,10 +20,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
-    renderer::{Renderers, opengl::OpenglRenderer},
-    util::get_client_size,
-    wgl,
+    app::Overlay, hook::collect_hook_thread, renderer::{opengl::OpenglRenderer, Renderers}, util::get_client_size, wgl
 };
 
 use super::DetourHook;
@@ -32,6 +29,8 @@ static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
+    collect_hook_thread();
+
     let Some(ref hook) = *HOOK.read() else {
         return BOOL(0);
     };
