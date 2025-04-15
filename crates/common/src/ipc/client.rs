@@ -7,14 +7,13 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::message::{ClientMessage, Response, ServerRequest};
-
-use super::{ClientResponse, ClientToServerPacket, Frame, ServerToClientPacket, create_name};
+use super::{ClientResponse, Frame, ServerRequest, create_name};
+use crate::message::{Request, Response};
 
 pub struct IpcClientConn {
     rx: ReadHalf<NamedPipeClient>,
     buf: Vec<u8>,
-    chan: Sender<ClientToServerPacket>,
+    chan: Sender<ClientResponse>,
     write_task: JoinHandle<anyhow::Result<()>>,
 }
 
@@ -55,27 +54,23 @@ impl IpcClientConn {
         })
     }
 
-    pub fn message_sender(&self) -> ClientMessageSender {
-        ClientMessageSender(self.chan.clone())
-    }
-
     pub async fn recv(
         &mut self,
-        f: impl AsyncFnOnce(ServerRequest) -> anyhow::Result<Response>,
+        f: impl AsyncFnOnce(Request) -> anyhow::Result<Response>,
     ) -> anyhow::Result<()> {
         let frame = Frame::read(&mut self.rx).await?;
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
-        let packet: ServerToClientPacket =
+        let packet: ServerRequest =
             bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
 
         _ = self
             .chan
-            .send(ClientToServerPacket::Response(ClientResponse {
+            .send(ClientResponse {
                 id: packet.id,
                 body: f(packet.req).await?,
-            }))
+            })
             .await;
 
         Ok(())
@@ -86,14 +81,5 @@ impl IpcClientConn {
         self.write_task.await??;
 
         Ok(())
-    }
-}
-
-#[derive(Clone)]
-pub struct ClientMessageSender(Sender<ClientToServerPacket>);
-
-impl ClientMessageSender {
-    pub async fn send(&self, msg: ClientMessage) {
-        _ = self.0.send(ClientToServerPacket::Message(msg)).await;
     }
 }

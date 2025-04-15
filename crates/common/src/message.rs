@@ -6,7 +6,7 @@ use crate::size::PercentLength;
 
 #[derive(Debug, Encode, Decode, Clone)]
 #[non_exhaustive]
-pub enum ServerRequest {
+pub enum Request {
     /// Change overlay position
     UpdatePosition(Position),
     /// Change overlay anchor
@@ -24,13 +24,6 @@ pub enum ServerRequest {
 pub enum Response {
     Success,
     Failed { message: String },
-}
-
-#[derive(Debug, Encode, Decode, Clone)]
-#[non_exhaustive]
-pub enum ClientMessage {
-    #[cfg(debug_assertions)]
-    Log { message: String },
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]

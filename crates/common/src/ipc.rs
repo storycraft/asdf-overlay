@@ -1,7 +1,7 @@
 use bincode::{Decode, Encode};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::message::{ClientMessage, Response, ServerRequest};
+use crate::message::{Request, Response};
 
 pub mod client;
 pub mod server;
@@ -11,21 +11,15 @@ fn create_name(pid: u32) -> String {
 }
 
 #[derive(Encode, Decode)]
-struct ServerToClientPacket {
+struct ServerRequest {
     pub id: u32,
-    pub req: ServerRequest,
+    pub req: Request,
 }
 
 #[derive(Encode, Decode)]
 struct ClientResponse {
     pub id: u32,
     pub body: Response,
-}
-
-#[derive(Encode, Decode)]
-enum ClientToServerPacket {
-    Message(ClientMessage),
-    Response(ClientResponse),
 }
 
 #[derive(Debug, Clone, Copy)]

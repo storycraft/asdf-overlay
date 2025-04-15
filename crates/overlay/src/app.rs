@@ -1,7 +1,7 @@
 use anyhow::Context;
 use asdf_overlay_common::{
     ipc::client::IpcClientConn,
-    message::{Anchor, Margin, Position, Response, ServerRequest},
+    message::{Anchor, Margin, Position, Response, Request},
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
@@ -55,25 +55,25 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 trace!("recv: {:?}", message);
 
                 match message {
-                    ServerRequest::UpdatePosition(position) => {
+                    Request::UpdatePosition(position) => {
                         Overlay::with_mut(|overlay| overlay.position = position);
                     }
 
-                    ServerRequest::UpdateAnchor(anchor) => {
+                    Request::UpdateAnchor(anchor) => {
                         Overlay::with_mut(|overlay| overlay.anchor = anchor);
                     }
 
-                    ServerRequest::UpdateMargin(margin) => {
+                    Request::UpdateMargin(margin) => {
                         Overlay::with_mut(|overlay| overlay.margin = margin);
                     }
 
-                    ServerRequest::UpdateBitmap(bitmap) => {
+                    Request::UpdateBitmap(bitmap) => {
                         Renderers::with(|renderer| {
                             renderer.update_texture(bitmap);
                         });
                     }
 
-                    ServerRequest::Direct(_) => {}
+                    Request::Direct(_) => {}
 
                     _ => {}
                 }

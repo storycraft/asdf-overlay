@@ -4,7 +4,7 @@ use std::env::{self, current_exe};
 use anyhow::Context;
 use asdf_overlay_client::{inject, process::OwnedProcess};
 use asdf_overlay_common::{
-    message::{Bitmap, Position, ServerRequest},
+    message::{Bitmap, Position, Request},
     size::PercentLength,
 };
 use tokio::time::sleep;
@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     sleep(Duration::from_secs(1)).await;
 
-    conn.request(ServerRequest::UpdatePosition(Position {
+    conn.request(Request::UpdatePosition(Position {
         x: PercentLength::Length(100.0),
         y: PercentLength::Length(100.0),
     }))
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
         data.resize(i * i * 4, 0);
         rand::fill(&mut data[..]);
 
-        conn.request(ServerRequest::UpdateBitmap(Bitmap {
+        conn.request(Request::UpdateBitmap(Bitmap {
             width: i as _,
             data: data.clone(),
         }))
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         sleep(Duration::from_millis(10)).await;
     }
 
-    conn.request(ServerRequest::UpdatePosition(Position {
+    conn.request(Request::UpdatePosition(Position {
         x: PercentLength::Length(200.0),
         y: PercentLength::Length(200.0),
     }))

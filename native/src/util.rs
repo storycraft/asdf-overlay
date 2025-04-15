@@ -1,4 +1,4 @@
-use asdf_overlay_common::message::ServerRequest;
+use asdf_overlay_common::message::Request;
 use neon::{
     prelude::{Context, FunctionContext},
     result::JsResult,
@@ -31,7 +31,7 @@ pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
 pub fn request_promise<'a>(
     cx: &mut FunctionContext<'a>,
     id: u32,
-    request: ServerRequest,
+    request: Request,
 ) -> JsResult<'a, JsPromise> {
     let rt = runtime(cx)?;
     let channel = cx.channel();

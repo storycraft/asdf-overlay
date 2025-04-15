@@ -11,11 +11,11 @@ use tokio::{
 };
 
 use crate::{
-    ipc::ClientToServerPacket,
-    message::{ClientMessage, Response, ServerRequest},
+    ipc::ClientResponse,
+    message::{Request, Response},
 };
 
-use super::{Frame, ServerToClientPacket, create_name};
+use super::{Frame, ServerRequest, create_name};
 
 pub fn create_ipc_server(pid: u32) -> anyhow::Result<NamedPipeServer> {
     let name = create_name(pid);
@@ -52,17 +52,11 @@ impl IpcServerConn {
                     body.resize(frame.size as usize, 0_u8);
                     rx.read_exact(&mut body).await?;
 
-                    let packet: ClientToServerPacket =
+                    let res: ClientResponse =
                         bincode::decode_from_slice(&body, bincode::config::standard())?.0;
 
-                    match packet {
-                        ClientToServerPacket::Message(msg) => handle_message(msg),
-
-                        ClientToServerPacket::Response(res) => {
-                            if let Some((_, sender)) = map.remove(&res.id) {
-                                _ = sender.send(res.body);
-                            }
-                        }
+                    if let Some((_, sender)) = map.remove(&res.id) {
+                        _ = sender.send(res.body);
                     }
                 }
             }
@@ -77,7 +71,7 @@ impl IpcServerConn {
         })
     }
 
-    pub async fn request(&mut self, req: ServerRequest) -> anyhow::Result<Response> {
+    pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
         self.send(req)
             .await
             .context("failed to send request")?
@@ -85,12 +79,12 @@ impl IpcServerConn {
             .context("failed to receive response")
     }
 
-    async fn send(&mut self, req: ServerRequest) -> anyhow::Result<oneshot::Receiver<Response>> {
+    async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Response>> {
         let id = self.next_id;
         self.next_id += 1;
 
         bincode::encode_into_std_write(
-            ServerToClientPacket { id, req: req },
+            ServerRequest { id, req: req },
             &mut self.buf,
             bincode::config::standard(),
         )?;
@@ -116,12 +110,5 @@ impl IpcServerConn {
 impl Drop for IpcServerConn {
     fn drop(&mut self) {
         self.read_task.abort();
-    }
-}
-
-fn handle_message(msg: ClientMessage) {
-    match msg {
-        #[cfg(debug_assertions)]
-        ClientMessage::Log { message } => eprint!("{message}"),
     }
 }
