@@ -84,7 +84,7 @@ impl IpcServerConn {
         self.next_id += 1;
 
         bincode::encode_into_std_write(
-            ServerRequest { id, req: req },
+            ServerRequest { id, req },
             &mut self.buf,
             bincode::config::standard(),
         )?;
