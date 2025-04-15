@@ -299,7 +299,7 @@ impl Dx12Renderer {
                 let (ref command_list, ref command_alloc) = command_list[0];
                 command_alloc.Reset()?;
                 command_list.Reset(command_alloc, None)?;
-                init_vertex_buffer(device, queue, &mut fence, &command_list, &vertex_buffer)?;
+                init_vertex_buffer(device, queue, &mut fence, command_list, &vertex_buffer)?;
             }
 
             let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
@@ -536,7 +536,7 @@ unsafe fn init_vertex_buffer(
 
         command_list.CopyResource(vertex_buffer, upload.buffer());
         command_list.ResourceBarrier(&[transition(
-            &vertex_buffer,
+            vertex_buffer,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
         )]);

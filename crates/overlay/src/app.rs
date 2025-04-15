@@ -1,7 +1,7 @@
 use anyhow::Context;
 use asdf_overlay_common::{
     ipc::client::IpcClientConn,
-    message::{Anchor, Margin, Position, Response, Request},
+    message::{Anchor, Margin, Position, Request, Response},
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
