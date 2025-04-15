@@ -11,16 +11,16 @@ use windows::{
             Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
         },
         Direct3D11::{
-            D3D11_BIND_SHADER_RESOURCE, D3D11_BIND_VERTEX_BUFFER, D3D11_BLEND_DESC,
-            D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_OP_ADD,
-            D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL,
-            D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_VERTEX_DATA,
-            D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE, D3D11_RENDER_TARGET_BLEND_DESC,
-            D3D11_SHADER_RESOURCE_VIEW_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC_0,
-            D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DYNAMIC,
-            D3D11_USAGE_IMMUTABLE, D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext,
-            ID3D11InputLayout, ID3D11PixelShader, ID3D11ShaderResourceView, ID3D11Texture2D,
-            ID3D11VertexShader,
+            D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_SHADER_RESOURCE, D3D11_BIND_VERTEX_BUFFER,
+            D3D11_BLEND_DESC, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_SRC_ALPHA,
+            D3D11_BLEND_OP_ADD, D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC,
+            D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC,
+            D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE,
+            D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC,
+            D3D11_SHADER_RESOURCE_VIEW_DESC_0, D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV,
+            D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC, D3D11_USAGE_IMMUTABLE,
+            D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
+            ID3D11PixelShader, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
         },
         Dxgi::{
             Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
@@ -36,31 +36,24 @@ const TEXTURE_SHADER: &str = include_str!("dx11/shaders/texture.hlsl");
 #[repr(C)]
 struct Vertex {
     pub pos: (f32, f32),
-    pub texture_pos: (f32, f32),
 }
-
 type VertexArray = [Vertex; 4];
-
-const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 2] = [
-    D3D11_INPUT_ELEMENT_DESC {
-        SemanticName: s!("POSITION"),
-        SemanticIndex: 0,
-        Format: DXGI_FORMAT_R32G32_FLOAT,
-        InputSlot: 0,
-        AlignedByteOffset: 0,
-        InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-        InstanceDataStepRate: 0,
-    },
-    D3D11_INPUT_ELEMENT_DESC {
-        SemanticName: s!("TEXCOORD"),
-        SemanticIndex: 0,
-        Format: DXGI_FORMAT_R32G32_FLOAT,
-        InputSlot: 0,
-        AlignedByteOffset: mem::size_of::<(f32, f32)>() as _,
-        InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-        InstanceDataStepRate: 0,
-    },
+const VERTICES: VertexArray = [
+    Vertex { pos: (0.0, 0.0) },
+    Vertex { pos: (1.0, 0.0) },
+    Vertex { pos: (1.0, 1.0) },
+    Vertex { pos: (0.0, 1.0) },
 ];
+
+const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
+    SemanticName: s!("POSITION"),
+    SemanticIndex: 0,
+    Format: DXGI_FORMAT_R32G32_FLOAT,
+    InputSlot: 0,
+    AlignedByteOffset: 0,
+    InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
+    InstanceDataStepRate: 0,
+}];
 
 pub struct Dx11Renderer {
     context: ID3D11DeviceContext,
@@ -70,6 +63,7 @@ pub struct Dx11Renderer {
 
     input_layout: ID3D11InputLayout,
     vertex_buffer: ID3D11Buffer,
+    constant_buffer: ID3D11Buffer,
     texture: Option<(ID3D11Texture2D, ID3D11ShaderResourceView)>,
 
     vertex_shader: ID3D11VertexShader,
@@ -145,16 +139,39 @@ impl Dx11Renderer {
             device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
                     ByteWidth: mem::size_of::<VertexArray>() as _,
-                    Usage: D3D11_USAGE_DYNAMIC,
+                    Usage: D3D11_USAGE_DEFAULT,
                     BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as _,
+                    CPUAccessFlags: 0,
+                    MiscFlags: 0,
+                    StructureByteStride: 0,
+                },
+                Some(&D3D11_SUBRESOURCE_DATA {
+                    pSysMem: &VERTICES as *const _ as _,
+                    SysMemPitch: 0,
+                    SysMemSlicePitch: 0,
+                }),
+                Some(&mut vertex_buffer),
+            )?;
+            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
+
+            let mut constant_buffer = None;
+            device.CreateBuffer(
+                &D3D11_BUFFER_DESC {
+                    ByteWidth: mem::size_of::<[f32; 4]>() as _,
+                    Usage: D3D11_USAGE_DYNAMIC,
+                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as _,
                     CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as _,
                     MiscFlags: 0,
                     StructureByteStride: 0,
                 },
-                None,
-                Some(&mut vertex_buffer),
+                Some(&D3D11_SUBRESOURCE_DATA {
+                    pSysMem: &VERTICES as *const _ as _,
+                    SysMemPitch: 0,
+                    SysMemSlicePitch: 0,
+                }),
+                Some(&mut constant_buffer),
             )?;
-            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
+            let constant_buffer = constant_buffer.context("cannot create vertex buffer")?;
 
             let mut blend_state = None;
             device.CreateBlendState(
@@ -184,6 +201,7 @@ impl Dx11Renderer {
 
                 input_layout,
                 vertex_buffer,
+                constant_buffer,
                 texture: None,
 
                 vertex_shader,
@@ -221,39 +239,29 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let vertices = {
-            let pos = (
-                (position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-            );
-            let size = (
-                (self.size.0 as f32 / screen.0 as f32) * 2.0,
-                -(self.size.1 as f32 / screen.1 as f32) * 2.0,
-            );
-
-            [
-                Vertex {
-                    pos,
-                    texture_pos: (0.0, 0.0),
-                },
-                Vertex {
-                    pos: (pos.0 + size.0, pos.1),
-                    texture_pos: (1.0, 0.0),
-                },
-                Vertex {
-                    pos: (pos.0 + size.0, pos.1 + size.1),
-                    texture_pos: (1.0, 1.0),
-                },
-                Vertex {
-                    pos: (pos.0, pos.1 + size.1),
-                    texture_pos: (0.0, 1.0),
-                },
-            ]
-        };
+        let rect = [
+            (position.0 / screen.0 as f32) * 2.0 - 1.0,
+            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            (self.size.0 as f32 / screen.0 as f32) * 2.0,
+            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+        ];
 
         unsafe {
+            {
+                let mut mapped_cbuffer = D3D11_MAPPED_SUBRESOURCE::default();
+                self.context.Map(
+                    &self.constant_buffer,
+                    0,
+                    D3D11_MAP_WRITE_DISCARD,
+                    0,
+                    Some(&mut mapped_cbuffer),
+                )?;
+                mapped_cbuffer.pData.cast::<[f32; 4]>().write(rect);
+                self.context.Unmap(&self.constant_buffer, 0);
+            }
+
             let render_target = {
-                let back_buffer = swapchain.GetBuffer::<ID3D11Texture2D>(0).unwrap();
+                let back_buffer = swapchain.GetBuffer::<ID3D11Texture2D>(0)?;
 
                 let mut render_target = None;
                 device.CreateRenderTargetView(&back_buffer, None, Some(&mut render_target))?;
@@ -272,20 +280,6 @@ impl Dx11Renderer {
                 MinDepth: 0.0,
                 MaxDepth: 1.0,
             }]));
-
-            let mut mapped_vertex_buffer = D3D11_MAPPED_SUBRESOURCE::default();
-            self.context.Map(
-                &self.vertex_buffer,
-                0,
-                D3D11_MAP_WRITE_DISCARD,
-                0,
-                Some(&mut mapped_vertex_buffer),
-            )?;
-            mapped_vertex_buffer
-                .pData
-                .cast::<VertexArray>()
-                .write(vertices);
-            self.context.Unmap(&self.vertex_buffer, 0);
 
             self.context.IASetInputLayout(&self.input_layout);
 
@@ -344,14 +338,15 @@ impl Dx11Renderer {
             self.context
                 .PSSetShaderResources(0, Some(&[Some(view.clone())]));
 
-            // wtf
             self.context.IASetVertexBuffers(
                 0,
                 1,
-                Some(&Some(self.vertex_buffer.clone())),
+                Some(&self.vertex_buffer as *const _ as _),
                 Some(&(mem::size_of::<Vertex>() as _)),
                 Some(&0),
             );
+            self.context
+                .VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
 
             self.context
                 .IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);

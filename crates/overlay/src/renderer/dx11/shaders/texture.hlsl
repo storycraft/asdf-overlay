@@ -1,7 +1,6 @@
 struct vs_in
 {
 	float2 position : POSITION;
-	float2 texCoord : TEXCOORD0;
 };
 
 struct vs_out
@@ -10,11 +9,16 @@ struct vs_out
 	float2 texCoord : TEXCOORD0;
 };
 
+cbuffer OverlayBuffer : register(b0)
+{
+	float4 rect;
+}
+
 vs_out vs_main(vs_in input)
 {
 	vs_out output;
-	output.position = float4(input.position, 0.0, 1.0);
-	output.texCoord = input.texCoord;
+	output.position = float4(rect.xy + rect.zw * input.position, 0.0, 1.0);
+	output.texCoord = input.position;
 
 	return output;
 }

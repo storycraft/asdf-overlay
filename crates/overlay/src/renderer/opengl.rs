@@ -141,13 +141,6 @@ impl OpenglRenderer {
             return;
         }
 
-        let rect: [f32; 4] = [
-            (position.0 / screen.0 as f32) * 2.0 - 1.0,
-            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-            (self.size.0 as f32 / screen.0 as f32) * 2.0,
-            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
-        ];
-
         if self.texture_size_outdated {
             self.texture_size_outdated = false;
 
@@ -186,11 +179,17 @@ impl OpenglRenderer {
             }
         }
 
+        let rect: [f32; 4] = [
+            (position.0 / screen.0 as f32) * 2.0 - 1.0,
+            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            (self.size.0 as f32 / screen.0 as f32) * 2.0,
+            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+        ];
+
         unsafe {
             gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
 
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
-
             gl::ActiveTexture(gl::TEXTURE0);
             gl::Uniform1i(self.tex_loc, 0);
 
