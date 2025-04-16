@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 version = "0.0.0"
 edition = "2024"
-license = "Apache-2.0 or MIT"
+license = "Apache-2.0 OR MIT"
 repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
