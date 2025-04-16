@@ -8,7 +8,14 @@ use core::{
 use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 
 use anyhow::{Context as AnyhowContext, bail};
-use asdf_overlay_client::prelude::*;
+use asdf_overlay_client::{
+    common::{
+        ipc::server::IpcServerConn,
+        message::{Anchor, Bitmap, Margin, Position, Request, SharedDx11Handle},
+    },
+    inject,
+    process::OwnedProcess,
+};
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
 use mimalloc::MiMalloc;

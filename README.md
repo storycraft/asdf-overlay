@@ -32,8 +32,7 @@ pnpm build
 ## Example
 Run
 ```bash
-cargo build
-cargo run --example example <process_name>
+cargo build && cargo run -p noise-rectangle <process_name>
 ```
 Glitching squares appear and disappear on target process
 

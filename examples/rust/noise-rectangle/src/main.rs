@@ -2,10 +2,13 @@ use core::time::Duration;
 use std::env::{self, current_exe};
 
 use anyhow::Context;
-use asdf_overlay_client::{inject, process::OwnedProcess};
-use asdf_overlay_common::{
-    message::{Bitmap, Position, Request},
-    size::PercentLength,
+use asdf_overlay_client::{
+    common::{
+        message::{Bitmap, Position, Request},
+        size::PercentLength,
+    },
+    inject,
+    process::OwnedProcess,
 };
 use tokio::time::sleep;
 
@@ -15,14 +18,16 @@ async fn main() -> anyhow::Result<()> {
         .nth(1)
         .context("processs name is not provided")?;
 
+    // find process from first argument
     let process = OwnedProcess::find_first_by_name(name).context("process not found")?;
+
+    // inject overlay dll into target process
     let mut conn = inject(
         "asdf-overlay-example".to_string(),
         process,
         Some({
-            // Example executable is under examples directory so pop twice
+            // Find built dll
             let mut current = current_exe().unwrap();
-            current.pop();
             current.pop();
             current.push("asdf_overlay.dll");
 
@@ -34,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     sleep(Duration::from_secs(1)).await;
 
+    // set initial position
     conn.request(Request::UpdatePosition(Position {
         x: PercentLength::Length(100.0),
         y: PercentLength::Length(100.0),
@@ -45,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         data.resize(i * i * 4, 0);
         rand::fill(&mut data[..]);
 
+        // make noise rectangle bigger
         conn.request(Request::UpdateBitmap(Bitmap {
             width: i as _,
             data: data.clone(),
@@ -53,13 +60,15 @@ async fn main() -> anyhow::Result<()> {
         sleep(Duration::from_millis(10)).await;
     }
 
+    // move rectangle
     conn.request(Request::UpdatePosition(Position {
         x: PercentLength::Length(200.0),
         y: PercentLength::Length(200.0),
     }))
     .await?;
 
+    // sleep for 1 secs and remove overlay (dropped)
     sleep(Duration::from_secs(1)).await;
-
+    
     Ok(())
 }

@@ -117,7 +117,6 @@ dependencies = [
  "asdf-overlay",
  "asdf-overlay-common",
  "dll-syringe",
- "futures",
  "rand",
  "tokio",
 ]
@@ -131,7 +130,6 @@ dependencies = [
  "bincode 2.0.1",
  "dashmap",
  "derive_more",
- "futures",
  "futures-core",
  "parking_lot",
  "rustc-hash",
@@ -146,7 +144,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
- "asdf-overlay-common",
  "bytemuck",
  "dashmap",
  "mimalloc",
@@ -832,6 +829,17 @@ dependencies = [
  "quote",
  "syn 2.0.100",
  "syn-mid",
+]
+
+[[package]]
+name = "noise-rectangle"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "asdf-overlay-client",
+ "dll-syringe",
+ "rand",
+ "tokio",
 ]
 
 [[package]]

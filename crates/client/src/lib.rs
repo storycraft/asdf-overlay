@@ -1,11 +1,11 @@
-pub mod prelude;
+pub use dll_syringe::process;
+pub use asdf_overlay_common as common;
 
 use core::time::Duration;
 use std::{env::current_exe, path::PathBuf};
 
 use anyhow::{Context, bail};
 use asdf_overlay_common::ipc::{create_ipc_path, server::IpcServerConn};
-pub use dll_syringe::process;
 use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},

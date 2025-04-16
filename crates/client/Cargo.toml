@@ -11,7 +11,6 @@ asdf-overlay-common = { workspace = true }
 tokio = { workspace = true }
 
 anyhow = "1.0.97"
-futures = "0.3.31"
 dll-syringe = { workspace = true, features = [
     "into-x86-from-x64",
     "syringe",

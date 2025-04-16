@@ -9,7 +9,6 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 crate-type = ["cdylib"]
 
 [dependencies]
-asdf-overlay-common = { workspace = true }
 asdf-overlay-client = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 

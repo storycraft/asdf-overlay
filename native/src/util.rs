@@ -1,4 +1,4 @@
-use asdf_overlay_common::message::Request;
+use asdf_overlay_client::common::message::Request;
 use neon::{
     prelude::{Context, FunctionContext},
     result::JsResult,
