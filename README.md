@@ -1,5 +1,5 @@
 # Asdf Overlay
-Electron overlay solution for Windows
+Blazingly fast™ Overlay library for Windows
 
 ![Screenshot](assets/example.png)
 
@@ -13,7 +13,7 @@ Electron overlay solution for Windows
 
 ## Pre-requirement
 1. node, pnpm package manager
-2. rust, cargo, msvc(x64, x86, arm64)
+2. nightly rustc, cargo, msvc(x64, x86, arm64)
 3. Install x86_64-pc-windows-msvc, i686-pc-windows-msvc, aarch64-pc-windows-msvc rustc targets
 
 ### Installing node dependencies
@@ -30,6 +30,12 @@ pnpm build
 > DLL and the client must be built using same rust compiler or it may misbehaviour
 
 ## Example
+Examples are located in `examples` directory.
+
+### Node
+To be added...
+
+### Rust
 Run
 ```bash
 cargo build && cargo run -p noise-rectangle <process_name>
