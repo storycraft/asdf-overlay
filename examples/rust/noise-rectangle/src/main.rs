@@ -69,6 +69,6 @@ async fn main() -> anyhow::Result<()> {
 
     // sleep for 1 secs and remove overlay (dropped)
     sleep(Duration::from_secs(1)).await;
-    
+
     Ok(())
 }

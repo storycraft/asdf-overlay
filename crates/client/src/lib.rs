@@ -1,5 +1,5 @@
-pub use dll_syringe::process;
 pub use asdf_overlay_common as common;
+pub use dll_syringe::process;
 
 use core::time::Duration;
 use std::{env::current_exe, path::PathBuf};
@@ -28,7 +28,7 @@ pub fn dll_on_exe(name: &str) -> PathBuf {
 }
 
 /// Inject overlay and create ipc connection
-/// 
+///
 /// Name must be unique or it will fail if there is a connection with same name
 pub async fn inject(
     name: String,
