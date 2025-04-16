@@ -33,7 +33,6 @@ fn proc_impl(name: String) -> bool {
         .name(name.clone())
         .spawn(move || {
             rt.block_on(app(&create_ipc_path(&name, process::id())));
-            drop(rt);
         })
         .is_err()
     {

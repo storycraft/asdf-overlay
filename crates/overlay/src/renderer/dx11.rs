@@ -235,7 +235,7 @@ impl Dx11Renderer {
         position: (f32, f32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
-        if self.size.0 == 0 || self.size.1 == 0 {
+        if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
 

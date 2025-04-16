@@ -137,7 +137,7 @@ impl OpenglRenderer {
 
     #[tracing::instrument(skip(self))]
     pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) {
-        if screen.0 == 0 || screen.1 == 0 {
+        if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
             return;
         }
 
