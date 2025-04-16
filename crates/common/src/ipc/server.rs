@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use scopeguard::defer;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
-    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
+    net::windows::named_pipe::NamedPipeServer,
     sync::oneshot,
     task::JoinHandle,
 };
@@ -15,15 +15,7 @@ use crate::{
     message::{Request, Response},
 };
 
-use super::{Frame, ServerRequest, create_name};
-
-pub fn create_ipc_server(pid: u32) -> anyhow::Result<NamedPipeServer> {
-    let name = create_name(pid);
-
-    Ok(ServerOptions::new()
-        .first_pipe_instance(true)
-        .create(name)?)
-}
+use super::{Frame, ServerRequest};
 
 pub struct IpcServerConn {
     next_id: u32,

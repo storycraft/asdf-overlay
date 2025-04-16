@@ -88,10 +88,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
+ "ash",
  "bindgen",
  "camino",
  "cc",
  "dashmap",
+ "dll-syringe",
  "futures",
  "gl",
  "gl_generator",
@@ -126,7 +128,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "bincode",
+ "bincode 2.0.1",
  "dashmap",
  "derive_more",
  "futures",
@@ -145,6 +147,7 @@ dependencies = [
  "anyhow",
  "asdf-overlay-client",
  "asdf-overlay-common",
+ "bytemuck",
  "dashmap",
  "mimalloc",
  "neon",
@@ -153,6 +156,15 @@ dependencies = [
  "rustc-hash",
  "tokio",
  "windows",
+]
+
+[[package]]
+name = "ash"
+version = "0.38.0+1.3.281"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
+dependencies = [
+ "libloading",
 ]
 
 [[package]]
@@ -196,6 +208,15 @@ dependencies = [
  "object",
  "rustc-demangle",
  "windows-targets",
+]
+
+[[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -249,6 +270,12 @@ name = "bitflags"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c8214115b7bf84099f1309324e63141d4c5d7cc26862f97a0a857dbefe165bd"
+
+[[package]]
+name = "bytemuck"
+version = "1.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6b1fc10dbac614ebc03540c9dbd60e83887fda27794998c6528f1782047d540"
 
 [[package]]
 name = "bytes"
@@ -437,6 +464,7 @@ name = "dll-syringe"
 version = "0.15.2"
 source = "git+https://github.com/fry/dll-syringe?rev=0a8b18e#0a8b18efccbfd5b31553d7be8e8e48ecb1991ff4"
 dependencies = [
+ "bincode 1.3.3",
  "cstr",
  "goblin",
  "iced-x86",
@@ -444,6 +472,7 @@ dependencies = [
  "num_enum",
  "path-absolutize",
  "same-file",
+ "serde",
  "shrinkwraprs",
  "stopwatch2",
  "sysinfo",

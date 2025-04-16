@@ -21,7 +21,6 @@ use windows::{
 
 use crate::{
     app::Overlay,
-    hook::collect_hook_thread,
     renderer::{Renderers, opengl::OpenglRenderer},
     util::get_client_size,
     wgl,
@@ -33,8 +32,6 @@ static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
-    collect_hook_thread();
-
     let Some(ref hook) = *HOOK.read() else {
         return BOOL(0);
     };
@@ -82,12 +79,6 @@ pub fn hook() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-#[tracing::instrument]
-pub fn cleanup() {
-    HOOK.write().take();
-    CX.lock().take();
 }
 
 #[tracing::instrument]

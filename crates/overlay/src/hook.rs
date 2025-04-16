@@ -1,11 +1,8 @@
 mod dx;
 mod opengl;
 
-use dashmap::DashMap;
 pub use dx::util::call_original_execute_command_lists;
-use once_cell::sync::Lazy;
-use rustc_hash::FxBuildHasher;
-use tracing::{debug, trace};
+use tracing::debug;
 
 use core::{
     error::Error,
@@ -14,38 +11,9 @@ use core::{
 use std::os::raw::c_void;
 
 use anyhow::Context;
-use windows::Win32::{
-    Foundation::{CloseHandle, HANDLE, HWND},
-    System::Threading::{GetCurrentThread, GetCurrentThreadId},
-};
+use windows::Win32::Foundation::HWND;
 
-use crate::detours::{
-    DetourAttach, DetourDetach, DetourTransactionBegin, DetourTransactionCommit,
-    DetourUpdateThread, LONG,
-};
-
-struct ThreadHandle(HANDLE);
-
-impl Drop for ThreadHandle {
-    fn drop(&mut self) {
-        _ = unsafe { CloseHandle(self.0) };
-    }
-}
-
-unsafe impl Send for ThreadHandle {}
-unsafe impl Sync for ThreadHandle {}
-
-static HOOK_THREADS: Lazy<DashMap<u32, ThreadHandle, FxBuildHasher>> =
-    Lazy::new(|| DashMap::with_hasher(FxBuildHasher::default()));
-
-fn collect_hook_thread() {
-    let id = unsafe { GetCurrentThreadId() };
-    if !HOOK_THREADS.contains_key(&id) {
-        debug!("collecting thread {} accessing hooks", id);
-        let handle = ThreadHandle(unsafe { GetCurrentThread() });
-        HOOK_THREADS.insert(id, handle);
-    }
-}
+use crate::detours::{DetourAttach, DetourTransactionBegin, DetourTransactionCommit, LONG};
 
 #[tracing::instrument]
 pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
@@ -55,19 +23,8 @@ pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tracing::instrument]
-pub fn cleanup() {
-    dx::cleanup();
-    opengl::cleanup();
-
-    HOOK_THREADS.clear();
-    HOOK_THREADS.shrink_to_fit();
-    debug!("hook removed");
-}
-
 struct DetourHook {
     func: *mut (),
-    detour: *mut (),
 }
 
 impl DetourHook {
@@ -82,33 +39,11 @@ impl DetourHook {
         }
         debug!("hook attached");
 
-        Ok(DetourHook {
-            func: func.cast(),
-            detour,
-        })
+        Ok(DetourHook { func: func.cast() })
     }
 
     pub fn original_fn(&self) -> *const () {
         self.func
-    }
-}
-
-impl Drop for DetourHook {
-    fn drop(&mut self) {
-        let mut func = self.func.cast::<c_void>();
-
-        unsafe {
-            wrap_detour_call(|| DetourTransactionBegin()).unwrap();
-            for item in HOOK_THREADS.iter() {
-                if wrap_detour_call(|| DetourUpdateThread(item.0.0)).is_ok() {
-                    trace!("suspending thread {} while detaching hook", item.key());
-                }
-            }
-            wrap_detour_call(|| DetourDetach(&mut func, self.detour.cast::<c_void>())).unwrap();
-            wrap_detour_call(|| DetourTransactionCommit()).unwrap();
-        }
-
-        debug!("hook detached");
     }
 }
 

@@ -1,7 +1,9 @@
-use anyhow::Context;
+use std::sync::Once;
+
 use asdf_overlay_common::{
     ipc::client::IpcClientConn,
     message::{Anchor, Margin, Position, Request, Response},
+    size::PercentLength,
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
@@ -34,18 +36,30 @@ impl Overlay {
     }
 
     pub fn with<R>(f: impl FnOnce(&Self) -> R) -> R {
-        f(CURRENT.read().as_ref().expect("Overlay is not initialized"))
+        f(&*CURRENT.read())
     }
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Self) -> R) -> R {
-        f(&mut *CURRENT
-            .write()
-            .as_mut()
-            .expect("Overlay is not initialized"))
+        f(&mut *CURRENT.write())
     }
 }
 
-static CURRENT: RwLock<Option<Overlay>> = RwLock::new(None);
+static CURRENT: RwLock<Overlay> = RwLock::new(Overlay {
+    position: Position {
+        x: PercentLength::ZERO,
+        y: PercentLength::ZERO,
+    },
+    anchor: Anchor {
+        x: PercentLength::ZERO,
+        y: PercentLength::ZERO,
+    },
+    margin: Margin {
+        top: PercentLength::ZERO,
+        right: PercentLength::ZERO,
+        bottom: PercentLength::ZERO,
+        left: PercentLength::ZERO,
+    },
+});
 
 #[tracing::instrument(skip(client))]
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
@@ -87,59 +101,56 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument]
-pub async fn run_overlay() -> anyhow::Result<()> {
-    defer!({
-        debug!("exiting");
-    });
-
-    *CURRENT.write() = Some(Overlay {
-        position: Position::default(),
-        anchor: Anchor::default(),
-        margin: Margin::default(),
-    });
-
-    debug!("connecting ipc");
-    let client = IpcClientConn::connect().await?;
-    debug!("ipc client connected");
-
-    defer!({
-        debug!("cleanup start");
-        Renderers::with(|renderers| {
-            hook::cleanup();
-            renderers.cleanup();
+pub async fn app(addr: &str) {
+    pub async fn inner(addr: &str) -> anyhow::Result<()> {
+        defer!({
+            debug!("exiting");
         });
-    });
 
-    with_dummy_hwnd(|dummy_hwnd| {
-        hook::install(dummy_hwnd).context("hook initialization failed")?;
-        debug!("hook installed");
-        Ok::<_, anyhow::Error>(())
-    })
-    .context("failed to create dummy window")??;
+        debug!("connecting ipc");
+        let client = IpcClientConn::connect(addr).await?;
+        debug!("ipc client connected");
+        defer!({
+            debug!("cleanup start");
+            Renderers::with(|renderers| {
+                renderers.cleanup();
+            });
+        });
 
-    _ = run_client(client).await;
-    Ok(())
-}
+        _ = run_client(client).await;
+        Ok(())
+    }
 
-pub async fn main() {
-    #[cfg(debug_assertions)]
-    setup_tracing();
-
-    if let Err(err) = run_overlay().await {
+    setup_once();
+    if let Err(err) = inner(addr).await {
         error!("{:?}", err);
     }
 }
 
-#[cfg(debug_assertions)]
-fn setup_tracing() {
-    use tracing::level_filters::LevelFilter;
+fn setup_once() {
+    #[cfg(debug_assertions)]
+    fn setup_tracing() {
+        use tracing::level_filters::LevelFilter;
 
-    use crate::dbg::WinDbgMakeWriter;
+        use crate::dbg::WinDbgMakeWriter;
 
-    tracing_subscriber::fmt::fmt()
-        .with_ansi(false)
-        .with_thread_ids(true)
-        .with_max_level(LevelFilter::TRACE)
-        .with_writer(WinDbgMakeWriter::new())
-        .init();
+        tracing_subscriber::fmt::fmt()
+            .with_ansi(false)
+            .with_thread_ids(true)
+            .with_max_level(LevelFilter::TRACE)
+            .with_writer(WinDbgMakeWriter::new())
+            .init();
+    }
+
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        #[cfg(debug_assertions)]
+        setup_tracing();
+
+        with_dummy_hwnd(|dummy_hwnd| {
+            hook::install(dummy_hwnd).expect("hook initialization failed");
+            debug!("hook installed");
+        })
+        .expect("failed to create dummy window");
+    });
 }

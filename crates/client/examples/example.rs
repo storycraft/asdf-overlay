@@ -15,8 +15,10 @@ async fn main() -> anyhow::Result<()> {
         .nth(1)
         .context("processs name is not provided")?;
 
+    let process = OwnedProcess::find_first_by_name(name).context("process not found")?;
     let mut conn = inject(
-        OwnedProcess::find_first_by_name(name).context("process not found")?,
+        "asdf-overlay-example".to_string(),
+        process,
         Some({
             // Example executable is under examples directory so pop twice
             let mut current = current_exe().unwrap();
