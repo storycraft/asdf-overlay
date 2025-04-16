@@ -17,8 +17,3 @@ dll-syringe = { workspace = true, features = [
     "syringe",
     "rpc-payload",
 ] }
-
-[dev-dependencies]
-asdf-overlay = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
-rand = "0.9.0"

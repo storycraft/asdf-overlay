@@ -114,10 +114,8 @@ name = "asdf-overlay-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "asdf-overlay",
  "asdf-overlay-common",
  "dll-syringe",
- "rand",
  "tokio",
 ]
 
