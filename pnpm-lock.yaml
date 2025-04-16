@@ -8,9 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@neon-rs/cli':
-        specifier: ^0.1.82
-        version: 0.1.82
       '@tsconfig/node20':
         specifier: ^20.1.4
         version: 20.1.5
@@ -22,60 +19,6 @@ importers:
         version: 5.8.2
 
 packages:
-
-  '@cargo-messages/android-arm-eabi@0.1.81':
-    resolution: {integrity: sha512-cpRbgb56e9LmAj96Tixtz9/bTlaJAeplWNNv4obu+eqQyZd3ZjX04TJd9fM1bjHDGVyR9GTVlgBsbQEntIGkwg==}
-    cpu: [arm]
-    os: [android]
-
-  '@cargo-messages/darwin-arm64@0.1.81':
-    resolution: {integrity: sha512-OwGqsw+tbJx37a/vH4T8R9qkrrFYoTIOnckbA9+MhQodE2FSWyk3HvLh+z8jjl+QZa1RSOU9Ax6gt/46h0BiTg==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@cargo-messages/darwin-x64@0.1.81':
-    resolution: {integrity: sha512-Iu761bPk25Ce6yUdDCjjeVuT8/xbBmczyaNB7oYBmAZEE5rshvCJ42TqSShYYP+S7pKkN42nBhkFooaZrqaz9g==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@cargo-messages/linux-arm-gnueabihf@0.1.81':
-    resolution: {integrity: sha512-iIuy7KTJAEhbiqlIlcxQOdW6opI6M9LXlgd/jdsHbP2FjmTyhTLnd3JCJ6JeAeidwknCDs+CFlaVmPxTKSytsg==}
-    cpu: [arm]
-    os: [linux]
-
-  '@cargo-messages/linux-arm64-gnu@0.1.81':
-    resolution: {integrity: sha512-QPQRsHj9m/9ga8wRBlLh8t2AXyr40+/H55FIKVj7zIjV++waY/TbSTPofDZQhMycd5VSGLKztfhahiCO7c/RAQ==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@cargo-messages/linux-arm64-musl@0.1.81':
-    resolution: {integrity: sha512-9O0ATesIOjDTz2L01OtlGHYwP86I31/mzXMC+ryQkzbbIKj7KUiSqmEc29I14I517UYO8/sMeow6q6MVBpehlA==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@cargo-messages/linux-x64-gnu@0.1.81':
-    resolution: {integrity: sha512-wEFYxCdtHNiEvp5KEg17CfRCUdfRTtkL+1GASROyvYEUV6DQf6TXxfHuuWg2xlVxh5fqiTGFSRfiqFrCDL/xrw==}
-    cpu: [x64]
-    os: [linux]
-
-  '@cargo-messages/linux-x64-musl@0.1.81':
-    resolution: {integrity: sha512-zi5pKIh60oPwOCDQapAZ3Mya4y56MI2BoGvY8JtztYaXTorGmAoyf6jjb50Wt+HfoYYjM3OlPt03XMlCFZJnIQ==}
-    cpu: [x64]
-    os: [linux]
-
-  '@cargo-messages/win32-arm64-msvc@0.1.81':
-    resolution: {integrity: sha512-oyiT8AYLoguF7cFOMYDsPv3eirzBcFafOOfRsFyd3+wmaPTl/DdbCq446oThRmSAsEGJpzhzj7TafcnXMBkHbg==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@cargo-messages/win32-x64-msvc@0.1.81':
-    resolution: {integrity: sha512-B5Ukf4AohtIv27uCP/AgM+7vYwQ4RacI6m8ZBr2XKeSrjZXcXguzlZd+wD7bD5+wa0capvXKUskZDnpG/DcYiA==}
-    cpu: [x64]
-    os: [win32]
-
-  '@neon-rs/cli@0.1.82':
-    resolution: {integrity: sha512-QrlGPQp9KOGuMvjjua79lEV2QTcE16m8JatG5ITdQpBAwRQpDw5xab57W9130y2iUEfMzYtp7v6pcN1fUB0Exg==}
-    hasBin: true
 
   '@tsconfig/node20@20.1.5':
     resolution: {integrity: sha512-Vm8e3WxDTqMGPU4GATF9keQAIy1Drd7bPwlgzKJnZtoOsTm1tduUTbDjg0W5qERvGuxPI2h9RbMufH0YdfBylA==}
@@ -92,49 +35,6 @@ packages:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
 snapshots:
-
-  '@cargo-messages/android-arm-eabi@0.1.81':
-    optional: true
-
-  '@cargo-messages/darwin-arm64@0.1.81':
-    optional: true
-
-  '@cargo-messages/darwin-x64@0.1.81':
-    optional: true
-
-  '@cargo-messages/linux-arm-gnueabihf@0.1.81':
-    optional: true
-
-  '@cargo-messages/linux-arm64-gnu@0.1.81':
-    optional: true
-
-  '@cargo-messages/linux-arm64-musl@0.1.81':
-    optional: true
-
-  '@cargo-messages/linux-x64-gnu@0.1.81':
-    optional: true
-
-  '@cargo-messages/linux-x64-musl@0.1.81':
-    optional: true
-
-  '@cargo-messages/win32-arm64-msvc@0.1.81':
-    optional: true
-
-  '@cargo-messages/win32-x64-msvc@0.1.81':
-    optional: true
-
-  '@neon-rs/cli@0.1.82':
-    optionalDependencies:
-      '@cargo-messages/android-arm-eabi': 0.1.81
-      '@cargo-messages/darwin-arm64': 0.1.81
-      '@cargo-messages/darwin-x64': 0.1.81
-      '@cargo-messages/linux-arm-gnueabihf': 0.1.81
-      '@cargo-messages/linux-arm64-gnu': 0.1.81
-      '@cargo-messages/linux-arm64-musl': 0.1.81
-      '@cargo-messages/linux-x64-gnu': 0.1.81
-      '@cargo-messages/linux-x64-musl': 0.1.81
-      '@cargo-messages/win32-arm64-msvc': 0.1.81
-      '@cargo-messages/win32-x64-msvc': 0.1.81
 
   '@tsconfig/node20@20.1.5': {}
 
