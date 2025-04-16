@@ -4,6 +4,7 @@ description = "Asdf Overlay Injector & Client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]

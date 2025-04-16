@@ -6,6 +6,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0 or MIT"
+repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
 asdf-overlay = { path = "./crates/overlay" }

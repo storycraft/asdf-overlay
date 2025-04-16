@@ -1,9 +1,10 @@
 [package]
 name = "asdf-overlay"
-description = "Windows opengl Overlay"
+description = "Asdf Overlay Dll"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
 
 [lib]
