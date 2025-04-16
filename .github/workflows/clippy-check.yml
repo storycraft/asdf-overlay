@@ -1,0 +1,21 @@
+on:
+  pull_request:
+    paths:
+      - '**.rs'
+
+name: Clippy
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+            components: clippy
+      - uses: actions-rs/clippy-check@v1
+        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --workspace
