@@ -4,7 +4,7 @@ on:
     paths:
       - '**.rs'
 
-name: rustfmt
+name: rustfmt-push
 jobs:
   format:
     runs-on: ubuntu-latest

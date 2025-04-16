@@ -6,7 +6,7 @@ on:
 permissions:
   pull-requests: write
 
-name: rustfmt
+name: rustfmt-pr
 jobs:
   review:
     runs-on: ubuntu-latest
