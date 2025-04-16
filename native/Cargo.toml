@@ -20,7 +20,7 @@ anyhow = "1.0.97"
 once_cell = "1.21.3"
 dashmap = "6.1.0"
 rustc-hash = "2.1.1"
-mimalloc = "*"
+mimalloc = "0.1.46"
 bytemuck = "1.22.0"
 
 [dependencies.windows]
