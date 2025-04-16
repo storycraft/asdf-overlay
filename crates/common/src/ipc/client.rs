@@ -1,4 +1,4 @@
-use std::process;
+use std::ffi::OsStr;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
@@ -7,7 +7,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use super::{ClientResponse, Frame, ServerRequest, create_name};
+use super::{ClientResponse, Frame, ServerRequest};
 use crate::message::{Request, Response};
 
 pub struct IpcClientConn {
@@ -18,10 +18,8 @@ pub struct IpcClientConn {
 }
 
 impl IpcClientConn {
-    pub async fn connect() -> anyhow::Result<Self> {
-        let name = create_name(process::id());
-
-        let (rx, mut tx) = split(ClientOptions::new().open(name)?);
+    pub async fn connect(addr: impl AsRef<OsStr>) -> anyhow::Result<Self> {
+        let (rx, mut tx) = split(ClientOptions::new().open(addr)?);
         let (chan_tx, mut chan_rx) = channel(4);
 
         let write_task = tokio::spawn({

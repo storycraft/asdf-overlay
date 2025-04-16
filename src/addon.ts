@@ -1,5 +1,5 @@
 export type Addon = {
-    attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
+    attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
 
     overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
     overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,

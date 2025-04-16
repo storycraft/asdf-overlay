@@ -18,58 +18,33 @@ mod util;
 #[cfg(debug_assertions)]
 mod dbg;
 
-use app::main;
-use core::ffi::c_void;
-use std::thread;
+use app::app;
+use asdf_overlay_common::ipc::create_ipc_path;
+use std::{process, thread};
 use tokio::runtime::Runtime;
-use windows::{
-    Win32::{
-        Foundation::{HINSTANCE, HMODULE},
-        System::{LibraryLoader::FreeLibraryAndExitThread, SystemServices::DLL_PROCESS_ATTACH},
-    },
-    core::BOOL,
-};
 
-fn attach(dll_module: HINSTANCE) -> anyhow::Result<()> {
-    let rt = Runtime::new()?;
-
-    thread::spawn({
-        struct Wrapper(*mut c_void);
-        unsafe impl Send for Wrapper {}
-
-        let dll_module = Wrapper(dll_module.0);
-
-        move || {
-            let dll_module = dll_module;
-            rt.block_on(main());
-            drop(rt);
-
-            unsafe {
-                FreeLibraryAndExitThread(HMODULE(dll_module.0), 0);
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[allow(non_snake_case)]
-#[unsafe(no_mangle)]
-pub extern "system" fn DllMain(dll_module: HINSTANCE, reason: u32, _reserved: *mut c_void) -> BOOL {
-    let res = match reason {
-        DLL_PROCESS_ATTACH => attach(dll_module),
-        _ => Ok(()),
+#[inline]
+fn proc_impl(name: String) -> bool {
+    let Ok(rt) = Runtime::new() else {
+        return false;
     };
 
-    #[cfg(debug_assertions)]
-    if let Err(err) = res {
-        eprintln!("dll initialization failed. {err}");
-    }
-
-    #[cfg(not(debug_assertions))]
+    if thread::Builder::new()
+        .name(name.clone())
+        .spawn(move || {
+            rt.block_on(app(&create_ipc_path(&name, process::id())));
+            drop(rt);
+        })
+        .is_err()
     {
-        _ = res;
+        return false;
     }
 
-    BOOL(1)
+    true
 }
+
+dll_syringe::payload_procedure!(
+    fn asdf_overlay_connect(name: String) -> bool {
+        proc_impl(name)
+    }
+);

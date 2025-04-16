@@ -20,8 +20,6 @@ use windows::{
     core::Interface,
 };
 
-use crate::hook::collect_hook_thread;
-
 use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
@@ -51,8 +49,6 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
     num_command_lists: u32,
     pp_commmand_lists: *const *mut c_void,
 ) {
-    collect_hook_thread();
-
     let Some(ref execute_command_lists) = HOOK.read().execute_command_lists else {
         return;
     };

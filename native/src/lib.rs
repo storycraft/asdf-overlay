@@ -40,6 +40,7 @@ impl Manager {
 
     async fn attach(
         &self,
+        name: String,
         dll_dir: PathBuf,
         pid: u32,
         timeout: Option<Duration>,
@@ -55,6 +56,7 @@ impl Manager {
         };
 
         let conn = inject(
+            name,
             process,
             Some({
                 let mut dll = dll_dir;
@@ -95,8 +97,9 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let dll_dir = cx.argument::<JsString>(0)?.value(&mut cx);
-    let pid = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let name = cx.argument::<JsString>(0)?.value(&mut cx);
+    let dll_dir = cx.argument::<JsString>(1)?.value(&mut cx);
+    let pid = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
     let timeout = cx
         .argument_opt(2)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
@@ -109,7 +112,9 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.attach(PathBuf::from(dll_dir), pid, timeout).await;
+        let res = MANAGER
+            .attach(name, PathBuf::from(dll_dir), pid, timeout)
+            .await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),

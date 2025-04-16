@@ -6,8 +6,9 @@ use crate::message::{Request, Response};
 pub mod client;
 pub mod server;
 
-fn create_name(pid: u32) -> String {
-    format!("\\\\.\\pipe\\asdf-overlay-{pid}")
+/// Create Windows pipe path using unique name and pid
+pub fn create_ipc_path(name: &str, pid: u32) -> String {
+    format!("\\\\.\\pipe\\{name}-{pid}")
 }
 
 #[derive(Encode, Decode)]

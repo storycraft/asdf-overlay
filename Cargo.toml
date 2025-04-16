@@ -13,3 +13,8 @@ asdf-overlay-client = { path = "./crates/client" }
 asdf-overlay-common = { path = "./crates/common" }
 
 tokio = "1.44.2"
+
+[workspace.dependencies.dll-syringe]
+git = "https://github.com/fry/dll-syringe"
+rev = "0a8b18e"
+default-features = false

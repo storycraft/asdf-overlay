@@ -93,6 +93,7 @@ dependencies = [
  "camino",
  "cc",
  "dashmap",
+ "dll-syringe",
  "futures",
  "gl",
  "gl_generator",
@@ -127,7 +128,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "bincode",
+ "bincode 2.0.1",
  "dashmap",
  "derive_more",
  "futures",
@@ -207,6 +208,15 @@ dependencies = [
  "object",
  "rustc-demangle",
  "windows-targets",
+]
+
+[[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -454,6 +464,7 @@ name = "dll-syringe"
 version = "0.15.2"
 source = "git+https://github.com/fry/dll-syringe?rev=0a8b18e#0a8b18efccbfd5b31553d7be8e8e48ecb1991ff4"
 dependencies = [
+ "bincode 1.3.3",
  "cstr",
  "goblin",
  "iced-x86",
@@ -461,6 +472,7 @@ dependencies = [
  "num_enum",
  "path-absolutize",
  "same-file",
+ "serde",
  "shrinkwraprs",
  "stopwatch2",
  "sysinfo",

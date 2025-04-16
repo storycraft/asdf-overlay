@@ -12,12 +12,11 @@ tokio = { workspace = true }
 
 anyhow = "1.0.97"
 futures = "0.3.31"
-
-[dependencies.dll-syringe]
-git = "https://github.com/fry/dll-syringe"
-rev = "0a8b18e"
-default-features = false
-features = ["into-x86-from-x64", "syringe", "rpc-raw"]
+dll-syringe = { workspace = true, features = [
+    "into-x86-from-x64",
+    "syringe",
+    "rpc-payload",
+] }
 
 [dev-dependencies]
 asdf-overlay = { workspace = true }
