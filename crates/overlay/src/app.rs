@@ -36,11 +36,11 @@ impl Overlay {
     }
 
     pub fn with<R>(f: impl FnOnce(&Self) -> R) -> R {
-        f(&*CURRENT.read())
+        f(&CURRENT.read())
     }
 
     pub fn with_mut<R>(f: impl FnOnce(&mut Self) -> R) -> R {
-        f(&mut *CURRENT.write())
+        f(&mut CURRENT.write())
     }
 }
 
