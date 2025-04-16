@@ -16,6 +16,7 @@ asdf-overlay-common = { version = "0.1.0", path = "./crates/common" }
 tokio = "1.44.2"
 
 [workspace.dependencies.dll-syringe]
+version = "0.15.2"
 git = "https://github.com/fry/dll-syringe"
 rev = "0a8b18e"
 default-features = false
