@@ -60,3 +60,6 @@ anyhow = "1.0.97"
 gl_generator = "0.14.0"
 bindgen = "0.71.0"
 cc = "1.2.18"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"

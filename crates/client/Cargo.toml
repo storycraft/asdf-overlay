@@ -17,3 +17,6 @@ dll-syringe = { workspace = true, features = [
     "syringe",
     "rpc-payload",
 ] }
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"

@@ -29,3 +29,6 @@ features = [
     "Win32_System_SystemInformation",
     "Win32_System_Threading"
 ]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
