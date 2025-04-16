@@ -52,7 +52,7 @@ jobs:
         run: |
           npm config set git-tag-version=false
           $ver = npm version ${{ github.event.inputs.level }}
-          $GITHUB_OUTPUT = "version=" + $ver.substring(1)
+          $env:GITHUB_OUTPUT = "version=" + $ver.substring(1)
           git commit -a -m "chore: Bump node package version"
 
       - name: publish node package
@@ -64,9 +64,9 @@ jobs:
       - name: bump cargo package versions, publish
         run: |
           cargo release ${{ steps.bump.outputs.version }} \
-            --workspace \
-            --no-confirm \
-            --execute
+          --workspace \
+          --no-confirm \
+          --execute
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
