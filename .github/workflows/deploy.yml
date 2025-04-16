@@ -47,7 +47,7 @@ jobs:
         id: bump
         run: |
           npm config set git-tag-version=false
-          FOR /F %a in (npm version ${{ github.event.inputs.level }}) do @set VER=%a
+          FOR /F %a in ('npm version ${{ github.event.inputs.level }}') do @set VER=%a
           echo ::set-output name=version::%VER:~1%
       - name: publish node package
         run: pnpm ci:publish
