@@ -15,7 +15,8 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay, renderer::{dx9::Dx9Renderer, Renderers}
+    app::Overlay,
+    renderer::{Renderers, dx9::Dx9Renderer},
 };
 
 use super::HOOK;
