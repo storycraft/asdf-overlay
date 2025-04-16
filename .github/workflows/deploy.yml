@@ -37,8 +37,7 @@ jobs:
         run: cargo install cargo-release
 
       - name: bump cargo package versions, publish
-        run: |
-          cargo release 0.1.0 --workspace --no-confirm --execute
+        run: cargo release 0.1.0 --workspace --no-confirm --execute
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
