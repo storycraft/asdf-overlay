@@ -1,0 +1,2 @@
+tag-name = "v{{version}}"
+shared-version = true
