@@ -9,6 +9,8 @@ name: rustfmt-push
 jobs:
   format:
     runs-on: windows-latest
+    env:
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
