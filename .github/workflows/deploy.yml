@@ -49,6 +49,8 @@ jobs:
           npm config set git-tag-version=false
           $ver = npm version ${{ github.event.inputs.level }}
           $GITHUB_OUTPUT = "version=" + $ver.substring(1)
+          git commit -m "chore: Bump node package version"
+
       - name: publish node package
         run: pnpm ci:publish
         env:
