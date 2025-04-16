@@ -1,7 +1,7 @@
 {
   "name": "asdf-overlay-node",
   "version": "0.0.0",
-  "description": "",
+  "description": "Asdf Overlay Node Addon",
   "main": "./lib/index.js",
   "repository": {
     "type": "git",
