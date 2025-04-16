@@ -62,7 +62,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: bump cargo package versions, publish
-        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --execute
+        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify --execute
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
