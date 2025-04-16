@@ -9,9 +9,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
-asdf-overlay = { path = "./crates/overlay" }
-asdf-overlay-client = { path = "./crates/client" }
-asdf-overlay-common = { path = "./crates/common" }
+asdf-overlay = { version = "0.1.0", path = "./crates/overlay" }
+asdf-overlay-client = { version = "0.1.0", path = "./crates/client" }
+asdf-overlay-common = { version = "0.1.0", path = "./crates/common" }
 
 tokio = "1.44.2"
 
