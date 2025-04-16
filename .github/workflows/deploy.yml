@@ -36,9 +36,34 @@ jobs:
       - name: install cargo-release
         run: cargo install cargo-release
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: bump node package version
+        id: bump
+        run: |
+          npm config set git-tag-version=false
+          $ver = npm version ${{ github.event.inputs.level }}
+          $env:GITHUB_OUTPUT = "version=" + $ver.substring(1)
+          git commit -a -m "chore: Bump node package version"
+
+      - name: publish node package
+        run: pnpm ci:publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: bump cargo package versions, publish
         run: |
-          cargo release 0.1.0 \
+          cargo release ${{ steps.bump.outputs.version }} \
           --workspace \
           --no-confirm \
           --execute
@@ -53,9 +78,9 @@ jobs:
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: 'v0.1.0',
+              tag_name: 'v${{ steps.bump.outputs.version }}',
               target_commitish: '${{ github.ref }}',
-              name: 'Asdf Overlay v0.1.0',
+              name: 'Asdf Overlay v${{ steps.bump.outputs.version }}',
               draft: false,
               generate_release_notes: true
             })
