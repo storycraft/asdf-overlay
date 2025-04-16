@@ -28,6 +28,8 @@ pub fn dll_on_exe(name: &str) -> PathBuf {
 }
 
 /// Inject overlay and create ipc connection
+/// 
+/// Name must be unique or it will fail if there is a connection with same name
 pub async fn inject(
     name: String,
     process: OwnedProcess,

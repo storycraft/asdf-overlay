@@ -84,6 +84,8 @@ export class Overlay {
 
   /**
    * Attach overlay to target process
+   * 
+   * Name must be unique or it will fail if there is a connection with same name
    * @param name name of ipc pipe and overlay thread
    * @param dllDir path to dlls
    * @param pid target process pid
