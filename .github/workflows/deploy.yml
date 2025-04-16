@@ -48,8 +48,7 @@ jobs:
         run: |
           npm config set git-tag-version=false
           $ver = npm version ${{ github.event.inputs.level }}
-          $ver = $ver.substring(1)
-          echo "::set-output name=version::$ver"
+          $GITHUB_OUTPUT = "version=" + $ver.substring(1)
       - name: publish node package
         run: pnpm ci:publish
         env:
