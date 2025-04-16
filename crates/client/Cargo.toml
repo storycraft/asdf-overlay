@@ -9,7 +9,7 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
 
 anyhow = "1.0.97"
 dll-syringe = { workspace = true, features = [

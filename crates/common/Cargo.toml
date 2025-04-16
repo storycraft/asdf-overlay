@@ -8,7 +8,7 @@ repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]
-tokio = { workspace = true, features = ["io-util"] }
+tokio = { workspace = true, features = ["io-util", "rt", "sync", "net"] }
 
 bincode = { version = "2.0.1", features = ["derive"] }
 winapi = { version = "0.3", features = ["winerror"] }
