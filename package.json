@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "description": "",
   "main": "./lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/storycraft/asdf-overlay"
+  },
   "scripts": {
     "test": "tsc && cargo test",
     "build-dll": "cargo xtask build-dll --",
@@ -10,7 +14,7 @@
     "build": "npm run cargo-build -- --release && npm run build-dll -- --release && tsc",
     "build:debug": "npm run cargo-build && npm run build-dll && tsc",
     "prepack": "npm run build",
-    "ci:publish": "pnpm publish -r --access public"
+    "ci:publish": "pnpm publish -r --provenance --access public"
   },
   "author": "storycraft <storycraft@pancake.sh>",
   "license": "MIT OR Apache-2.0",
