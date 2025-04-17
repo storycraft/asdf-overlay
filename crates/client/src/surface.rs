@@ -78,13 +78,13 @@ impl OverlaySurface {
             return Ok(None);
         }
 
-        let row_pitch = (data.len() / width as usize) as u32;
-        let size = (width, row_pitch / 4);
+        let size = (width, (data.len() / width as usize / 4) as u32);
         let prev_size = self.size();
-
         if prev_size.0 != size.0 || prev_size.1 != size.1 {
             self.texture = None;
         }
+
+        let row_pitch = width * 4;
 
         match self.texture {
             Some(ref texture) => {
@@ -95,7 +95,7 @@ impl OverlaySurface {
                         _ = mutex.ReleaseSync(0);
                     });
                     self.cx
-                        .UpdateSubresource(texture, 0, None, data.as_ptr().cast(), row_pitch, 1);
+                        .UpdateSubresource(texture, 0, None, data.as_ptr().cast(), row_pitch, 0);
                     self.cx.Flush();
                 }
 
