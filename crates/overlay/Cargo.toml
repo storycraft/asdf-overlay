@@ -62,5 +62,4 @@ bindgen = "0.71.0"
 cc = "1.2.18"
 
 [package.metadata.docs.rs]
-default-target = "x86_64-pc-windows-msvc"
 targets = ["x86_64-pc-windows-msvc"]
