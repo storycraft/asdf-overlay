@@ -81,14 +81,10 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                         Overlay::with_mut(|overlay| overlay.margin = margin);
                     }
 
-                    Request::UpdateBitmap(bitmap) => {
-                        Renderers::with(|renderer| {
-                            renderer.update_texture(bitmap);
-                        });
-                    }
-
                     Request::UpdateShtex(shared) => {
-                        trace!(shared.handle);
+                        Renderers::with(|renderer| {
+                            renderer.update_texture(shared);
+                        });
                     }
 
                     _ => {}

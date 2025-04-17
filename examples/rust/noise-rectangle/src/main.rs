@@ -4,11 +4,12 @@ use std::env::{self, current_exe};
 use anyhow::Context;
 use asdf_overlay_client::{
     common::{
-        message::{Bitmap, Position, Request},
+        message::{Position, Request, SharedHandle},
         size::PercentLength,
     },
     inject,
     process::OwnedProcess,
+    surface::OverlaySurface,
 };
 use tokio::time::sleep;
 
@@ -46,17 +47,21 @@ async fn main() -> anyhow::Result<()> {
     }))
     .await?;
 
+    let mut surface = OverlaySurface::new()?;
     let mut data = Vec::new();
-    for i in 0..200 {
-        data.resize(i * i * 4, 0);
+    for _ in 0..200 {
+        // make noise rectangle bigger
+        data.resize(200 * 200 * 4, 0);
         rand::fill(&mut data[..]);
 
-        // make noise rectangle bigger
-        conn.request(Request::UpdateBitmap(Bitmap {
-            width: i as _,
-            data: data.clone(),
-        }))
-        .await?;
+        let updated = surface.update_bitmap(200 as _, &data)?;
+        if let Some(handle) = updated {
+            conn.request(Request::UpdateShtex(SharedHandle {
+                handle: Some(handle),
+            }))
+            .await?;
+        }
+
         sleep(Duration::from_millis(10)).await;
     }
 

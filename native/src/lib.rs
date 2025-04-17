@@ -2,6 +2,7 @@ mod util;
 mod wrapper;
 
 use core::{
+    num::NonZeroUsize,
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
@@ -11,10 +12,11 @@ use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
         ipc::server::IpcServerConn,
-        message::{Anchor, Bitmap, Margin, Position, Request, SharedDx11Handle},
+        message::{Anchor, Margin, Position, Request, SharedHandle},
     },
     inject,
     process::OwnedProcess,
+    surface::OverlaySurface,
 };
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
@@ -32,9 +34,14 @@ use windows::Win32::{
 };
 use wrapper::percent_length_from_object;
 
+struct OverlayConn {
+    surface: OverlaySurface,
+    ipc: IpcServerConn,
+}
+
 struct Manager {
     next_id: AtomicU32,
-    map: DashMap<u32, tokio::sync::Mutex<IpcServerConn>, FxBuildHasher>,
+    map: DashMap<u32, tokio::sync::Mutex<OverlayConn>, FxBuildHasher>,
 }
 
 impl Manager {
@@ -62,7 +69,8 @@ impl Manager {
             arch => bail!("Unsupported arch: {}", arch.0),
         };
 
-        let conn = inject(
+        let surface = OverlaySurface::new().context("cannot create dx11 device")?;
+        let ipc = inject(
             name,
             process,
             Some({
@@ -76,14 +84,27 @@ impl Manager {
         .context("cannot inject to the process")?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.map.insert(id, tokio::sync::Mutex::new(conn));
+        self.map
+            .insert(id, tokio::sync::Mutex::new(OverlayConn { surface, ipc }));
 
         Ok(id)
     }
 
+    async fn update_bitmap(
+        &self,
+        id: u32,
+        width: u32,
+        data: &[u8],
+    ) -> anyhow::Result<Option<NonZeroUsize>> {
+        let conn = self.map.get(&id).context("invalid id")?;
+        let update = conn.lock().await.surface.update_bitmap(width, data)?;
+
+        Ok(update)
+    }
+
     async fn request(&self, id: u32, request: Request) -> anyhow::Result<()> {
         let conn = self.map.get(&id).context("invalid id")?;
-        conn.lock().await.request(request).await?;
+        conn.lock().await.ipc.request(request).await?;
 
         Ok(())
     }
@@ -180,7 +201,33 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    request_promise(&mut cx, id, Request::UpdateBitmap(Bitmap { width, data }))
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let update = MANAGER.update_bitmap(id, width, &data).await.unwrap();
+
+        let res = if let Some(handle) = update {
+            MANAGER
+                .request(
+                    id,
+                    Request::UpdateShtex(SharedHandle {
+                        handle: Some(handle),
+                    }),
+                )
+                .await
+        } else {
+            Ok(())
+        };
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(_) => Ok(JsUndefined::new(&mut cx)),
+            Err(err) => cx.throw_error(format!("{err:?}")),
+        });
+    });
+
+    Ok(promise)
 }
 
 fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -191,7 +238,9 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     request_promise(
         &mut cx,
         id,
-        Request::UpdateShtex(SharedDx11Handle { handle }),
+        Request::UpdateShtex(SharedHandle {
+            handle: NonZeroUsize::new(handle),
+        }),
     )
 }
 

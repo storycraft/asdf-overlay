@@ -1,3 +1,5 @@
+pub mod surface;
+
 pub use asdf_overlay_common as common;
 pub use dll_syringe::process;
 
@@ -43,6 +45,7 @@ pub async fn inject(
     {
         let injector = Syringe::for_process(process);
         let module = injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
+
         let start = unsafe {
             injector
                 .get_payload_procedure::<fn(String) -> bool>(module, "asdf_overlay_connect")?

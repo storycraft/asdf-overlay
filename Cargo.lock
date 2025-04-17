@@ -116,7 +116,9 @@ dependencies = [
  "anyhow",
  "asdf-overlay-common",
  "dll-syringe",
+ "scopeguard",
  "tokio",
+ "windows",
 ]
 
 [[package]]

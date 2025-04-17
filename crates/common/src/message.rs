@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, num::NonZeroUsize};
 
 use bincode::{Decode, Encode};
 
@@ -14,10 +14,8 @@ pub enum Request {
     /// Change overlay anchor
     UpdateMargin(Margin),
 
-    /// Update overlay using bitmap
-    UpdateBitmap(Bitmap),
-    /// Update overlay using shared dx11 texture handle
-    UpdateShtex(SharedDx11Handle),
+    /// Update overlay to new texture using shared dx11 texture handle
+    UpdateShtex(SharedHandle),
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
@@ -57,14 +55,7 @@ impl Margin {
     }
 }
 
-#[derive(derive_more::Debug, Encode, Decode, Clone)]
-pub struct Bitmap {
-    pub width: u32,
-    #[debug(skip)]
-    pub data: Vec<u8>,
-}
-
 #[derive(Debug, Encode, Decode, Clone)]
-pub struct SharedDx11Handle {
-    pub handle: usize,
+pub struct SharedHandle {
+    pub handle: Option<NonZeroUsize>,
 }

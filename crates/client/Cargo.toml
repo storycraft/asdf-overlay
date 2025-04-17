@@ -18,6 +18,18 @@ dll-syringe = { workspace = true, features = [
     "syringe",
     "rpc-payload",
 ] }
+scopeguard = "1.2.0"
+
+[dependencies.windows]
+version = "0.61.1"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11"
+]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

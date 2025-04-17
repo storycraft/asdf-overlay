@@ -1,33 +1,38 @@
 use core::{
     mem,
+    num::NonZeroUsize,
     slice::{self},
 };
 
 use anyhow::Context;
+use scopeguard::defer;
 use windows::{
-    Win32::Graphics::{
-        Direct3D::{
-            D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN, D3D_SRV_DIMENSION_TEXTURE2D,
-            Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
-        },
-        Direct3D11::{
-            D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_SHADER_RESOURCE, D3D11_BIND_VERTEX_BUFFER,
-            D3D11_BLEND_DESC, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_SRC_ALPHA,
-            D3D11_BLEND_OP_ADD, D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC,
-            D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC,
-            D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE,
-            D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC,
-            D3D11_SHADER_RESOURCE_VIEW_DESC_0, D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV,
-            D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC, D3D11_USAGE_IMMUTABLE,
-            D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
-            ID3D11PixelShader, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
-        },
-        Dxgi::{
-            Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
-            IDXGISwapChain,
+    Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        Graphics::{
+            Direct3D::{
+                D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN, D3D_SRV_DIMENSION_TEXTURE2D,
+                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
+            },
+            Direct3D11::{
+                D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_VERTEX_BUFFER, D3D11_BLEND_DESC,
+                D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_OP_ADD,
+                D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL,
+                D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_VERTEX_DATA,
+                D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE, D3D11_RENDER_TARGET_BLEND_DESC,
+                D3D11_SHADER_RESOURCE_VIEW_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC_0,
+                D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+                D3D11_USAGE_DYNAMIC, D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device,
+                ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader,
+                ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+            },
+            Dxgi::{
+                Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT},
+                IDXGIKeyedMutex, IDXGISwapChain,
+            },
         },
     },
-    core::{BOOL, s},
+    core::{BOOL, Interface, s},
 };
 
 const TEXTURE_SHADER: &str = include_str!("dx11/shaders/texture.hlsl");
@@ -55,16 +60,30 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
     InstanceDataStepRate: 0,
 }];
 
+enum TextureState {
+    None,
+    Handle(NonZeroUsize),
+    Created {
+        texture: ID3D11Texture2D,
+        view: ID3D11ShaderResourceView,
+    },
+}
+
+impl Drop for TextureState {
+    fn drop(&mut self) {
+        if let Self::Handle(handle) = self {
+            unsafe { _ = CloseHandle(HANDLE(handle.get() as _)) };
+        }
+    }
+}
+
 pub struct Dx11Renderer {
     context: ID3D11DeviceContext,
-
-    size: (u32, u32),
-    data: Vec<u8>,
 
     input_layout: ID3D11InputLayout,
     vertex_buffer: ID3D11Buffer,
     constant_buffer: ID3D11Buffer,
-    texture: Option<(ID3D11Texture2D, ID3D11ShaderResourceView)>,
+    texture: TextureState,
 
     vertex_shader: ID3D11VertexShader,
     pixel_shader: ID3D11PixelShader,
@@ -196,13 +215,10 @@ impl Dx11Renderer {
             Ok(Self {
                 context,
 
-                size: (0, 0),
-                data: Vec::new(),
-
                 input_layout,
                 vertex_buffer,
                 constant_buffer,
-                texture: None,
+                texture: TextureState::None,
 
                 vertex_shader,
                 pixel_shader,
@@ -212,19 +228,23 @@ impl Dx11Renderer {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        self.size
+        let TextureState::Created { ref texture, .. } = self.texture else {
+            return (0, 0);
+        };
+
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe { texture.GetDesc(&mut desc) };
+
+        (desc.Width, desc.Height)
     }
 
-    pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
-        if width == 0 || data.len() < width as _ {
+    pub fn update_texture(&mut self, handle: Option<NonZeroUsize>) {
+        let Some(handle) = handle else {
+            self.texture = TextureState::None;
             return;
-        }
+        };
 
-        let size = (width, (data.len() / width as usize / 4) as u32);
-
-        self.size = size;
-        self.data = data;
-        self.texture.take();
+        self.texture = TextureState::Handle(handle);
     }
 
     #[tracing::instrument(skip(self))]
@@ -235,18 +255,77 @@ impl Dx11Renderer {
         position: (f32, f32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
-        if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
+        if screen.0 == 0 || screen.1 == 0 {
+            return Ok(());
+        }
+
+        let (texture, view) = match self.texture {
+            TextureState::None => return Ok(()),
+
+            TextureState::Handle(handle) => unsafe {
+                self.texture = TextureState::None;
+                let mut texture = None;
+                if device
+                    .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle.get() as _), &mut texture)
+                    .is_err()
+                {
+                    self.texture = TextureState::None;
+                }
+                let texture = texture.context("failed to open shared texture")?;
+
+                let mut view = None;
+                device.CreateShaderResourceView(
+                    &texture,
+                    Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
+                        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                        ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
+                        Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                            Texture2D: D3D11_TEX2D_SRV {
+                                MostDetailedMip: 0,
+                                MipLevels: 1,
+                            },
+                        },
+                    }),
+                    Some(&mut view),
+                )?;
+                let view = view.context("cannot create texture view")?;
+                self.texture = TextureState::Created { texture, view };
+                let TextureState::Created {
+                    ref texture,
+                    ref view,
+                } = self.texture
+                else {
+                    unreachable!()
+                };
+
+                (texture, view)
+            },
+
+            TextureState::Created {
+                ref texture,
+                ref view,
+            } => (texture, view),
+        };
+
+        let size = self.size();
+        if size.0 == 0 || size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
 
         let rect = [
             (position.0 / screen.0 as f32) * 2.0 - 1.0,
             -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-            (self.size.0 as f32 / screen.0 as f32) * 2.0,
-            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+            (size.0 as f32 / screen.0 as f32) * 2.0,
+            -(size.1 as f32 / screen.1 as f32) * 2.0,
         ];
 
         unsafe {
+            let mutex = texture.cast::<IDXGIKeyedMutex>()?;
+            mutex.AcquireSync(0, u32::MAX)?;
+            defer!({
+                _ = mutex.ReleaseSync(0);
+            });
+
             {
                 let mut mapped_cbuffer = D3D11_MAPPED_SUBRESOURCE::default();
                 self.context.Map(
@@ -286,55 +365,6 @@ impl Dx11Renderer {
             self.context.VSSetShader(&self.vertex_shader, None);
             self.context.PSSetShader(&self.pixel_shader, None);
 
-            let view = match self.texture {
-                Some((_, ref view)) => view,
-                None => {
-                    let mut texture = None;
-                    device.CreateTexture2D(
-                        &D3D11_TEXTURE2D_DESC {
-                            Width: self.size.0,
-                            Height: self.size.1,
-                            MipLevels: 1,
-                            ArraySize: 1,
-                            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                            SampleDesc: DXGI_SAMPLE_DESC {
-                                Count: 1,
-                                Quality: 0,
-                            },
-                            Usage: D3D11_USAGE_IMMUTABLE,
-                            BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as _,
-                            CPUAccessFlags: 0,
-                            MiscFlags: 0,
-                        },
-                        Some(&D3D11_SUBRESOURCE_DATA {
-                            pSysMem: self.data.as_ptr() as _,
-                            SysMemPitch: self.size.0 * 4,
-                            SysMemSlicePitch: 0,
-                        }),
-                        Some(&mut texture),
-                    )?;
-                    let texture = texture.context("cannot create texture")?;
-
-                    let mut res = None;
-                    device.CreateShaderResourceView(
-                        &texture,
-                        Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
-                            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                            ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
-                            Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
-                                Texture2D: D3D11_TEX2D_SRV {
-                                    MostDetailedMip: 0,
-                                    MipLevels: 1,
-                                },
-                            },
-                        }),
-                        Some(&mut res),
-                    )?;
-                    let res = res.context("cannot create resource view")?;
-
-                    &mut self.texture.insert((texture, res)).1
-                }
-            };
             self.context
                 .PSSetShaderResources(0, Some(&[Some(view.clone())]));
 

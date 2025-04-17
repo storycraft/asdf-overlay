@@ -3,7 +3,9 @@ pub mod dx12;
 pub mod dx9;
 pub mod opengl;
 
-use asdf_overlay_common::message::Bitmap;
+use core::num::NonZeroUsize;
+
+use asdf_overlay_common::message::SharedHandle;
 use dx9::Dx9Renderer;
 use dx11::Dx11Renderer;
 use dx12::Dx12Renderer;
@@ -26,26 +28,16 @@ pub struct Renderers {
 }
 
 impl Renderers {
-    #[tracing::instrument(
-        skip(self, bitmap),
-        fields(
-            width = bitmap.width,
-            height = if bitmap.width == 0 {
-                0
-            } else {
-                (bitmap.data.len() / 4 / bitmap.width as usize) as u32
-            }
-        )
-    )]
-    pub fn update_texture(&mut self, bitmap: Bitmap) {
+    #[tracing::instrument(skip(self))]
+    pub fn update_texture(&mut self, shared: SharedHandle) {
         if let Some(ref mut renderer) = self.dx12 {
-            renderer.update_texture(bitmap.width, bitmap.data);
+            // renderer.update_texture(bitmap.width, bitmap.data);
         } else if let Some(ref mut renderer) = self.dx11 {
-            renderer.update_texture(bitmap.width, bitmap.data);
+            renderer.update_texture(shared.handle);
         } else if let Some(ref mut renderer) = self.opengl {
-            renderer.update_texture(bitmap.width, bitmap.data);
+            // renderer.update_texture(bitmap.width, bitmap.data);
         } else if let Some(ref mut renderer) = self.dx9 {
-            renderer.update_texture(bitmap.width, bitmap.data);
+            // renderer.update_texture(bitmap.width, bitmap.data);
         }
 
         trace!("overlay texture updated");
