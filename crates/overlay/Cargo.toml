@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
+readme = "../../README.md"
 
 [lib]
 crate-type = ["cdylib"]
