@@ -12,15 +12,15 @@ use windows::{
         },
         Direct3D11::{
             D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_SHADER_RESOURCE, D3D11_BIND_VERTEX_BUFFER,
-            D3D11_BLEND_DESC, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_SRC_ALPHA,
-            D3D11_BLEND_OP_ADD, D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC,
-            D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC,
-            D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE,
-            D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC,
-            D3D11_SHADER_RESOURCE_VIEW_DESC_0, D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV,
-            D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC, D3D11_USAGE_IMMUTABLE,
-            D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
-            ID3D11PixelShader, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+            D3D11_BLEND_DESC, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD,
+            D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL,
+            D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_VERTEX_DATA,
+            D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE, D3D11_RENDER_TARGET_BLEND_DESC,
+            D3D11_SHADER_RESOURCE_VIEW_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC_0,
+            D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+            D3D11_USAGE_DYNAMIC, D3D11_USAGE_IMMUTABLE, D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device,
+            ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11ShaderResourceView,
+            ID3D11Texture2D, ID3D11VertexShader,
         },
         Dxgi::{
             Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
@@ -176,15 +176,15 @@ impl Dx11Renderer {
             let mut blend_state = None;
             device.CreateBlendState(
                 &D3D11_BLEND_DESC {
-                    AlphaToCoverageEnable: BOOL(1),
+                    AlphaToCoverageEnable: BOOL(0),
                     IndependentBlendEnable: BOOL(0),
                     RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
                         BlendEnable: BOOL(1),
                         SrcBlend: D3D11_BLEND_SRC_ALPHA,
                         DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
                         BlendOp: D3D11_BLEND_OP_ADD,
-                        SrcBlendAlpha: D3D11_BLEND_SRC_ALPHA,
-                        DestBlendAlpha: D3D11_BLEND_DEST_ALPHA,
+                        SrcBlendAlpha: D3D11_BLEND_ONE,
+                        DestBlendAlpha: D3D11_BLEND_INV_SRC_ALPHA,
                         BlendOpAlpha: D3D11_BLEND_OP_ADD,
                         RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as _,
                     }; 8],
