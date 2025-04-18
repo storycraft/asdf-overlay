@@ -5,7 +5,9 @@ mod sync;
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
 use buffer::UploadBuffer;
+use scopeguard::defer;
 use core::{
+    array,
     mem::{self, ManuallyDrop},
     slice::{self},
     str,
@@ -13,21 +15,18 @@ use core::{
 use rtv::RtvDescriptors;
 use sync::RendererFence;
 use windows::{
-    Win32::{
+    core::{s, Interface, BOOL}, Win32::{
         Foundation::{HANDLE, RECT},
         Graphics::{
             Direct3D::{
-                D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN,
-                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
+                Fxc::{D3DCompile, D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS}, D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN
             },
             Direct3D12::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
-                IDXGISwapChain, IDXGISwapChain3,
+                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC}, IDXGIKeyedMutex, IDXGISwapChain, IDXGISwapChain3
             },
         },
-    },
-    core::{BOOL, s},
+    }
 };
 
 use crate::{hook::call_original_execute_command_lists, util::wrap_com_manually_drop};
@@ -161,8 +160,7 @@ pub struct Dx12Renderer {
     texture: OverlayTextureState<Dx12Tex>,
     texture_descriptor: ID3D12DescriptorHeap,
 
-    command_list: ID3D12GraphicsCommandList,
-    command_alloc: ID3D12CommandAllocator,
+    command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
     fence: RendererFence,
 }
 
@@ -252,15 +250,21 @@ impl Dx12Renderer {
             let pipeline =
                 device.CreateGraphicsPipelineState::<ID3D12PipelineState>(&pipeline_desc)?;
 
-            let command_alloc = device
-                .CreateCommandAllocator::<ID3D12CommandAllocator>(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            let command_list = array_util::try_from_fn(|_| {
+                let command_alloc = device.CreateCommandAllocator::<ID3D12CommandAllocator>(
+                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                )?;
 
-            let command_list = device.CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
-                0,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                &command_alloc,
-                None,
-            )?;
+                let command_list = device.CreateCommandList::<_, _, ID3D12GraphicsCommandList>(
+                    0,
+                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                    &command_alloc,
+                    None,
+                )?;
+                command_list.Close()?;
+
+                Ok::<_, anyhow::Error>((command_list, command_alloc))
+            })?;
 
             let mut fence = RendererFence::new(device)?;
 
@@ -290,7 +294,12 @@ impl Dx12Renderer {
             )?;
             let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
 
-            init_vertex_buffer(device, queue, &mut fence, &command_list, &vertex_buffer)?;
+            {
+                let (ref command_list, ref command_alloc) = command_list[0];
+                command_alloc.Reset()?;
+                command_list.Reset(command_alloc, None)?;
+                init_vertex_buffer(device, queue, &mut fence, command_list, &vertex_buffer)?;
+            }
 
             let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
                 &D3D12_DESCRIPTOR_HEAP_DESC {
@@ -311,7 +320,6 @@ impl Dx12Renderer {
                 texture_descriptor,
 
                 command_list,
-                command_alloc,
                 fence,
             })
         }
@@ -328,6 +336,7 @@ impl Dx12Renderer {
     }
 
     pub fn update_texture(&mut self, shared: SharedHandle) {
+        _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
 
@@ -395,10 +404,11 @@ impl Dx12Renderer {
             let backbuffer_index = swapchain.GetCurrentBackBufferIndex();
 
             let backbuffer = swapchain.GetBuffer::<ID3D12Resource>(backbuffer_index)?;
-            let command_list = &self.command_list;
+            let (ref command_list, ref command_alloc) =
+                self.command_list[backbuffer_index as usize];
 
-            self.command_alloc.Reset()?;
-            command_list.Reset(&self.command_alloc, &self.pipeline)?;
+            command_alloc.Reset()?;
+            command_list.Reset(command_alloc, &self.pipeline)?;
 
             command_list.SetGraphicsRootSignature(&self.sig);
             command_list.SetGraphicsRoot32BitConstants(0, 4, rect.as_ptr().cast(), 0);
@@ -451,7 +461,6 @@ impl Dx12Renderer {
             )]);
 
             command_list.Close()?;
-
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
         self.fence.register(queue)?;
