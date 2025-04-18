@@ -1,6 +1,10 @@
+mod cx;
+
 use core::{ffi::c_void, mem, ptr};
+use cx::OverlayGlContext;
 use gl::types::{GLint, GLuint};
 use tracing::trace;
+use windows::Win32::Graphics::Gdi::HDC;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -19,6 +23,8 @@ static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
+    cx: OverlayGlContext,
+
     size: (u32, u32),
     data: Vec<u8>,
     texture_size_outdated: bool,
@@ -34,7 +40,9 @@ pub struct OpenglRenderer {
 
 impl OpenglRenderer {
     #[tracing::instrument]
-    pub fn new() -> Self {
+    pub fn new(hdc: HDC) -> anyhow::Result<Self> {
+        let cx = OverlayGlContext::new(hdc)?;
+
         unsafe {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::BLEND);
@@ -99,7 +107,8 @@ impl OpenglRenderer {
             gl::DeleteShader(vert_shader);
             gl::DeleteShader(frag_shader);
 
-            Self {
+            Ok(Self {
+                cx,
                 size: (0, 0),
                 data: Vec::new(),
                 texture_size_outdated: true,
@@ -111,7 +120,7 @@ impl OpenglRenderer {
                 program,
                 rect_loc,
                 tex_loc,
-            }
+            })
         }
     }
 
@@ -136,65 +145,67 @@ impl OpenglRenderer {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) {
+    pub fn draw(&mut self, hdc: HDC, position: (f32, f32), screen: (u32, u32)) {
         if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
             return;
         }
 
-        if self.texture_size_outdated {
-            self.texture_size_outdated = false;
+        self.cx.with(hdc, || {
+            if self.texture_size_outdated {
+                self.texture_size_outdated = false;
+
+                unsafe {
+                    gl::TexImage2D(
+                        gl::TEXTURE_2D,
+                        0,
+                        gl::BGRA as _,
+                        self.size.0 as _,
+                        self.size.1 as _,
+                        0,
+                        gl::BGRA,
+                        gl::UNSIGNED_BYTE,
+                        ptr::null(),
+                    );
+                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+                }
+            }
+
+            if self.texture_outdated {
+                self.texture_outdated = false;
+
+                unsafe {
+                    gl::TexSubImage2D(
+                        gl::TEXTURE_2D,
+                        0,
+                        0,
+                        0,
+                        self.size.0 as _,
+                        self.size.1 as _,
+                        gl::BGRA,
+                        gl::UNSIGNED_BYTE,
+                        &self.data[..] as *const _ as _,
+                    );
+                }
+            }
+
+            let rect: [f32; 4] = [
+                (position.0 / screen.0 as f32) * 2.0 - 1.0,
+                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+                (self.size.0 as f32 / screen.0 as f32) * 2.0,
+                -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+            ];
 
             unsafe {
-                gl::TexImage2D(
-                    gl::TEXTURE_2D,
-                    0,
-                    gl::BGRA as _,
-                    self.size.0 as _,
-                    self.size.1 as _,
-                    0,
-                    gl::BGRA,
-                    gl::UNSIGNED_BYTE,
-                    ptr::null(),
-                );
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
-                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+                gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
+
+                gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
+                gl::ActiveTexture(gl::TEXTURE0);
+                gl::Uniform1i(self.tex_loc, 0);
+
+                gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
             }
-        }
-
-        if self.texture_outdated {
-            self.texture_outdated = false;
-
-            unsafe {
-                gl::TexSubImage2D(
-                    gl::TEXTURE_2D,
-                    0,
-                    0,
-                    0,
-                    self.size.0 as _,
-                    self.size.1 as _,
-                    gl::BGRA,
-                    gl::UNSIGNED_BYTE,
-                    &self.data[..] as *const _ as _,
-                );
-            }
-        }
-
-        let rect: [f32; 4] = [
-            (position.0 / screen.0 as f32) * 2.0 - 1.0,
-            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-            (self.size.0 as f32 / screen.0 as f32) * 2.0,
-            -(self.size.1 as f32 / screen.1 as f32) * 2.0,
-        ];
-
-        unsafe {
-            gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
-
-            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::Uniform1i(self.tex_loc, 0);
-
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
-        }
+        });
     }
 }
 
