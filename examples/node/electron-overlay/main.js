@@ -4,15 +4,15 @@ import path from 'node:path';
 import { defaultDllDir, Overlay } from 'asdf-overlay-node';
 import find from 'find-process';
 
-app.disableHardwareAcceleration();
-
 async function createOverlayWindow(pid) {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 600,
     height: 400,
     webPreferences: {
-      offscreen: true,
+      offscreen: {
+        useSharedTexture: true,
+      },
     },
   });
 
@@ -22,9 +22,18 @@ async function createOverlayWindow(pid) {
     pid,
   );
 
-  mainWindow.webContents.on('paint', (e, _, image) => {
-    const size = image.getSize();
-    overlay.updateBitmap(size.width, image.getBitmap()).catch(console.error);
+  mainWindow.webContents.on('paint', (e) => {
+    if (!e.texture) {
+      return;
+    }
+
+    (async () => {
+      try {
+        await overlay.updateShtex(e.texture.textureInfo.sharedTextureHandle);
+      } finally {
+        e.texture.release();
+      }
+    })();
   });
 
   // Open the DevTools.
