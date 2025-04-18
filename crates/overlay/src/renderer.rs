@@ -32,13 +32,13 @@ impl Renderers {
     #[tracing::instrument(skip(self))]
     pub fn update_texture(&mut self, shared: SharedHandle) {
         if let Some(ref mut renderer) = self.dx12 {
-            // renderer.update_texture(bitmap.width, bitmap.data);
+            renderer.update_texture(shared);
         } else if let Some(ref mut renderer) = self.dx11 {
             renderer.update_texture(shared);
         } else if let Some(ref mut renderer) = self.opengl {
             // renderer.update_texture(bitmap.width, bitmap.data);
         } else if let Some(ref mut renderer) = self.dx9 {
-            // renderer.update_texture(bitmap.width, bitmap.data);
+            renderer.update_texture(shared);
         }
 
         trace!("overlay texture updated");
