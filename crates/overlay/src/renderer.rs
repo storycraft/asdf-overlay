@@ -73,6 +73,14 @@ impl<T> OverlayTextureState<T> {
         Self::None
     }
 
+    pub fn map<R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
+        if let Self::Created(ref created) = *self {
+            Some(f(created))
+        } else {
+            None
+        }
+    }
+
     pub fn update(&mut self, shared: SharedHandle) {
         match shared.handle {
             Some(handle) => *self = Self::Handle(handle),
@@ -93,7 +101,7 @@ impl<T> OverlayTextureState<T> {
                     let Self::Created(created) = self else {
                         unreachable!();
                     };
-    
+
                     Some(created)
                 } else {
                     *self = Self::None;

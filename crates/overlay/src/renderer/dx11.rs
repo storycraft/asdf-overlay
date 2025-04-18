@@ -220,10 +220,7 @@ impl Dx11Renderer {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        let OverlayTextureState::Created(Dx11Tex { size, .. }) = self.texture else {
-            return (0, 0);
-        };
-        size
+        self.texture.map(|tex| tex.size).unwrap_or((0, 0))
     }
 
     pub fn update_texture(&mut self, shared: SharedHandle) {
