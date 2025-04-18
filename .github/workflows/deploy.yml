@@ -50,7 +50,7 @@ jobs:
       - name: bump node package version
         id: bump
         run: |
-          $ver = "0.1.2"
+          $ver = "v0.1.2"
           "version=" + $ver.substring(1) >> $env:GITHUB_OUTPUT
 
       - name: bump cargo package versions, publish
