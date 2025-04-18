@@ -5,10 +5,11 @@ use core::{
 };
 
 use anyhow::Context;
+use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, HANDLE},
+        Foundation::HANDLE,
         Graphics::{
             Direct3D::{
                 D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN, D3D_SRV_DIMENSION_TEXTURE2D,
@@ -35,6 +36,8 @@ use windows::{
     core::{BOOL, Interface, s},
 };
 
+use super::OverlayTextureState;
+
 const TEXTURE_SHADER: &str = include_str!("dx11/shaders/texture.hlsl");
 
 #[derive(Clone, Copy)]
@@ -60,21 +63,10 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
     InstanceDataStepRate: 0,
 }];
 
-enum TextureState {
-    None,
-    Handle(NonZeroUsize),
-    Created {
-        texture: ID3D11Texture2D,
-        view: ID3D11ShaderResourceView,
-    },
-}
-
-impl Drop for TextureState {
-    fn drop(&mut self) {
-        if let Self::Handle(handle) = self {
-            unsafe { _ = CloseHandle(HANDLE(handle.get() as _)) };
-        }
-    }
+struct Dx11Tex {
+    size: (u32, u32),
+    texture: ID3D11Texture2D,
+    view: ID3D11ShaderResourceView,
 }
 
 pub struct Dx11Renderer {
@@ -83,7 +75,7 @@ pub struct Dx11Renderer {
     input_layout: ID3D11InputLayout,
     vertex_buffer: ID3D11Buffer,
     constant_buffer: ID3D11Buffer,
-    texture: TextureState,
+    texture: OverlayTextureState<Dx11Tex>,
 
     vertex_shader: ID3D11VertexShader,
     pixel_shader: ID3D11PixelShader,
@@ -218,7 +210,7 @@ impl Dx11Renderer {
                 input_layout,
                 vertex_buffer,
                 constant_buffer,
-                texture: TextureState::None,
+                texture: OverlayTextureState::new(),
 
                 vertex_shader,
                 pixel_shader,
@@ -228,23 +220,14 @@ impl Dx11Renderer {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        let TextureState::Created { ref texture, .. } = self.texture else {
+        let OverlayTextureState::Created(Dx11Tex { size, .. }) = self.texture else {
             return (0, 0);
         };
-
-        let mut desc = D3D11_TEXTURE2D_DESC::default();
-        unsafe { texture.GetDesc(&mut desc) };
-
-        (desc.Width, desc.Height)
+        size
     }
 
-    pub fn update_texture(&mut self, handle: Option<NonZeroUsize>) {
-        let Some(handle) = handle else {
-            self.texture = TextureState::None;
-            return;
-        };
-
-        self.texture = TextureState::Handle(handle);
+    pub fn update_texture(&mut self, shared: SharedHandle) {
+        self.texture.update(shared);
     }
 
     #[tracing::instrument(skip(self))]
@@ -259,58 +242,16 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let (texture, view) = match self.texture {
-            TextureState::None => return Ok(()),
-
-            TextureState::Handle(handle) => unsafe {
-                self.texture = TextureState::None;
-                let mut texture = None;
-                if device
-                    .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle.get() as _), &mut texture)
-                    .is_err()
-                {
-                    self.texture = TextureState::None;
-                }
-                let texture = texture.context("failed to open shared texture")?;
-
-                let mut view = None;
-                device.CreateShaderResourceView(
-                    &texture,
-                    Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
-                        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
-                        Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
-                            Texture2D: D3D11_TEX2D_SRV {
-                                MostDetailedMip: 0,
-                                MipLevels: 1,
-                            },
-                        },
-                    }),
-                    Some(&mut view),
-                )?;
-                let view = view.context("cannot create texture view")?;
-                self.texture = TextureState::Created { texture, view };
-                let TextureState::Created {
-                    ref texture,
-                    ref view,
-                } = self.texture
-                else {
-                    unreachable!()
-                };
-
-                (texture, view)
-            },
-
-            TextureState::Created {
-                ref texture,
-                ref view,
-            } => (texture, view),
-        };
-
-        let size = self.size();
-        if size.0 == 0 || size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
+        let Some(Dx11Tex {
+            size,
+            texture,
+            view,
+        }) = self
+            .texture
+            .get_or_create(|handle| open_shared_texture(device, handle))?
+        else {
             return Ok(());
-        }
+        };
 
         let rect = [
             (position.0 / screen.0 as f32) * 2.0 - 1.0,
@@ -394,4 +335,54 @@ impl Dx11Renderer {
 
         Ok(())
     }
+}
+
+fn open_shared_texture(
+    device: &ID3D11Device,
+    handle: NonZeroUsize,
+) -> anyhow::Result<Option<Dx11Tex>> {
+    let mut texture = None;
+    if unsafe {
+        device.OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle.get() as _), &mut texture)
+    }
+    .is_err()
+    {
+        return Ok(None);
+    }
+    let texture = texture.context("failed to open shared texture")?;
+
+    let mut desc = D3D11_TEXTURE2D_DESC::default();
+    unsafe {
+        texture.GetDesc(&mut desc);
+    }
+
+    let size = (desc.Width, desc.Height);
+    if size.0 == 0 || size.1 == 0 {
+        return Ok(None);
+    }
+
+    let mut view = None;
+    unsafe {
+        device.CreateShaderResourceView(
+            &texture,
+            Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                    Texture2D: D3D11_TEX2D_SRV {
+                        MostDetailedMip: 0,
+                        MipLevels: 1,
+                    },
+                },
+            }),
+            Some(&mut view),
+        )?;
+    }
+    let view = view.context("cannot create texture view")?;
+
+    Ok(Some(Dx11Tex {
+        size,
+        texture,
+        view,
+    }))
 }

@@ -12,6 +12,7 @@ use dx12::Dx12Renderer;
 use opengl::OpenglRenderer;
 use parking_lot::Mutex;
 use tracing::{debug, trace};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 static RENDERER: Mutex<Renderers> = Mutex::new(Renderers {
     dx12: None,
@@ -33,7 +34,7 @@ impl Renderers {
         if let Some(ref mut renderer) = self.dx12 {
             // renderer.update_texture(bitmap.width, bitmap.data);
         } else if let Some(ref mut renderer) = self.dx11 {
-            renderer.update_texture(shared.handle);
+            renderer.update_texture(shared);
         } else if let Some(ref mut renderer) = self.opengl {
             // renderer.update_texture(bitmap.width, bitmap.data);
         } else if let Some(ref mut renderer) = self.dx9 {
@@ -58,5 +59,63 @@ impl Renderers {
         }
 
         debug!("renderer cleaned up");
+    }
+}
+
+enum OverlayTextureState<T> {
+    None,
+    Handle(NonZeroUsize),
+    Created(T),
+}
+
+impl<T> OverlayTextureState<T> {
+    pub const fn new() -> Self {
+        Self::None
+    }
+
+    pub fn update(&mut self, shared: SharedHandle) {
+        match shared.handle {
+            Some(handle) => *self = Self::Handle(handle),
+            None => *self = Self::None,
+        }
+    }
+
+    pub fn get_or_create(
+        &mut self,
+        f: impl FnOnce(NonZeroUsize) -> anyhow::Result<Option<T>>,
+    ) -> anyhow::Result<Option<&mut T>> {
+        Ok(match *self {
+            Self::None => None,
+
+            Self::Handle(handle) => {
+                if let Some(created) = f(handle)? {
+                    *self = Self::Created(created);
+                    let Self::Created(created) = self else {
+                        unreachable!();
+                    };
+    
+                    Some(created)
+                } else {
+                    *self = Self::None;
+                    None
+                }
+            }
+
+            Self::Created(ref mut created) => Some(created),
+        })
+    }
+}
+
+impl<T> Default for OverlayTextureState<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Drop for OverlayTextureState<T> {
+    fn drop(&mut self) {
+        if let Self::Handle(handle) = self {
+            unsafe { _ = CloseHandle(HANDLE(handle.get() as _)) };
+        }
     }
 }
