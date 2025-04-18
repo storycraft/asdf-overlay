@@ -258,12 +258,6 @@ impl Dx11Renderer {
         ];
 
         unsafe {
-            let mutex = texture.cast::<IDXGIKeyedMutex>()?;
-            mutex.AcquireSync(0, u32::MAX)?;
-            defer!({
-                _ = mutex.ReleaseSync(0);
-            });
-
             {
                 let mut mapped_cbuffer = D3D11_MAPPED_SUBRESOURCE::default();
                 self.context.Map(
@@ -325,9 +319,16 @@ impl Dx11Renderer {
                 .FinishCommandList(false, Some(&mut command_list))?;
             let command_list = command_list.context("command list writing failed")?;
 
-            device
-                .GetImmediateContext()?
-                .ExecuteCommandList(&command_list, true);
+            {
+                let mutex = texture.cast::<IDXGIKeyedMutex>()?;
+                mutex.AcquireSync(0, u32::MAX)?;
+                defer!({
+                    _ = mutex.ReleaseSync(0);
+                });
+                device
+                    .GetImmediateContext()?
+                    .ExecuteCommandList(&command_list, true);
+            }
         }
 
         Ok(())
