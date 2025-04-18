@@ -4,7 +4,7 @@ use std::env::{self, current_exe};
 use anyhow::Context;
 use asdf_overlay_client::{
     common::{
-        message::{Position, Request, SharedHandle},
+        message::{Position, Request},
         size::PercentLength,
     },
     inject,
@@ -54,12 +54,9 @@ async fn main() -> anyhow::Result<()> {
         data.resize(200 * 200 * 4, 0);
         rand::fill(&mut data[..]);
 
-        let updated = surface.update_bitmap(200 as _, &data)?;
-        if let Some(handle) = updated {
-            conn.request(Request::UpdateShtex(SharedHandle {
-                handle: Some(handle),
-            }))
-            .await?;
+        let update = surface.update_bitmap(200 as _, &data)?;
+        if let Some(shared) = update {
+            conn.request(Request::UpdateShtex(shared)).await?;
         }
 
         sleep(Duration::from_millis(10)).await;

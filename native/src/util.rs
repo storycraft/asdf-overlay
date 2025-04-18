@@ -12,7 +12,7 @@ use windows::Win32::{
     },
 };
 
-use crate::{runtime, MANAGER};
+use crate::{MANAGER, runtime};
 
 pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     let mut native_output = IMAGE_FILE_MACHINE_UNKNOWN;

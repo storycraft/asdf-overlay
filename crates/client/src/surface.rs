@@ -1,6 +1,7 @@
 use core::{num::NonZeroUsize, ptr, u32};
 
 use anyhow::Context;
+use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -72,10 +73,10 @@ impl OverlaySurface {
         &mut self,
         width: u32,
         data: &[u8],
-    ) -> anyhow::Result<Option<NonZeroUsize>> {
+    ) -> anyhow::Result<Option<SharedHandle>> {
         if width == 0 || data.is_empty() {
             self.texture = None;
-            return Ok(None);
+            return Ok(Some(SharedHandle { handle: None }));
         }
 
         let size = (width, (data.len() / width as usize / 4) as u32);
@@ -133,9 +134,11 @@ impl OverlaySurface {
                         .texture
                         .insert(texture.context("cannot create texture")?);
 
-                    Ok(NonZeroUsize::new(
-                        texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,
-                    ))
+                    Ok(Some(SharedHandle {
+                        handle: NonZeroUsize::new(
+                            texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,
+                        ),
+                    }))
                 }
             }
         }
