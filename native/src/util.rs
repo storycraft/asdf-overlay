@@ -28,18 +28,16 @@ pub fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     }
 }
 
-pub fn request_promise<'a>(
+pub fn with_rt<'a>(
     cx: &mut FunctionContext<'a>,
-    id: u32,
-    request: Request,
+    fut: impl Future<Output = anyhow::Result<()>> + Send + 'static,
 ) -> JsResult<'a, JsPromise> {
     let rt = runtime(cx)?;
     let channel = cx.channel();
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER.request(id, request).await;
-
+        let res = fut.await;
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(_) => Ok(JsUndefined::new(&mut cx)),
             Err(err) => cx.throw_error(format!("{err:?}")),
@@ -47,4 +45,20 @@ pub fn request_promise<'a>(
     });
 
     Ok(promise)
+}
+
+pub fn request_promise<'a>(
+    cx: &mut FunctionContext<'a>,
+    id: u32,
+    request: Request,
+) -> JsResult<'a, JsPromise> {
+    with_rt(cx, async move {
+        MANAGER.with_mut(id, async |overlay| {
+            overlay.ipc.request(request).await?;
+
+            Ok::<_, anyhow::Error>(())
+        }).await??;
+
+        Ok(())
+    })
 }

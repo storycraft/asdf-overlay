@@ -2,7 +2,6 @@ mod util;
 mod wrapper;
 
 use core::{
-    num::NonZeroUsize,
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
@@ -12,7 +11,7 @@ use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
         ipc::server::IpcServerConn,
-        message::{Anchor, Margin, Position, Request, SharedHandle},
+        message::{Anchor, Margin, Position, Request},
     },
     inject,
     process::OwnedProcess,
@@ -25,7 +24,7 @@ use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
-use util::{get_process_arch, request_promise};
+use util::{get_process_arch, request_promise, with_rt};
 use windows::Win32::{
     Foundation::HANDLE,
     System::SystemInformation::{
@@ -34,14 +33,14 @@ use windows::Win32::{
 };
 use wrapper::percent_length_from_object;
 
-struct OverlayConn {
+struct Overlay {
     surface: OverlaySurface,
     ipc: IpcServerConn,
 }
 
 struct Manager {
     next_id: AtomicU32,
-    map: DashMap<u32, tokio::sync::Mutex<OverlayConn>, FxBuildHasher>,
+    map: DashMap<u32, tokio::sync::Mutex<Overlay>, FxBuildHasher>,
 }
 
 impl Manager {
@@ -85,28 +84,19 @@ impl Manager {
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
         self.map
-            .insert(id, tokio::sync::Mutex::new(OverlayConn { surface, ipc }));
+            .insert(id, tokio::sync::Mutex::new(Overlay { surface, ipc }));
 
         Ok(id)
     }
 
-    async fn update_bitmap(
+    async fn with_mut<R>(
         &self,
         id: u32,
-        width: u32,
-        data: &[u8],
-    ) -> anyhow::Result<Option<NonZeroUsize>> {
-        let conn = self.map.get(&id).context("invalid id")?;
-        let update = conn.lock().await.surface.update_bitmap(width, data)?;
-
-        Ok(update)
-    }
-
-    async fn request(&self, id: u32, request: Request) -> anyhow::Result<()> {
-        let conn = self.map.get(&id).context("invalid id")?;
-        conn.lock().await.ipc.request(request).await?;
-
-        Ok(())
+        f: impl AsyncFnOnce(&mut Overlay) -> R,
+    ) -> anyhow::Result<R> {
+        let overlay = self.map.get(&id).context("invalid id")?;
+        let mut overlay = overlay.lock().await;
+        Ok(f(&mut *overlay).await)
     }
 
     fn destroy(&self, id: u32) -> anyhow::Result<()> {
@@ -201,33 +191,19 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
+    with_rt(&mut cx, async move {
+        MANAGER
+            .with_mut(id, async move |overlay| {
+                if let Some(shared) = overlay.surface.update_bitmap(width, &data)? {
+                    overlay.ipc.request(Request::UpdateShtex(shared)).await?;
+                }
 
-    let (deferred, promise) = cx.promise();
-    rt.spawn(async move {
-        let update = MANAGER.update_bitmap(id, width, &data).await.unwrap();
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
 
-        let res = if let Some(handle) = update {
-            MANAGER
-                .request(
-                    id,
-                    Request::UpdateShtex(SharedHandle {
-                        handle: Some(handle),
-                    }),
-                )
-                .await
-        } else {
-            Ok(())
-        };
-
-        deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(_) => Ok(JsUndefined::new(&mut cx)),
-            Err(err) => cx.throw_error(format!("{err:?}")),
-        });
-    });
-
-    Ok(promise)
+        Ok(())
+    })
 }
 
 fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -235,13 +211,19 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let handle_slice = cx.argument::<JsBuffer>(1)?.as_slice(&mut cx);
     let handle = pod_read_unaligned::<usize>(handle_slice);
 
-    request_promise(
-        &mut cx,
-        id,
-        Request::UpdateShtex(SharedHandle {
-            handle: NonZeroUsize::new(handle),
-        }),
-    )
+    with_rt(&mut cx, async move {
+        MANAGER
+            .with_mut(id, async move |overlay| {
+                if let Some(shared) = overlay.surface.update_from_shared(HANDLE(handle as _))? {
+                    overlay.ipc.request(Request::UpdateShtex(shared)).await?;
+                }
+
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
+
+        Ok(())
+    })
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
