@@ -455,7 +455,6 @@ impl Dx12Renderer {
             call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
         self.fence.register(queue)?;
-        self.fence.wait_pending()?;
 
         Ok(())
     }
