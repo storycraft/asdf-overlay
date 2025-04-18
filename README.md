@@ -44,7 +44,11 @@ pnpm build
 Examples are located in `examples` directory.
 
 ### Node
-To be added...
+Run
+```bash
+pnpm build && pnpm --filter electron-overlay start <process_name>
+```
+Electron window overlay will be added on target process
 
 ### Rust
 Run
