@@ -11,9 +11,8 @@ use windows::Win32::{
     Graphics::Direct3D9::{
         D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
         D3DLOCK_DISCARD, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
-        D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC,
-        D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9,
-        IDirect3DVertexBuffer9,
+        D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC, D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9,
+        IDirect3DTexture9, IDirect3DVertexBuffer9,
     },
 };
 
@@ -111,16 +110,16 @@ impl Dx9Renderer {
                 texture,
             }) = self.texture.get_or_create(|handle| {
                 let mut texture = None;
-                device.CreateTexture(
-                    256,
-                    256,
+                dbg!(device.CreateTexture(
+                    200,
+                    200,
                     1,
-                    0,
+                    0 as _,
                     D3DFMT_A8R8G8B8,
                     D3DPOOL_DEFAULT,
                     &mut texture,
                     &mut HANDLE(handle.get() as _),
-                )?;
+                ))?;
                 let texture = texture.context("cannot create texture")?;
 
                 Ok(Some(Dx9Tex {
@@ -143,8 +142,8 @@ impl Dx9Renderer {
                     -(size.1 as f32 / screen.1 as f32) * 2.0,
                 );
                 let texture_size = (
-                    size.0 as f32 / texture_size.0 as f32,
-                    size.1 as f32 / texture_size.1 as f32,
+                    size.0 / texture_size.0 as f32,
+                    size.1 / texture_size.1 as f32,
                 );
 
                 [

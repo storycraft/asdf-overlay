@@ -53,7 +53,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
                 let size = renderer.size();
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
-            _ = trace!("{:?}", renderer.draw(device, position, screen));
+            trace!("{:?}", renderer.draw(device, position, screen));;
         });
     }
 

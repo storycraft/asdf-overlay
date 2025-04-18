@@ -53,11 +53,13 @@ pub fn request_promise<'a>(
     request: Request,
 ) -> JsResult<'a, JsPromise> {
     with_rt(cx, async move {
-        MANAGER.with_mut(id, async |overlay| {
-            overlay.ipc.request(request).await?;
+        MANAGER
+            .with_mut(id, async |overlay| {
+                overlay.ipc.request(request).await?;
 
-            Ok::<_, anyhow::Error>(())
-        }).await??;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
 
         Ok(())
     })

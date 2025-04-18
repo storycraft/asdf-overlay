@@ -5,9 +5,7 @@ mod sync;
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
 use buffer::UploadBuffer;
-use scopeguard::defer;
 use core::{
-    array,
     mem::{self, ManuallyDrop},
     slice::{self},
     str,
@@ -15,18 +13,20 @@ use core::{
 use rtv::RtvDescriptors;
 use sync::RendererFence;
 use windows::{
-    core::{s, Interface, BOOL}, Win32::{
+    Win32::{
         Foundation::{HANDLE, RECT},
         Graphics::{
             Direct3D::{
-                Fxc::{D3DCompile, D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS}, D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN
+                D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN,
+                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D12::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC}, IDXGIKeyedMutex, IDXGISwapChain, IDXGISwapChain3
+                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC}, IDXGISwapChain, IDXGISwapChain3,
             },
         },
-    }
+    },
+    core::{BOOL, s},
 };
 
 use crate::{hook::call_original_execute_command_lists, util::wrap_com_manually_drop};
@@ -385,7 +385,7 @@ impl Dx12Renderer {
             }
 
             Ok(Some(Dx12Tex {
-                size: (desc.Width as u32, desc.Height as u32),
+                size: (desc.Width as u32, desc.Height),
                 _resource: texture,
             }))
         })?

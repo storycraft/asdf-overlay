@@ -208,13 +208,13 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let handle_slice = cx.argument::<JsBuffer>(1)?.as_slice(&mut cx);
+    let handle_slice = cx.argument::<JsBuffer>(1)?.as_slice(&cx);
     let handle = pod_read_unaligned::<usize>(handle_slice);
 
     with_rt(&mut cx, async move {
         MANAGER
             .with_mut(id, async move |overlay| {
-                if let Some(shared) = overlay.surface.update_from_shared(HANDLE(handle as _))? {
+                if let Some(shared) = overlay.surface.update_from_nt_shared(HANDLE(handle as _))? {
                     overlay.ipc.request(Request::UpdateShtex(shared)).await?;
                 }
 

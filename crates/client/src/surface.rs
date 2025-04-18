@@ -1,4 +1,4 @@
-use core::{num::NonZeroUsize, ptr, u32};
+use core::{num::NonZeroUsize, ptr};
 
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
@@ -58,32 +58,52 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         self.texture = BufferedTexture::new();
     }
 
+    pub fn update_from_nt_shared(
+        &mut self,
+        handle: HANDLE,
+    ) -> anyhow::Result<Option<SharedHandle>> {
+        let device1 = self.device.cast::<ID3D11Device1>()?;
+        let src_texture = unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(handle)? };
+        self.update_copy_from(&src_texture)
+    }
+
     pub fn update_from_shared(&mut self, handle: HANDLE) -> anyhow::Result<Option<SharedHandle>> {
         let mut src_texture = None;
-        let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe {
             self.device
-                .OpenSharedResource::<ID3D11Texture2D>(handle, &mut src_texture)?;
-        }
-        let src_texture = src_texture.context("cannot open shared texture")?;
+                .OpenSharedResource::<ID3D11Texture2D>(handle, &mut src_texture)?
+        };
+        let src_texture = src_texture.unwrap();
+
+        self.update_copy_from(&src_texture)
+    }
+
+    fn update_copy_from(
+        &mut self,
+        src_texture: &ID3D11Texture2D,
+    ) -> anyhow::Result<Option<SharedHandle>> {
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe {
             src_texture.GetDesc(&mut desc);
         }
-
         let size = (desc.Width, desc.Height);
         let surface = self.texture.texture_for(size.0, size.1);
 
+        let copy_texture = |surface: &ID3D11Texture2D| unsafe {
+            let mutex = surface.cast::<IDXGIKeyedMutex>()?;
+            mutex.AcquireSync(0, u32::MAX)?;
+            defer!({
+                _ = mutex.ReleaseSync(0);
+            });
+            self.cx.CopyResource(surface, src_texture);
+            self.cx.Flush();
+
+            Ok::<_, anyhow::Error>(())
+        };
+
         match *surface {
             Some(ref surface) => {
-                let mutex = surface.cast::<IDXGIKeyedMutex>()?;
-                unsafe {
-                    mutex.AcquireSync(0, u32::MAX)?;
-                    defer!({
-                        _ = mutex.ReleaseSync(0);
-                    });
-                    self.cx.CopyResource(surface, &src_texture);
-                    self.cx.Flush();
-                }
+                copy_texture(surface)?;
 
                 Ok(None)
             }
@@ -91,16 +111,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             None => {
                 let surface =
                     surface.insert(create_surface_texture(&self.device, size.0, size.1, None)?);
-                unsafe {
-                    self.cx.CopyResource(&*surface, &src_texture);
-                    self.cx.Flush();
+                copy_texture(surface)?;
 
-                    Ok(Some(SharedHandle {
-                        handle: NonZeroUsize::new(
-                            surface.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,
-                        ),
-                    }))
-                }
+                Ok(Some(SharedHandle {
+                    handle: NonZeroUsize::new(
+                        unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as usize,
+                    ),
+                }))
             }
         }
     }
@@ -189,7 +206,7 @@ fn create_surface_texture(
             Some(&mut texture),
         )?;
 
-        Ok(texture.context("cannot create texture")?)
+        texture.context("cannot create texture")
     }
 }
 
