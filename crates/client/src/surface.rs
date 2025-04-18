@@ -20,14 +20,14 @@ use windows::{
 
 const DEFAULT_FEATURE_LEVELS: [D3D_FEATURE_LEVEL; 1] = [D3D_FEATURE_LEVEL_11_0];
 
-pub struct OverlaySurface {
+pub struct OverlaySurface<const BUFFERS: usize = 2> {
     device: ID3D11Device,
     cx: ID3D11DeviceContext,
 
-    texture: Option<ID3D11Texture2D>,
+    texture: BufferedTexture<BUFFERS>,
 }
 
-impl OverlaySurface {
+impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     pub fn new() -> anyhow::Result<Self> {
         let mut device = None;
         let mut cx = None;
@@ -50,13 +50,13 @@ impl OverlaySurface {
         Ok(Self {
             device,
             cx,
-            texture: None,
+            texture: BufferedTexture::new(),
         })
     }
 
     fn desc(&self) -> D3D11_TEXTURE2D_DESC {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
-        let Some(ref texture) = self.texture else {
+        let Some(ref texture) = *self.texture.get(self.texture.current_index()) else {
             return desc;
         };
 
@@ -69,25 +69,31 @@ impl OverlaySurface {
         (desc.Width, desc.Height)
     }
 
+    pub fn clear(&mut self) {
+        self.texture = BufferedTexture::new();
+    }
+
     pub fn update_bitmap(
         &mut self,
         width: u32,
         data: &[u8],
     ) -> anyhow::Result<Option<SharedHandle>> {
+        let next_index = self.texture.next_index();
+
         if width == 0 || data.is_empty() {
-            self.texture = None;
+            *self.texture.get_mut(next_index) = None;
             return Ok(Some(SharedHandle { handle: None }));
         }
 
         let size = (width, (data.len() / width as usize / 4) as u32);
         let prev_size = self.size();
+        let surface = self.texture.get_mut(next_index);
         if prev_size.0 != size.0 || prev_size.1 != size.1 {
-            self.texture = None;
+            *surface = None;
         }
 
         let row_pitch = width * 4;
-
-        match self.texture {
+        match *surface {
             Some(ref texture) => {
                 let mutex = texture.cast::<IDXGIKeyedMutex>()?;
                 unsafe {
@@ -130,9 +136,8 @@ impl OverlaySurface {
                         }),
                         Some(&mut texture),
                     )?;
-                    let texture = self
-                        .texture
-                        .insert(texture.context("cannot create texture")?);
+                    let texture = surface.insert(texture.context("cannot create texture")?);
+                    self.cx.Flush();
 
                     Ok(Some(SharedHandle {
                         handle: NonZeroUsize::new(
@@ -142,5 +147,39 @@ impl OverlaySurface {
                 }
             }
         }
+    }
+}
+
+struct BufferedTexture<const BUFFERS: usize> {
+    texture: [Option<ID3D11Texture2D>; BUFFERS],
+    index: usize,
+}
+
+impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
+    pub fn new() -> Self {
+        Self {
+            texture: [const { None }; BUFFERS],
+            index: 0,
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> &Option<ID3D11Texture2D> {
+        &self.texture[index]
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, index: usize) -> &mut Option<ID3D11Texture2D> {
+        &mut self.texture[index]
+    }
+
+    #[inline]
+    pub fn current_index(&self) -> usize {
+        self.index
+    }
+
+    pub fn next_index(&mut self) -> usize {
+        self.index = (self.index + 1) % BUFFERS;
+        self.index
     }
 }
