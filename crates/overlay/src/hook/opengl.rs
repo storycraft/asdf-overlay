@@ -42,6 +42,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
     cx.with(HDC(hdc), || {
         Renderers::with(|renderers| {
+            trace!("using opengl renderer");
             let renderer = renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
@@ -51,14 +52,17 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             });
 
             let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
-            Overlay::with(|overlay| {
+            let position = Overlay::with(|overlay| {
                 let size = renderer.size();
-                trace!("using opengl renderer");
-                _ = renderer.draw(
-                    overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
-                    screen,
-                );
-            })
+
+                if let Some(shared) = overlay.take_pending_handle() {
+                    renderer.update_texture(shared);
+                }
+
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+            });
+
+            _ = renderer.draw(position, screen);
         })
     });
 

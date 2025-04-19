@@ -175,6 +175,11 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
 
             let position = Overlay::with(|overlay| {
                 let size = renderer.size();
+
+                if let Some(shared) = overlay.take_pending_handle() {
+                    renderer.update_texture(shared);
+                }
+
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
             trace!("using dx12 renderer");
@@ -188,6 +193,11 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
         });
         let position = Overlay::with(|overlay| {
             let size = renderer.size();
+
+            if let Some(shared) = overlay.take_pending_handle() {
+                renderer.update_texture(shared);
+            }
+
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
 
