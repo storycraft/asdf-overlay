@@ -319,16 +319,9 @@ impl Dx11Renderer {
                 .FinishCommandList(false, Some(&mut command_list))?;
             let command_list = command_list.context("command list writing failed")?;
 
-            {
-                let mutex = texture.cast::<IDXGIKeyedMutex>()?;
-                mutex.AcquireSync(0, u32::MAX)?;
-                defer!({
-                    _ = mutex.ReleaseSync(0);
-                });
-                device
-                    .GetImmediateContext()?
-                    .ExecuteCommandList(&command_list, true);
-            }
+            device
+                .GetImmediateContext()?
+                .ExecuteCommandList(&command_list, true);
         }
 
         Ok(())
