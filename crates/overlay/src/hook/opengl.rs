@@ -1,8 +1,11 @@
+mod cx;
+
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use parking_lot::RwLock;
+use cx::OverlayGlContext;
+use parking_lot::{Mutex, RwLock};
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -25,6 +28,8 @@ use crate::{
 
 use super::DetourHook;
 
+static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
+
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     let Some(ref hook) = *HOOK.read() else {
@@ -32,24 +37,28 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    Renderers::with(|renderers| {
-        let renderer = renderers.opengl.get_or_insert_with(|| {
-            debug!("setting up opengl");
-            setup_gl().unwrap();
+    let mut cx = CX.lock();
+    let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
 
-            debug!("initializing opengl renderer");
-            OpenglRenderer::new(HDC(hdc)).expect("renderer creation failed")
-        });
+    cx.with(HDC(hdc), || {
+        Renderers::with(|renderers| {
+            let renderer = renderers.opengl.get_or_insert_with(|| {
+                debug!("setting up opengl");
+                setup_gl().unwrap();
 
-        let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
-        Overlay::with(|overlay| {
-            let size = renderer.size();
-            trace!("using opengl renderer");
-            renderer.draw(
-                HDC(hdc),
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
-                screen,
-            );
+                debug!("initializing opengl renderer");
+                OpenglRenderer::new().expect("renderer creation failed")
+            });
+
+            let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
+            Overlay::with(|overlay| {
+                let size = renderer.size();
+                trace!("using opengl renderer");
+                _ = renderer.draw(
+                    overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
+                    screen,
+                );
+            })
         })
     });
 
