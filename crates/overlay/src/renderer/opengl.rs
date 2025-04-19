@@ -1,10 +1,26 @@
-mod cx;
-
+use anyhow::bail;
+use asdf_overlay_common::message::SharedHandle;
 use core::{ffi::c_void, mem, ptr};
-use cx::OverlayGlContext;
 use gl::types::{GLint, GLuint};
+use scopeguard::defer;
 use tracing::trace;
-use windows::Win32::Graphics::Gdi::HDC;
+use windows::{
+    Win32::{
+        Foundation::{HANDLE, HMODULE},
+        Graphics::{
+            Direct3D::D3D_DRIVER_TYPE_HARDWARE,
+            Direct3D11::{
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
+                D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
+            },
+        },
+    },
+    core::Interface,
+};
+
+use crate::wgl;
+
+use super::OverlayTextureState;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -23,12 +39,11 @@ static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
-    cx: OverlayGlContext,
+    dx_device_handle: *mut c_void,
+    dx_device: ID3D11Device,
+    _dx_cx: ID3D11DeviceContext,
 
-    size: (u32, u32),
-    data: Vec<u8>,
-    texture_size_outdated: bool,
-    texture_outdated: bool,
+    state: OverlayTextureState<Tex>,
 
     vertex_buffer: GLuint,
     vao: GLuint,
@@ -40,10 +55,29 @@ pub struct OpenglRenderer {
 
 impl OpenglRenderer {
     #[tracing::instrument]
-    pub fn new(hdc: HDC) -> anyhow::Result<Self> {
-        let cx = OverlayGlContext::new(hdc)?;
-
+    pub fn new() -> anyhow::Result<Self> {
         unsafe {
+            let mut dx_device = None;
+            let mut dx_cx = None;
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                HMODULE(ptr::null_mut()),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut dx_device),
+                None,
+                Some(&mut dx_cx),
+            )?;
+            let dx_device = dx_device.unwrap();
+            let dx_device_handle = wgl::DXOpenDeviceNV(dx_device.as_raw()).cast_mut();
+            if dx_device_handle.is_null() {
+                bail!("DXOpenDeviceNV failed");
+            }
+
+            let dx_cx = dx_cx.unwrap();
+
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::BLEND);
 
@@ -75,6 +109,9 @@ impl OpenglRenderer {
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
 
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
             gl::ShaderSource(
@@ -108,11 +145,11 @@ impl OpenglRenderer {
             gl::DeleteShader(frag_shader);
 
             Ok(Self {
-                cx,
-                size: (0, 0),
-                data: Vec::new(),
-                texture_size_outdated: true,
-                texture_outdated: true,
+                dx_device_handle,
+                dx_device,
+                _dx_cx: dx_cx,
+
+                state: OverlayTextureState::new(),
 
                 vertex_buffer,
                 vao,
@@ -125,94 +162,96 @@ impl OpenglRenderer {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        self.size
+        self.state.map(|tex| tex.size).unwrap_or((0, 0))
     }
 
-    pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
-        if width == 0 || data.len() < width as _ {
-            return;
-        }
-
-        let size = (width, (data.len() / width as usize / 4) as u32);
-
-        if self.size != size {
-            self.texture_size_outdated = true;
-        }
-
-        self.size = size;
-        self.data = data;
-        self.texture_outdated = true;
+    pub fn update_texture(&mut self, shared: SharedHandle) {
+        self.state.update(shared);
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn draw(&mut self, hdc: HDC, position: (f32, f32), screen: (u32, u32)) {
-        if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
-            return;
+    pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) -> anyhow::Result<()> {
+        if screen.0 == 0 || screen.1 == 0 {
+            return Ok(());
         }
 
-        self.cx.with(hdc, || {
-            if self.texture_size_outdated {
-                self.texture_size_outdated = false;
-
-                unsafe {
-                    gl::TexImage2D(
-                        gl::TEXTURE_2D,
-                        0,
-                        gl::BGRA as _,
-                        self.size.0 as _,
-                        self.size.1 as _,
-                        0,
-                        gl::BGRA,
-                        gl::UNSIGNED_BYTE,
-                        ptr::null(),
-                    );
-                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
-                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
-                }
-            }
-
-            if self.texture_outdated {
-                self.texture_outdated = false;
-
-                unsafe {
-                    gl::TexSubImage2D(
-                        gl::TEXTURE_2D,
-                        0,
-                        0,
-                        0,
-                        self.size.0 as _,
-                        self.size.1 as _,
-                        gl::BGRA,
-                        gl::UNSIGNED_BYTE,
-                        &self.data[..] as *const _ as _,
-                    );
-                }
-            }
-
-            let rect: [f32; 4] = [
-                (position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-                (self.size.0 as f32 / screen.0 as f32) * 2.0,
-                -(self.size.1 as f32 / screen.1 as f32) * 2.0,
-            ];
-
+        let Some(Tex {
+            size,
+            dx11_tex_handle,
+            ..
+        }) = self.state.get_or_create(|handle| {
+            let mut texture = None;
             unsafe {
-                gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
+                self.dx_device.OpenSharedResource::<ID3D11Texture2D>(
+                    HANDLE(handle.get() as _),
+                    &mut texture,
+                )?;
+                let texture = texture.unwrap();
 
-                gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
-                gl::ActiveTexture(gl::TEXTURE0);
-                gl::Uniform1i(self.tex_loc, 0);
+                let mut desc = D3D11_TEXTURE2D_DESC::default();
+                texture.GetDesc(&mut desc);
+                let size = (desc.Width, desc.Height);
+                if size.0 == 0 || size.1 == 0 {
+                    return Ok(None);
+                }
 
-                gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+                let dx11_tex_handle = dbg!(wgl::DXRegisterObjectNV(
+                    self.dx_device_handle,
+                    texture.as_raw(),
+                    self.texture,
+                    gl::TEXTURE_2D,
+                    wgl::ACCESS_READ_ONLY_NV,
+                ));
+                if dx11_tex_handle.is_null() {
+                    bail!("DXRegisterObjectNV failed");
+                }
+
+                Ok(Some(Tex {
+                    size,
+                    owned_device_handle: self.dx_device_handle,
+                    _dx11_tex: texture,
+                    dx11_tex_handle,
+                }))
             }
-        });
+        })?
+        else {
+            return Ok(());
+        };
+
+        let rect: [f32; 4] = [
+            (position.0 / screen.0 as f32) * 2.0 - 1.0,
+            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            (size.0 as f32 / screen.0 as f32) * 2.0,
+            -(size.1 as f32 / screen.1 as f32) * 2.0,
+        ];
+
+        let dx_device_handle = self.dx_device_handle;
+        unsafe {
+            wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+            defer!({
+                wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+            });
+
+            gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
+
+            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
+            gl::Uniform1i(self.tex_loc, 0);
+
+            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+        }
+
+        Ok(())
     }
 }
 
 impl Drop for OpenglRenderer {
     #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
+        self.state = OverlayTextureState::None;
+
         unsafe {
+            wgl::DXCloseDeviceNV(self.dx_device_handle as _);
+
             gl::DeleteVertexArrays(1, &self.vao);
             gl::DeleteBuffers(1, &self.vertex_buffer);
             gl::DeleteTextures(1, &self.texture);
@@ -221,3 +260,22 @@ impl Drop for OpenglRenderer {
         trace!("OpenGL resources freed");
     }
 }
+
+unsafe impl Send for OpenglRenderer {}
+
+struct Tex {
+    size: (u32, u32),
+    owned_device_handle: *mut c_void,
+    _dx11_tex: ID3D11Texture2D,
+    dx11_tex_handle: *const c_void,
+}
+
+impl Drop for Tex {
+    fn drop(&mut self) {
+        unsafe {
+            wgl::DXUnregisterObjectNV(self.owned_device_handle, self.dx11_tex_handle);
+        }
+    }
+}
+
+unsafe impl Send for Tex {}

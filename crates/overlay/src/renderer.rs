@@ -36,7 +36,7 @@ impl Renderers {
         } else if let Some(ref mut renderer) = self.dx11 {
             renderer.update_texture(shared);
         } else if let Some(ref mut renderer) = self.opengl {
-            // renderer.update_texture(bitmap.width, bitmap.data);
+            renderer.update_texture(shared);
         } else if let Some(ref mut renderer) = self.dx9 {
             renderer.update_texture(shared);
         }
