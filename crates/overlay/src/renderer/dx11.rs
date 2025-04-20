@@ -6,7 +6,6 @@ use core::{
 
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
-use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -29,14 +28,14 @@ use windows::{
             },
             Dxgi::{
                 Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT},
-                IDXGIKeyedMutex, IDXGISwapChain,
+                IDXGISwapChain,
             },
         },
     },
-    core::{BOOL, Interface, s},
+    core::{BOOL, s},
 };
 
-use super::OverlayTextureState;
+use crate::texture::OverlayTextureState;
 
 const TEXTURE_SHADER: &str = include_str!("dx11/shaders/texture.hlsl");
 
@@ -65,7 +64,7 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
 
 struct Dx11Tex {
     size: (u32, u32),
-    texture: ID3D11Texture2D,
+    _texture: ID3D11Texture2D,
     view: ID3D11ShaderResourceView,
 }
 
@@ -239,11 +238,7 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let Some(Dx11Tex {
-            size,
-            texture,
-            view,
-        }) = self
+        let Some(Dx11Tex { size, view, .. }) = self
             .texture
             .get_or_create(|handle| open_shared_texture(device, handle))?
         else {
@@ -373,7 +368,7 @@ fn open_shared_texture(
 
     Ok(Some(Dx11Tex {
         size,
-        texture,
+        _texture: texture,
         view,
     }))
 }

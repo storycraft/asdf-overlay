@@ -18,9 +18,7 @@ use windows::{
     core::Interface,
 };
 
-use crate::wgl;
-
-use super::OverlayTextureState;
+use crate::{texture::OverlayTextureState, wgl};
 
 #[derive(Clone, Copy)]
 #[repr(C)]

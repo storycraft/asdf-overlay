@@ -17,6 +17,8 @@ mod util;
 
 #[cfg(debug_assertions)]
 mod dbg;
+mod reader;
+mod texture;
 
 use app::app;
 use asdf_overlay_common::ipc::create_ipc_path;

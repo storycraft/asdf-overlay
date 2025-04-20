@@ -22,16 +22,18 @@ use windows::{
             },
             Direct3D12::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC}, IDXGISwapChain, IDXGISwapChain3,
+                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
+                IDXGISwapChain, IDXGISwapChain3,
             },
         },
     },
     core::{BOOL, s},
 };
 
-use crate::{hook::call_original_execute_command_lists, util::wrap_com_manually_drop};
-
-use super::OverlayTextureState;
+use crate::{
+    hook::call_original_execute_command_lists, texture::OverlayTextureState,
+    util::wrap_com_manually_drop,
+};
 
 const TEXTURE_SHADER: &str = include_str!("dx12/shaders/texture.hlsl");
 
