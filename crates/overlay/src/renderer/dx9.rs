@@ -6,13 +6,7 @@ use core::{
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
-use windows::Win32::Graphics::Direct3D9::{
-    D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
-    D3DLOCK_DISCARD, D3DLOCKED_RECT, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
-    D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC,
-    D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9,
-    IDirect3DVertexBuffer9,
-};
+use windows::Win32::Graphics::Direct3D9::*;
 
 use crate::reader::SharedHandleReader;
 
@@ -135,13 +129,14 @@ impl Dx9Renderer {
                 });
 
                 for y in 0..size.1 as isize {
+                    let line_size = size.0 as usize * 4;
                     let src_offset = y * mapped.RowPitch as isize;
                     let dest_offset = y * rect.Pitch as isize;
 
                     copy_nonoverlapping(
-                        mapped.pData.cast::<u8>().offset(src_offset),
+                        mapped.pData.cast::<u8>().byte_offset(src_offset),
                         rect.pBits.cast::<u8>().byte_offset(dest_offset),
-                        mapped.RowPitch as _,
+                        line_size,
                     );
                 }
             }
@@ -203,8 +198,10 @@ impl Dx9Renderer {
             // disable srgb gamma correction enabled in some games
             device.SetRenderState(D3DRS_SRGBWRITEENABLE, 0)?;
             device.SetRenderState(D3DRS_ALPHABLENDENABLE, 1)?;
-            device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
             device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA.0 as _)?;
+            device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
+            device.SetTextureStageState(0, D3DTSS_COLOROP, D3DTSS_COLORARG1.0 as _)?;
+            device.SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE)?;
 
             device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as _)?;
             device.SetFVF(Vertex::FVF)?;
