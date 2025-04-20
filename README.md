@@ -22,6 +22,11 @@ Blazingly fast™ Overlay library for Windows
 * [x] DX12
 * [ ] Vulkan
 
+## Features
+1. Supports multiple backends
+2. Blazingly fast™
+3. GPU accelerated shared overlay surface
+
 ## Pre-requirement
 1. node, pnpm package manager
 2. nightly rustc, cargo, msvc(x64, x86, arm64)
