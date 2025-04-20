@@ -5,6 +5,12 @@ import { defaultDllDir, Overlay } from 'asdf-overlay-node';
 import find from 'find-process';
 
 async function createOverlayWindow(pid) {
+  const overlay = await Overlay.attach(
+    'electron-overlay',
+    defaultDllDir().replace('app.asar', 'app.asar.unpacked'),
+    pid,
+  );
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 600,
@@ -15,13 +21,6 @@ async function createOverlayWindow(pid) {
       },
     },
   });
-
-  const overlay = await Overlay.attach(
-    'electron-overlay',
-    defaultDllDir().replace('app.asar', 'app.asar.unpacked'),
-    pid,
-  );
-
   mainWindow.webContents.on('paint', (e) => {
     if (!e.texture) {
       return;
