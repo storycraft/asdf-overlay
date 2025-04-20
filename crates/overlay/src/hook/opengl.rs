@@ -5,7 +5,8 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use cx::OverlayGlContext;
-use parking_lot::{Mutex, RwLock};
+use once_cell::sync::OnceCell;
+use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -28,7 +29,7 @@ use crate::{
 
 use super::DetourHook;
 
-static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
+static CX: OnceCell<OverlayGlContext> = OnceCell::new();
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
@@ -37,8 +38,9 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    let mut cx = CX.lock();
-    let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
+    let cx = CX
+        .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
+        .unwrap();
 
     cx.with(HDC(hdc), || {
         Renderers::with(|renderers| {

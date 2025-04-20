@@ -108,6 +108,7 @@ pub async fn app(addr: &str) {
         debug!("ipc client connected");
         defer!({
             debug!("cleanup start");
+            hook::cleanup();
             Renderers::with(|renderers| {
                 renderers.cleanup();
             });

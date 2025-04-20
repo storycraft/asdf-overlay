@@ -33,3 +33,4 @@ impl Drop for OverlayGlContext {
 }
 
 unsafe impl Send for OverlayGlContext {}
+unsafe impl Sync for OverlayGlContext {}

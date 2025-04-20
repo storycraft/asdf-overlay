@@ -16,6 +16,7 @@ struct Hook {
     resize_buffers: Option<DetourHook>,
     execute_command_lists: Option<DetourHook>,
     end_scene: Option<DetourHook>,
+    reset: Option<DetourHook>,
 }
 
 static HOOK: RwLock<Hook> = RwLock::new(Hook {
@@ -24,6 +25,7 @@ static HOOK: RwLock<Hook> = RwLock::new(Hook {
     resize_buffers: None,
     execute_command_lists: None,
     end_scene: None,
+    reset: None,
 });
 
 #[tracing::instrument]
@@ -60,20 +62,18 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     }
 
     // dx9
+    let (end_scene, reset) = dx9::get_dx9_addr(dummy_hwnd)?;
     debug!("hooking IDirect3DDevice9::EndScene");
-    let end_scene_hook = unsafe {
-        DetourHook::attach(
-            dx9::get_end_scene_addr(dummy_hwnd)? as _,
-            dx9::hooked_end_scene as _,
-        )?
-    };
+    let end_scene_hook = unsafe { DetourHook::attach(end_scene as _, dx9::hooked_end_scene as _)? };
     hook.end_scene = Some(end_scene_hook);
+    debug!("hooking IDirect3DDevice9::Reset");
+    let reset_hook = unsafe { DetourHook::attach(reset as _, dx9::hooked_reset as _)? };
+    hook.reset = Some(reset_hook);
 
     Ok(())
 }
 
 #[tracing::instrument]
 pub fn cleanup() {
-    *HOOK.write() = Hook::default();
-    dx12::cleanup();
+    dx9::cleanup();
 }

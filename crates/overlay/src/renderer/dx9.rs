@@ -4,11 +4,8 @@ use core::{
 };
 
 use anyhow::Context;
-use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
-use windows::Win32::Graphics::Direct3D9::*;
-
-use crate::reader::SharedHandleReader;
+use windows::Win32::Graphics::{Direct3D9::*, Direct3D11::D3D11_MAPPED_SUBRESOURCE};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -35,7 +32,6 @@ impl Vertex {
 type VertexArray = [Vertex; 4];
 
 pub struct Dx9Renderer {
-    reader: SharedHandleReader,
     size: (u32, u32),
     texture_size: (u32, u32),
 
@@ -47,8 +43,6 @@ pub struct Dx9Renderer {
 impl Dx9Renderer {
     #[tracing::instrument]
     pub fn new(device: &IDirect3DDevice9) -> anyhow::Result<Self> {
-        let reader = SharedHandleReader::new()?;
-
         unsafe {
             let mut vertex_buffer = None;
             device.CreateVertexBuffer(
@@ -63,7 +57,6 @@ impl Dx9Renderer {
 
             let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
             Ok(Self {
-                reader,
                 texture_size: (2, 2),
                 size: (0, 0),
 
@@ -78,8 +71,60 @@ impl Dx9Renderer {
         self.size
     }
 
-    pub fn update_texture(&mut self, shared: SharedHandle) {
-        self.reader.update_shared(shared);
+    pub fn update_texture(
+        &mut self,
+        device: &IDirect3DDevice9,
+        size: (u32, u32),
+        mapped: &D3D11_MAPPED_SUBRESOURCE,
+    ) -> anyhow::Result<()> {
+        if self.size != size {
+            self.texture.take();
+        }
+
+        let texture = match self.texture {
+            Some(ref mut texture) => texture,
+            None => {
+                self.size = size;
+                self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
+                let mut texture = None;
+                unsafe {
+                    device.CreateTexture(
+                        self.texture_size.0,
+                        self.texture_size.1,
+                        1,
+                        D3DUSAGE_DYNAMIC as _,
+                        D3DFMT_A8R8G8B8,
+                        D3DPOOL_DEFAULT,
+                        &mut texture,
+                        ptr::null_mut(),
+                    )?;
+                    self.texture
+                        .insert(texture.context("cannot create texture")?)
+                }
+            }
+        };
+
+        let mut rect = D3DLOCKED_RECT::default();
+        unsafe {
+            texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
+            defer!({
+                _ = texture.UnlockRect(0);
+            });
+
+            for y in 0..size.1 as isize {
+                let line_size = size.0 as usize * 4;
+                let src_offset = y * mapped.RowPitch as isize;
+                let dest_offset = y * rect.Pitch as isize;
+
+                copy_nonoverlapping(
+                    mapped.pData.cast::<u8>().byte_offset(src_offset),
+                    rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                    line_size,
+                );
+            }
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -93,57 +138,7 @@ impl Dx9Renderer {
             return Ok(());
         }
 
-        let Some(texture) = self.reader.with_mapped(|size, mapped| {
-            if self.size != size {
-                self.texture.take();
-            }
-
-            let texture = match self.texture {
-                Some(ref mut texture) => texture,
-                None => {
-                    self.size = size;
-                    self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
-                    let mut texture = None;
-                    unsafe {
-                        device.CreateTexture(
-                            self.texture_size.0,
-                            self.texture_size.1,
-                            1,
-                            D3DUSAGE_DYNAMIC as _,
-                            D3DFMT_A8R8G8B8,
-                            D3DPOOL_DEFAULT,
-                            &mut texture,
-                            ptr::null_mut(),
-                        )?;
-                        self.texture
-                            .insert(texture.context("cannot create texture")?)
-                    }
-                }
-            };
-
-            let mut rect = D3DLOCKED_RECT::default();
-            unsafe {
-                texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
-                defer!({
-                    _ = texture.UnlockRect(0);
-                });
-
-                for y in 0..size.1 as isize {
-                    let line_size = size.0 as usize * 4;
-                    let src_offset = y * mapped.RowPitch as isize;
-                    let dest_offset = y * rect.Pitch as isize;
-
-                    copy_nonoverlapping(
-                        mapped.pData.cast::<u8>().byte_offset(src_offset),
-                        rect.pBits.cast::<u8>().byte_offset(dest_offset),
-                        line_size,
-                    );
-                }
-            }
-
-            Ok(texture)
-        })?
-        else {
+        let Some(ref texture) = self.texture else {
             return Ok(());
         };
 
@@ -205,7 +200,7 @@ impl Dx9Renderer {
 
             device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as _)?;
             device.SetFVF(Vertex::FVF)?;
-            device.SetTexture(0, &*texture)?;
+            device.SetTexture(0, texture)?;
             device.DrawPrimitive(D3DPT_TRIANGLEFAN, 0, 2)?;
 
             Ok(())
@@ -214,3 +209,4 @@ impl Dx9Renderer {
 }
 
 unsafe impl Send for Dx9Renderer {}
+

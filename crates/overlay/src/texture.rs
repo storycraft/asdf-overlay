@@ -3,6 +3,7 @@ use core::num::NonZeroUsize;
 use asdf_overlay_common::message::SharedHandle;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
+#[derive(Debug)]
 pub enum OverlayTextureState<T> {
     None,
     Handle(NonZeroUsize),

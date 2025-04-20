@@ -95,7 +95,6 @@ impl SharedHandleReader {
             };
 
             self.cx.CopyResource(&*staging, &*src);
-
             {
                 let cx = &self.cx;
                 let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
