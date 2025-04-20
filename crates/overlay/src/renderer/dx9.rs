@@ -1,23 +1,20 @@
 use core::{
     mem,
-    ptr::{self},
+    ptr::{self, copy_nonoverlapping},
 };
 
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
-use windows::Win32::{
-    Foundation::HANDLE,
-    Graphics::Direct3D9::{
-        D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
-        D3DLOCK_DISCARD, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
-        D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC,
-        D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9,
-        IDirect3DVertexBuffer9,
-    },
+use windows::Win32::Graphics::Direct3D9::{
+    D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
+    D3DLOCK_DISCARD, D3DLOCKED_RECT, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
+    D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC,
+    D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9,
+    IDirect3DVertexBuffer9,
 };
 
-use super::OverlayTextureState;
+use crate::reader::SharedHandleReader;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -43,21 +40,21 @@ impl Vertex {
 
 type VertexArray = [Vertex; 4];
 
-struct Dx9Tex {
-    texture_size: (u32, u32),
-    size: (u32, u32),
-    texture: IDirect3DTexture9,
-}
-
 pub struct Dx9Renderer {
+    reader: SharedHandleReader,
+    size: (u32, u32),
+    texture_size: (u32, u32),
+
     vertex_buffer: IDirect3DVertexBuffer9,
-    texture: OverlayTextureState<Dx9Tex>,
+    texture: Option<IDirect3DTexture9>,
     state_block: IDirect3DStateBlock9,
 }
 
 impl Dx9Renderer {
     #[tracing::instrument]
     pub fn new(device: &IDirect3DDevice9) -> anyhow::Result<Self> {
+        let reader = SharedHandleReader::new()?;
+
         unsafe {
             let mut vertex_buffer = None;
             device.CreateVertexBuffer(
@@ -72,19 +69,23 @@ impl Dx9Renderer {
 
             let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
             Ok(Self {
+                reader,
+                texture_size: (2, 2),
+                size: (0, 0),
+
                 vertex_buffer,
-                texture: OverlayTextureState::new(),
+                texture: None,
                 state_block,
             })
         }
     }
 
     pub fn size(&self) -> (u32, u32) {
-        self.texture.map(|tex| tex.size).unwrap_or((0, 0))
+        self.size
     }
 
     pub fn update_texture(&mut self, shared: SharedHandle) {
-        self.texture.update(shared);
+        self.reader.update_shared(shared);
     }
 
     #[tracing::instrument(skip(self))]
@@ -98,65 +99,90 @@ impl Dx9Renderer {
             return Ok(());
         }
 
+        let Some(texture) = self.reader.with_mapped(|size, mapped| {
+            if self.size != size {
+                self.texture.take();
+            }
+
+            let texture = match self.texture {
+                Some(ref mut texture) => texture,
+                None => {
+                    self.size = size;
+                    self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
+                    let mut texture = None;
+                    unsafe {
+                        device.CreateTexture(
+                            self.texture_size.0,
+                            self.texture_size.1,
+                            1,
+                            D3DUSAGE_DYNAMIC as _,
+                            D3DFMT_A8R8G8B8,
+                            D3DPOOL_DEFAULT,
+                            &mut texture,
+                            ptr::null_mut(),
+                        )?;
+                        self.texture
+                            .insert(texture.context("cannot create texture")?)
+                    }
+                }
+            };
+
+            let mut rect = D3DLOCKED_RECT::default();
+            unsafe {
+                texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
+                defer!({
+                    _ = texture.UnlockRect(0);
+                });
+
+                for y in 0..size.1 as isize {
+                    let src_offset = y * mapped.RowPitch as isize;
+                    let dest_offset = y * rect.Pitch as isize;
+
+                    copy_nonoverlapping(
+                        mapped.pData.cast::<u8>().offset(src_offset),
+                        rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                        mapped.RowPitch as _,
+                    );
+                }
+            }
+
+            Ok(texture)
+        })?
+        else {
+            return Ok(());
+        };
+
+        let vertices = {
+            let pos = (
+                (position.0 / screen.0 as f32) * 2.0 - 1.0,
+                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            );
+            let size = (
+                (self.size.0 as f32 / screen.0 as f32) * 2.0,
+                -(self.size.1 as f32 / screen.1 as f32) * 2.0,
+            );
+            let texture_size = (
+                self.size.0 as f32 / self.texture_size.0 as f32,
+                self.size.1 as f32 / self.texture_size.1 as f32,
+            );
+
+            [
+                Vertex::new(pos, (0.0, 0.0)),
+                Vertex::new((pos.0 + size.0, pos.1), (texture_size.0, 0.0)),
+                Vertex::new(
+                    (pos.0 + size.0, pos.1 + size.1),
+                    (texture_size.0, texture_size.1),
+                ),
+                Vertex::new((pos.0, pos.1 + size.1), (0.0, texture_size.1)),
+            ]
+        };
+
         unsafe {
             let state_block = &self.state_block;
             state_block.Capture()?;
             defer!({
                 _ = state_block.Apply();
             });
-
-            let Some(Dx9Tex {
-                texture_size,
-                size,
-                texture,
-            }) = self.texture.get_or_create(|handle| {
-                let mut texture = None;
-                dbg!(device.CreateTexture(
-                    200,
-                    200,
-                    1,
-                    0 as _,
-                    D3DFMT_A8R8G8B8,
-                    D3DPOOL_DEFAULT,
-                    &mut texture,
-                    &mut HANDLE(handle.get() as _),
-                ))?;
-                let texture = texture.context("cannot create texture")?;
-
-                Ok(Some(Dx9Tex {
-                    size: (256, 256),
-                    texture_size: (256, 256),
-                    texture,
-                }))
-            })?
-            else {
-                return Ok(());
-            };
-
-            let vertices = {
-                let pos = (
-                    (position.0 / screen.0 as f32) * 2.0 - 1.0,
-                    -(position.1 / screen.1 as f32) * 2.0 + 1.0,
-                );
-                let size = (
-                    (size.0 as f32 / screen.0 as f32) * 2.0,
-                    -(size.1 as f32 / screen.1 as f32) * 2.0,
-                );
-                let texture_size = (
-                    size.0 / texture_size.0 as f32,
-                    size.1 / texture_size.1 as f32,
-                );
-
-                [
-                    Vertex::new(pos, (0.0, 0.0)),
-                    Vertex::new((pos.0 + size.0, pos.1), (texture_size.0, 0.0)),
-                    Vertex::new(
-                        (pos.0 + size.0, pos.1 + size.1),
-                        (texture_size.0, texture_size.1),
-                    ),
-                    Vertex::new((pos.0, pos.1 + size.1), (0.0, texture_size.1)),
-                ]
-            };
 
             {
                 let vertex_buffer = &self.vertex_buffer;

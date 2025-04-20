@@ -30,32 +30,34 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     };
     trace!("EndScene called");
 
-    {
-        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this).unwrap() };
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
-        let screen = {
-            let desc = unsafe {
-                let mut desc = D3DSURFACE_DESC::default();
-                let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
-                surface.GetDesc(&mut desc).unwrap();
+    let screen = {
+        let mut desc = D3DSURFACE_DESC::default();
+        unsafe {
+            let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
+            surface.GetDesc(&mut desc).unwrap();
+        }
 
-                desc
-            };
+        (desc.Width, desc.Height)
+    };
 
-            (desc.Width, desc.Height)
-        };
+    Renderers::with(|renderers| {
+        let renderer = renderers
+            .dx9
+            .get_or_insert_with(|| Dx9Renderer::new(&device).expect("Dx9Renderer creation failed"));
+        let position = Overlay::with(|overlay| {
+            let size = renderer.size();
 
-        Renderers::with(|renderers| {
-            let renderer = renderers.dx9.get_or_insert_with(|| {
-                Dx9Renderer::new(device).expect("Dx9Renderer creation failed")
-            });
-            let position = Overlay::with(|overlay| {
-                let size = renderer.size();
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-            });
-            trace!("{:?}", renderer.draw(device, position, screen));
+            if let Some(shared) = overlay.take_pending_handle() {
+                renderer.update_texture(shared);
+            }
+
+            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
-    }
+
+        _ = renderer.draw(&device, position, screen);
+    });
 
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
 }
