@@ -49,12 +49,12 @@ async fn main() -> anyhow::Result<()> {
 
     let mut surface: OverlaySurface = OverlaySurface::new()?;
     let mut data = Vec::new();
-    for _ in 0..200 {
+    for i in 0..200 {
         // make noise rectangle bigger
-        data.resize(200 * 200 * 4, 0);
+        data.resize(i * i * 4, 0);
         rand::fill(&mut data[..]);
 
-        let update = surface.update_bitmap(200 as _, &data)?;
+        let update = surface.update_bitmap(i as _, &data)?;
         if let Some(shared) = update {
             conn.request(Request::UpdateShtex(shared)).await?;
         }
