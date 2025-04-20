@@ -28,8 +28,9 @@ impl OverlayGlContext {
 
 impl Drop for OverlayGlContext {
     fn drop(&mut self) {
-        unsafe { wglDeleteContext(HGLRC(self.hglrc)).unwrap() };
+        unsafe { _ = wglDeleteContext(HGLRC(self.hglrc)) };
     }
 }
 
 unsafe impl Send for OverlayGlContext {}
+unsafe impl Sync for OverlayGlContext {}

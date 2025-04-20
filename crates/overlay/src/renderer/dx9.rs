@@ -5,13 +5,7 @@ use core::{
 
 use anyhow::Context;
 use scopeguard::defer;
-use windows::Win32::Graphics::Direct3D9::{
-    D3DBLEND_INVSRCALPHA, D3DBLEND_SRCALPHA, D3DFMT_A8R8G8B8, D3DFVF_TEX1, D3DFVF_XYZW,
-    D3DLOCK_DISCARD, D3DLOCKED_RECT, D3DPOOL_DEFAULT, D3DPT_TRIANGLEFAN, D3DRS_ALPHABLENDENABLE,
-    D3DRS_DESTBLEND, D3DRS_SRCBLEND, D3DRS_SRGBWRITEENABLE, D3DSBT_ALL, D3DUSAGE_DYNAMIC,
-    D3DUSAGE_WRITEONLY, IDirect3DDevice9, IDirect3DStateBlock9, IDirect3DTexture9,
-    IDirect3DVertexBuffer9,
-};
+use windows::Win32::Graphics::{Direct3D9::*, Direct3D11::D3D11_MAPPED_SUBRESOURCE};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -38,13 +32,11 @@ impl Vertex {
 type VertexArray = [Vertex; 4];
 
 pub struct Dx9Renderer {
-    texture_size: (u32, u32),
     size: (u32, u32),
-    data: Vec<u8>,
+    texture_size: (u32, u32),
 
     vertex_buffer: IDirect3DVertexBuffer9,
     texture: Option<IDirect3DTexture9>,
-    texture_outdated: bool,
     state_block: IDirect3DStateBlock9,
 }
 
@@ -67,11 +59,9 @@ impl Dx9Renderer {
             Ok(Self {
                 texture_size: (2, 2),
                 size: (0, 0),
-                data: Vec::new(),
 
                 vertex_buffer,
                 texture: None,
-                texture_outdated: true,
                 state_block,
             })
         }
@@ -81,21 +71,60 @@ impl Dx9Renderer {
         self.size
     }
 
-    pub fn update_texture(&mut self, width: u32, data: Vec<u8>) {
-        if width == 0 || data.len() < width as _ {
-            return;
-        }
-
-        let size = (width, (data.len() / width as usize / 4) as u32);
-
+    pub fn update_texture(
+        &mut self,
+        device: &IDirect3DDevice9,
+        size: (u32, u32),
+        mapped: &D3D11_MAPPED_SUBRESOURCE,
+    ) -> anyhow::Result<()> {
         if self.size != size {
             self.texture.take();
-            self.size = size;
-            self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
         }
 
-        self.data = data;
-        self.texture_outdated = true;
+        let texture = match self.texture {
+            Some(ref mut texture) => texture,
+            None => {
+                self.size = size;
+                self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
+                let mut texture = None;
+                unsafe {
+                    device.CreateTexture(
+                        self.texture_size.0,
+                        self.texture_size.1,
+                        1,
+                        D3DUSAGE_DYNAMIC as _,
+                        D3DFMT_A8R8G8B8,
+                        D3DPOOL_DEFAULT,
+                        &mut texture,
+                        ptr::null_mut(),
+                    )?;
+                    self.texture
+                        .insert(texture.context("cannot create texture")?)
+                }
+            }
+        };
+
+        let mut rect = D3DLOCKED_RECT::default();
+        unsafe {
+            texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
+            defer!({
+                _ = texture.UnlockRect(0);
+            });
+
+            for y in 0..size.1 as isize {
+                let line_size = size.0 as usize * 4;
+                let src_offset = y * mapped.RowPitch as isize;
+                let dest_offset = y * rect.Pitch as isize;
+
+                copy_nonoverlapping(
+                    mapped.pData.cast::<u8>().byte_offset(src_offset),
+                    rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                    line_size,
+                );
+            }
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
@@ -105,9 +134,13 @@ impl Dx9Renderer {
         position: (f32, f32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
-        if self.size.0 == 0 || self.size.1 == 0 || screen.0 == 0 || screen.1 == 0 {
+        if screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
+
+        let Some(ref texture) = self.texture else {
+            return Ok(());
+        };
 
         let vertices = {
             let pos = (
@@ -141,48 +174,6 @@ impl Dx9Renderer {
                 _ = state_block.Apply();
             });
 
-            let texture = match self.texture {
-                Some(ref texture) => texture,
-                None => {
-                    // no non-power-of-two texture support
-                    let mut texture = None;
-                    device.CreateTexture(
-                        self.texture_size.0,
-                        self.texture_size.1,
-                        1,
-                        D3DUSAGE_DYNAMIC as _,
-                        D3DFMT_A8R8G8B8,
-                        D3DPOOL_DEFAULT,
-                        &mut texture,
-                        ptr::null_mut(),
-                    )?;
-                    self.texture
-                        .insert(texture.context("cannot create texture")?)
-                }
-            };
-
-            if self.texture_outdated {
-                self.texture_outdated = false;
-
-                let mut rect = D3DLOCKED_RECT::default();
-                texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
-                defer!({
-                    _ = texture.UnlockRect(0);
-                });
-
-                for y in 0..self.size.1 as isize {
-                    let line_size = self.size.0 as usize * 4;
-                    let src_offset = y * line_size as isize;
-                    let dest_offset = y * rect.Pitch as isize;
-
-                    copy_nonoverlapping(
-                        self.data.as_ptr().offset(src_offset),
-                        rect.pBits.cast::<u8>().byte_offset(dest_offset),
-                        line_size,
-                    );
-                }
-            }
-
             {
                 let vertex_buffer = &self.vertex_buffer;
                 let mut ptr = ptr::null_mut();
@@ -202,8 +193,10 @@ impl Dx9Renderer {
             // disable srgb gamma correction enabled in some games
             device.SetRenderState(D3DRS_SRGBWRITEENABLE, 0)?;
             device.SetRenderState(D3DRS_ALPHABLENDENABLE, 1)?;
-            device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
             device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA.0 as _)?;
+            device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
+            device.SetTextureStageState(0, D3DTSS_COLOROP, D3DTSS_COLORARG1.0 as _)?;
+            device.SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE)?;
 
             device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as _)?;
             device.SetFVF(Vertex::FVF)?;

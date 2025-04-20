@@ -5,7 +5,8 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use cx::OverlayGlContext;
-use parking_lot::{Mutex, RwLock};
+use once_cell::sync::OnceCell;
+use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -28,7 +29,7 @@ use crate::{
 
 use super::DetourHook;
 
-static CX: Mutex<Option<OverlayGlContext>> = Mutex::new(None);
+static CX: OnceCell<OverlayGlContext> = OnceCell::new();
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
@@ -37,28 +38,33 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    let mut cx = CX.lock();
-    let cx = cx.get_or_insert_with(|| OverlayGlContext::new(HDC(hdc)).unwrap());
+    let cx = CX
+        .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
+        .unwrap();
 
     cx.with(HDC(hdc), || {
         Renderers::with(|renderers| {
+            trace!("using opengl renderer");
             let renderer = renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
 
                 debug!("initializing opengl renderer");
-                OpenglRenderer::new()
+                OpenglRenderer::new().expect("renderer creation failed")
             });
 
             let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
-            Overlay::with(|overlay| {
+            let position = Overlay::with(|overlay| {
                 let size = renderer.size();
-                trace!("using opengl renderer");
-                renderer.draw(
-                    overlay.calc_overlay_position((size.0 as _, size.1 as _), screen),
-                    screen,
-                );
-            })
+
+                if let Some(shared) = overlay.take_pending_handle() {
+                    renderer.update_texture(shared);
+                }
+
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
+            });
+
+            _ = renderer.draw(position, screen);
         })
     });
 

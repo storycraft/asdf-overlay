@@ -2,16 +2,17 @@ use std::sync::Once;
 
 use asdf_overlay_common::{
     ipc::client::IpcClientConn,
-    message::{Anchor, Margin, Position, Request, Response},
+    message::{Anchor, Margin, Position, Request, Response, SharedHandle},
     size::PercentLength,
 };
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
 
 use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
 
 pub struct Overlay {
+    pending_handle: Option<SharedHandle>,
     position: Position,
     anchor: Anchor,
     margin: Margin,
@@ -35,16 +36,17 @@ impl Overlay {
         (x, y)
     }
 
-    pub fn with<R>(f: impl FnOnce(&Self) -> R) -> R {
-        f(&CURRENT.read())
+    pub fn take_pending_handle(&mut self) -> Option<SharedHandle> {
+        self.pending_handle.take()
     }
 
-    pub fn with_mut<R>(f: impl FnOnce(&mut Self) -> R) -> R {
-        f(&mut CURRENT.write())
+    pub fn with<R>(f: impl FnOnce(&mut Self) -> R) -> R {
+        f(&mut CURRENT.lock())
     }
 }
 
-static CURRENT: RwLock<Overlay> = RwLock::new(Overlay {
+static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
+    pending_handle: None,
     position: Position {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
@@ -70,25 +72,19 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 
                 match message {
                     Request::UpdatePosition(position) => {
-                        Overlay::with_mut(|overlay| overlay.position = position);
+                        Overlay::with(|overlay| overlay.position = position);
                     }
 
                     Request::UpdateAnchor(anchor) => {
-                        Overlay::with_mut(|overlay| overlay.anchor = anchor);
+                        Overlay::with(|overlay| overlay.anchor = anchor);
                     }
 
                     Request::UpdateMargin(margin) => {
-                        Overlay::with_mut(|overlay| overlay.margin = margin);
-                    }
-
-                    Request::UpdateBitmap(bitmap) => {
-                        Renderers::with(|renderer| {
-                            renderer.update_texture(bitmap);
-                        });
+                        Overlay::with(|overlay| overlay.margin = margin);
                     }
 
                     Request::UpdateShtex(shared) => {
-                        trace!(shared.handle);
+                        Overlay::with(|overlay| overlay.pending_handle = Some(shared));
                     }
 
                     _ => {}
@@ -112,6 +108,7 @@ pub async fn app(addr: &str) {
         debug!("ipc client connected");
         defer!({
             debug!("cleanup start");
+            hook::cleanup();
             Renderers::with(|renderers| {
                 renderers.cleanup();
             });

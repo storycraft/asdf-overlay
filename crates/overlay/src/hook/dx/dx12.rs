@@ -38,12 +38,6 @@ pub fn clear() {
 }
 
 #[tracing::instrument]
-pub fn cleanup() {
-    QUEUE_MAP.clear();
-    QUEUE_MAP.shrink_to_fit();
-}
-
-#[tracing::instrument]
 pub unsafe extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,

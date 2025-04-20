@@ -1,6 +1,7 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
+use parking_lot::Mutex;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -16,12 +17,20 @@ use windows::{
 
 use crate::{
     app::Overlay,
+    reader::SharedHandleReader,
     renderer::{Renderers, dx9::Dx9Renderer},
 };
 
 use super::HOOK;
 
 pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
+pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
+
+static READER: Mutex<Option<SharedHandleReader>> = Mutex::new(None);
+
+pub fn cleanup() {
+    READER.lock().take();
+}
 
 #[tracing::instrument]
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
@@ -30,38 +39,65 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     };
     trace!("EndScene called");
 
-    {
-        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this).unwrap() };
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
-        let screen = {
-            let desc = unsafe {
-                let mut desc = D3DSURFACE_DESC::default();
-                let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
-                surface.GetDesc(&mut desc).unwrap();
+    let screen = {
+        let mut desc = D3DSURFACE_DESC::default();
+        unsafe {
+            let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
+            surface.GetDesc(&mut desc).unwrap();
+        }
 
-                desc
-            };
+        (desc.Width, desc.Height)
+    };
 
-            (desc.Width, desc.Height)
-        };
+    let mut reader = READER.lock();
+    let reader = reader.get_or_insert_with(|| SharedHandleReader::new().unwrap());
 
-        Renderers::with(|renderers| {
-            let renderer = renderers.dx9.get_or_insert_with(|| {
-                Dx9Renderer::new(device).expect("Dx9Renderer creation failed")
-            });
-            let position = Overlay::with(|overlay| {
-                let size = renderer.size();
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-            });
-            _ = renderer.draw(device, position, screen);
+    Renderers::with(|renderers| {
+        let renderer = renderers
+            .dx9
+            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
+        let position = Overlay::with(|overlay| {
+            let size = renderer.size();
+
+            if let Some(shared) = overlay.take_pending_handle() {
+                reader.update_shared(shared);
+            }
+
+            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
-    }
+
+        _ = reader.with_mapped(|size, mapped| {
+            renderer.update_texture(device, size, mapped)?;
+
+            Ok(())
+        });
+
+        _ = renderer.draw(device, position, screen);
+    });
 
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
 }
 
-/// Get pointer to IDirect3DDevice9::EndScene by creating dummy device
-pub fn get_end_scene_addr(dummy_hwnd: HWND) -> anyhow::Result<EndSceneFn> {
+#[tracing::instrument]
+pub unsafe extern "system" fn hooked_reset(
+    this: *mut c_void,
+    param: *mut D3DPRESENT_PARAMETERS,
+) -> HRESULT {
+    let Some(ref reset) = HOOK.read().reset else {
+        return HRESULT(0);
+    };
+
+    Renderers::with(|renderers| {
+        renderers.dx9.take();
+    });
+
+    unsafe { mem::transmute::<*const (), ResetFn>(reset.original_fn())(this, param) }
+}
+
+/// Get pointer to IDirect3DDevice9::EndScene, IDirect3DDevice9::Reset by creating dummy device
+pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn)> {
     let device = unsafe {
         let dx9 = Direct3DCreate9(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
 
@@ -82,8 +118,11 @@ pub fn get_end_scene_addr(dummy_hwnd: HWND) -> anyhow::Result<EndSceneFn> {
 
         device.context("cannot create IDirect3DDevice9")?
     };
-    let addr = Interface::vtable(&device).EndScene;
-    debug!("IDirect3DDevice9::EndScene found: {:p}", addr);
+    let end_scene = Interface::vtable(&device).EndScene;
+    debug!("IDirect3DDevice9::EndScene found: {:p}", end_scene);
 
-    Ok(addr)
+    let reset = Interface::vtable(&device).Reset;
+    debug!("IDirect3DDevice9::Reset found: {:p}", reset);
+
+    Ok((end_scene, reset))
 }

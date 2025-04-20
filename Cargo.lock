@@ -83,10 +83,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
 
 [[package]]
+name = "array-util"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e509844de8f09b90a2c3444684a2b6695f4071360e13d2fda0af9f749cc2ed6"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
 name = "asdf-overlay"
 version = "0.1.2"
 dependencies = [
  "anyhow",
+ "array-util",
  "asdf-overlay-common",
  "ash",
  "bindgen",
@@ -116,7 +132,9 @@ dependencies = [
  "anyhow",
  "asdf-overlay-common",
  "dll-syringe",
+ "scopeguard",
  "tokio",
+ "windows",
 ]
 
 [[package]]

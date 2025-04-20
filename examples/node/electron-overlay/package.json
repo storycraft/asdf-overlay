@@ -1,0 +1,24 @@
+{
+  "name": "electron-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "author": "storycraft <storycraft@pancake.sh>",
+  "type": "module",
+  "homepage": "https://github.com/storycraft/asdf-overlay#readme",
+  "bugs": {
+    "url": "https://github.com/storycraft/asdf-overlay/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/storycraft/asdf-overlay.git"
+  },
+  "scripts": {
+    "start": "electron ./main"
+  },
+  "dependencies": {
+    "asdf-overlay-node": "workspace:*",
+    "electron": "^35.1.5",
+    "find-process": "^1.4.10"
+  }
+}
