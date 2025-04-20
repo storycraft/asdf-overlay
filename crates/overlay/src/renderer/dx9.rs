@@ -209,4 +209,3 @@ impl Dx9Renderer {
 }
 
 unsafe impl Send for Dx9Renderer {}
-
