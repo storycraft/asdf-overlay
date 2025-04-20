@@ -8,7 +8,6 @@ use windows::{
         Graphics::{
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
-                ID3D10Device,
             },
             Direct3D11::ID3D11Device,
             Direct3D12::ID3D12Device,
@@ -202,8 +201,6 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
         });
 
         _ = renderer.draw(&device, swapchain, position, screen);
-    } else if let Ok(_) = device.cast::<ID3D10Device>() {
-        trace!("using dx10 renderer");
     }
 }
 

@@ -193,13 +193,13 @@ impl OpenglRenderer {
                     return Ok(None);
                 }
 
-                let dx11_tex_handle = dbg!(wgl::DXRegisterObjectNV(
+                let dx11_tex_handle = wgl::DXRegisterObjectNV(
                     self.dx_device_handle,
                     texture.as_raw(),
                     self.texture,
                     gl::TEXTURE_2D,
                     wgl::ACCESS_READ_ONLY_NV,
-                ));
+                );
                 if dx11_tex_handle.is_null() {
                     bail!("DXRegisterObjectNV failed");
                 }
