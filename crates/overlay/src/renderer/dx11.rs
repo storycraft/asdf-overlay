@@ -6,6 +6,7 @@ use core::{
 
 use anyhow::Context;
 use asdf_overlay_common::message::SharedHandle;
+use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -28,11 +29,11 @@ use windows::{
             },
             Dxgi::{
                 Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT},
-                IDXGISwapChain,
+                IDXGIKeyedMutex, IDXGISwapChain,
             },
         },
     },
-    core::{BOOL, s},
+    core::{BOOL, Interface, s},
 };
 
 use crate::texture::OverlayTextureState;
@@ -65,6 +66,7 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
 struct Dx11Tex {
     size: (u32, u32),
     _texture: ID3D11Texture2D,
+    mutex: IDXGIKeyedMutex,
     view: ID3D11ShaderResourceView,
 }
 
@@ -238,7 +240,9 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let Some(Dx11Tex { size, view, .. }) = self
+        let Some(Dx11Tex {
+            size, view, mutex, ..
+        }) = self
             .texture
             .get_or_create(|handle| open_shared_texture(device, handle))?
         else {
@@ -314,9 +318,15 @@ impl Dx11Renderer {
                 .FinishCommandList(false, Some(&mut command_list))?;
             let command_list = command_list.context("command list writing failed")?;
 
-            device
-                .GetImmediateContext()?
-                .ExecuteCommandList(&command_list, true);
+            {
+                mutex.AcquireSync(0, u32::MAX)?;
+                defer!({
+                    _ = mutex.ReleaseSync(0);
+                });
+                device
+                    .GetImmediateContext()?
+                    .ExecuteCommandList(&command_list, true);
+            }
         }
 
         Ok(())
@@ -347,6 +357,8 @@ fn open_shared_texture(
         return Ok(None);
     }
 
+    let mutex = texture.cast::<IDXGIKeyedMutex>()?;
+
     let mut view = None;
     unsafe {
         device.CreateShaderResourceView(
@@ -369,6 +381,7 @@ fn open_shared_texture(
     Ok(Some(Dx11Tex {
         size,
         _texture: texture,
+        mutex,
         view,
     }))
 }
