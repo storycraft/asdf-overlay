@@ -2,9 +2,16 @@ use core::ptr;
 
 use asdf_overlay_common::message::SharedHandle;
 use scopeguard::defer;
-use windows::Win32::{
-    Foundation::{HANDLE, HMODULE},
-    Graphics::{Direct3D::D3D_DRIVER_TYPE_HARDWARE, Direct3D11::*, Dxgi::Common::DXGI_SAMPLE_DESC},
+use windows::{
+    Win32::{
+        Foundation::{HANDLE, HMODULE},
+        Graphics::{
+            Direct3D::D3D_DRIVER_TYPE_HARDWARE,
+            Direct3D11::*,
+            Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGIKeyedMutex},
+        },
+    },
+    core::Interface,
 };
 
 use crate::texture::OverlayTextureState;
@@ -51,7 +58,12 @@ impl SharedHandleReader {
         f: impl FnOnce((u32, u32), &D3D11_MAPPED_SUBRESOURCE) -> anyhow::Result<R>,
     ) -> anyhow::Result<Option<R>> {
         unsafe {
-            let Some(StagingTex { size, src, staging }) = self.state.get_or_create(|handle| {
+            let Some(StagingTex {
+                size,
+                src,
+                mutex,
+                staging,
+            }) = self.state.get_or_create(|handle| {
                 let mut src_texture = None;
                 self.device.OpenSharedResource::<ID3D11Texture2D>(
                     HANDLE(handle.get() as _),
@@ -65,6 +77,8 @@ impl SharedHandleReader {
                 if desc.Width == 0 || desc.Height == 0 {
                     return Ok(None);
                 }
+
+                let mutex = src.cast::<IDXGIKeyedMutex>()?;
 
                 let mut staging = None;
                 self.device.CreateTexture2D(
@@ -88,13 +102,26 @@ impl SharedHandleReader {
                 )?;
                 let staging = staging.unwrap();
 
-                Ok(Some(StagingTex { size, src, staging }))
+                Ok(Some(StagingTex {
+                    size,
+                    src,
+                    mutex,
+                    staging,
+                }))
             })?
             else {
                 return Ok(None);
             };
 
-            self.cx.CopyResource(&*staging, &*src);
+            {
+                mutex.AcquireSync(0, u32::MAX)?;
+                defer!({
+                    _ = mutex.ReleaseSync(0);
+                });
+
+                self.cx.CopyResource(&*staging, &*src);
+            }
+
             {
                 let cx = &self.cx;
                 let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
@@ -112,5 +139,6 @@ impl SharedHandleReader {
 struct StagingTex {
     size: (u32, u32),
     src: ID3D11Texture2D,
+    mutex: IDXGIKeyedMutex,
     staging: ID3D11Texture2D,
 }
