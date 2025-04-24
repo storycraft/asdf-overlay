@@ -1,8 +1,4 @@
-use core::{
-    ffi::c_void,
-    hash::{Hash, Hasher},
-    mem,
-};
+use core::{ffi::c_void, hash::Hash, mem};
 
 use anyhow::Context;
 use dashmap::DashMap;
@@ -91,21 +87,12 @@ pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn>
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq)]
 #[repr(transparent)]
-struct DeviceKey(*const ());
+struct DeviceKey(usize);
 
 impl DeviceKey {
     pub fn of(device: &ID3D12Device) -> Self {
         DeviceKey(device.as_raw() as _)
     }
 }
-
-impl Hash for DeviceKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
-unsafe impl Send for DeviceKey {}
-unsafe impl Sync for DeviceKey {}
