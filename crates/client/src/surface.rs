@@ -164,8 +164,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     }),
                 )?;
 
-                let (ref texture, _) = *surface.insert(texture);
+                let (ref texture, ref mutex) = *surface.insert(texture);
                 unsafe {
+                    mutex.AcquireSync(0, u32::MAX)?;
+                    defer!({
+                        _ = mutex.ReleaseSync(0);
+                    });
+
                     Ok(Some(SharedHandle {
                         handle: NonZeroUsize::new(
                             texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,

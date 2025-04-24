@@ -9,15 +9,14 @@ use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
-    Win32::{
+    core::{s, BOOL, PCSTR}, Win32::{
         Foundation::HMODULE,
         Graphics::{
-            Gdi::{HDC, WindowFromDC},
+            Gdi::{WindowFromDC, HDC},
             OpenGL::wglGetProcAddress,
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
-    },
-    core::{BOOL, PCSTR},
+    }
 };
 
 use crate::{
@@ -90,8 +89,7 @@ pub fn hook() -> anyhow::Result<()> {
 #[tracing::instrument]
 fn get_wgl_swap_buffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
     // Grab a handle to opengl32.dll
-    let opengl32dll = CString::new("opengl32.dll")?;
-    let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };
+    let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
     let wglswapbuffers = CString::new("wglSwapBuffers")?;
     let func = unsafe {
