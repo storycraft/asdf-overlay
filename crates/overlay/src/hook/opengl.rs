@@ -9,14 +9,15 @@ use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
-    core::{s, BOOL, PCSTR}, Win32::{
+    Win32::{
         Foundation::HMODULE,
         Graphics::{
-            Gdi::{WindowFromDC, HDC},
+            Gdi::{HDC, WindowFromDC},
             OpenGL::wglGetProcAddress,
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
-    }
+    },
+    core::{BOOL, PCSTR, s},
 };
 
 use crate::{
@@ -37,12 +38,23 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    let cx = CX
-        .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
-        .unwrap();
+    Renderers::with(|renderers| {
+        let cx = CX
+            .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
+            .unwrap();
 
-    cx.with(HDC(hdc), || {
-        Renderers::with(|renderers| {
+        if renderers.dx11.is_some() {
+            if renderers.opengl.is_some() {
+                debug!("Skipping opengl overlay due to dx11 layer");
+                cx.with(HDC(hdc), || {
+                    renderers.opengl = None;
+                });
+            }
+
+            return;
+        }
+
+        cx.with(HDC(hdc), || {
             trace!("using opengl renderer");
             let renderer = renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
@@ -64,7 +76,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             });
 
             _ = renderer.draw(position, screen);
-        })
+        });
     });
 
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
