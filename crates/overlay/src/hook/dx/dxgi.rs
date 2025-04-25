@@ -1,15 +1,22 @@
 use core::{ffi::c_void, mem, ptr};
 
 use anyhow::Context;
+use parking_lot::Mutex;
+use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
+            Direct3D::D3D_FEATURE_LEVEL_11_0,
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
             },
-            Direct3D11::ID3D11Device,
+            Direct3D11::{
+                D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED,
+                D3D11_CREATE_DEVICE_SINGLETHREADED, D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1,
+                ID3DDeviceContextState,
+            },
             Direct3D12::ID3D12Device,
             Dxgi::{
                 Common::{
@@ -44,6 +51,8 @@ pub type Present1Fn = unsafe extern "system" fn(
 ) -> HRESULT;
 pub type ResizeBuffersFn =
     unsafe extern "system" fn(*mut c_void, u32, u32, u32, DXGI_FORMAT, u32) -> HRESULT;
+
+static D3D11_STATE: Mutex<Option<ID3DDeviceContextState>> = Mutex::new(None);
 
 #[tracing::instrument]
 pub unsafe extern "system" fn hooked_present(
@@ -88,6 +97,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     };
     trace!("ResizeBuffers called");
 
+    D3D11_STATE.lock().take();
     dx12::clear();
 
     let res = unsafe {
@@ -184,7 +194,44 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
             trace!("using dx12 renderer");
             _ = renderer.draw(&device, &swapchain, &queue, position, screen);
         }
-    } else if let Ok(device) = device.cast::<ID3D11Device>() {
+    } else if let Ok(device) = device.cast::<ID3D11Device1>() {
+        let cx = unsafe { device.GetImmediateContext1().unwrap() };
+
+        let mut state = D3D11_STATE.lock();
+        let state = state.get_or_insert_with(|| {
+            let mut state = None;
+            unsafe {
+                let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0
+                {
+                    D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
+                } else {
+                    0
+                };
+
+                device
+                    .CreateDeviceContextState(
+                        flag,
+                        &[D3D_FEATURE_LEVEL_11_0],
+                        D3D11_SDK_VERSION,
+                        &ID3D11Device::IID,
+                        None,
+                        Some(&mut state),
+                    )
+                    .expect("CreateDeviceContextState failed");
+            }
+
+            state.unwrap()
+        });
+
+        let mut prev_state = None;
+        unsafe {
+            cx.SwapDeviceContextState(&*state, Some(&mut prev_state));
+        }
+        let prev_state = prev_state.unwrap();
+        defer!(unsafe {
+            cx.SwapDeviceContextState(&prev_state, None);
+        });
+
         trace!("using dx11 renderer");
         let renderer = renderers.dx11.get_or_insert_with(|| {
             debug!("initializing dx11 renderer");
@@ -200,7 +247,7 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
 
-        _ = renderer.draw(&device, swapchain, position, screen);
+        _ = renderer.draw(&device, &cx, swapchain, position, screen);
     }
 }
 
