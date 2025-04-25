@@ -15,18 +15,7 @@ use windows::{
                 D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN, D3D_SRV_DIMENSION_TEXTURE2D,
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
-            Direct3D11::{
-                D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_VERTEX_BUFFER, D3D11_BLEND_DESC,
-                D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD,
-                D3D11_BLEND_SRC_ALPHA, D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL,
-                D3D11_CPU_ACCESS_WRITE, D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_VERTEX_DATA,
-                D3D11_MAP_WRITE_DISCARD, D3D11_MAPPED_SUBRESOURCE, D3D11_RENDER_TARGET_BLEND_DESC,
-                D3D11_SHADER_RESOURCE_VIEW_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC_0,
-                D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_SRV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
-                D3D11_USAGE_DYNAMIC, D3D11_VIEWPORT, ID3D11Buffer, ID3D11Device,
-                ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader,
-                ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
-            },
+            Direct3D11::*,
             Dxgi::{
                 Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT},
                 IDXGIKeyedMutex, IDXGISwapChain,
@@ -71,8 +60,6 @@ struct Dx11Tex {
 }
 
 pub struct Dx11Renderer {
-    context: ID3D11DeviceContext,
-
     input_layout: ID3D11InputLayout,
     vertex_buffer: ID3D11Buffer,
     constant_buffer: ID3D11Buffer,
@@ -95,7 +82,7 @@ impl Dx11Renderer {
                 None,
                 None,
                 s!("vs_main"),
-                s!("vs_4_0"),
+                s!("vs_5_0"),
                 D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
                 0,
                 &mut vs_blob,
@@ -124,7 +111,7 @@ impl Dx11Renderer {
                 None,
                 None,
                 s!("ps_main"),
-                s!("ps_4_0"),
+                s!("ps_5_0"),
                 D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
                 0,
                 &mut ps_blob,
@@ -142,10 +129,6 @@ impl Dx11Renderer {
                 Some(&mut pixel_shader),
             )?;
             let pixel_shader = pixel_shader.context("pixel shader failed to link")?;
-
-            let mut context = None;
-            device.CreateDeferredContext(0, Some(&mut context))?;
-            let context = context.context("cannot create overlay context")?;
 
             let mut vertex_buffer = None;
             device.CreateBuffer(
@@ -206,8 +189,6 @@ impl Dx11Renderer {
             let blend_state = blend_state.context("cannot create blend state")?;
 
             Ok(Self {
-                context,
-
                 input_layout,
                 vertex_buffer,
                 constant_buffer,
@@ -232,6 +213,7 @@ impl Dx11Renderer {
     pub fn draw(
         &mut self,
         device: &ID3D11Device,
+        cx: &ID3D11DeviceContext,
         swapchain: &IDXGISwapChain,
         position: (f32, f32),
         screen: (u32, u32),
@@ -259,7 +241,7 @@ impl Dx11Renderer {
         unsafe {
             {
                 let mut mapped_cbuffer = D3D11_MAPPED_SUBRESOURCE::default();
-                self.context.Map(
+                cx.Map(
                     &self.constant_buffer,
                     0,
                     D3D11_MAP_WRITE_DISCARD,
@@ -267,7 +249,7 @@ impl Dx11Renderer {
                     Some(&mut mapped_cbuffer),
                 )?;
                 mapped_cbuffer.pData.cast::<[f32; 4]>().write(rect);
-                self.context.Unmap(&self.constant_buffer, 0);
+                cx.Unmap(&self.constant_buffer, 0);
             }
 
             let render_target = {
@@ -278,11 +260,9 @@ impl Dx11Renderer {
                 render_target.context("cannot create render target")?
             };
 
-            self.context
-                .OMSetRenderTargets(Some(&[Some(render_target)]), None);
-            self.context
-                .OMSetBlendState(&self.blend_state, None, 0x00ffffff);
-            self.context.RSSetViewports(Some(&[D3D11_VIEWPORT {
+            cx.OMSetRenderTargets(Some(&[Some(render_target)]), None);
+            cx.OMSetBlendState(&self.blend_state, None, 0x00ffffff);
+            cx.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 TopLeftX: 0.0,
                 TopLeftY: 0.0,
                 Width: screen.0 as _,
@@ -291,42 +271,29 @@ impl Dx11Renderer {
                 MaxDepth: 1.0,
             }]));
 
-            self.context.IASetInputLayout(&self.input_layout);
+            cx.IASetInputLayout(&self.input_layout);
 
-            self.context.VSSetShader(&self.vertex_shader, None);
-            self.context.PSSetShader(&self.pixel_shader, None);
+            cx.VSSetShader(&self.vertex_shader, None);
+            cx.PSSetShader(&self.pixel_shader, None);
 
-            self.context
-                .PSSetShaderResources(0, Some(&[Some(view.clone())]));
+            mutex.AcquireSync(0, u32::MAX)?;
+            defer!({
+                _ = mutex.ReleaseSync(0);
+            });
 
-            self.context.IASetVertexBuffers(
+            cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
+
+            cx.IASetVertexBuffers(
                 0,
                 1,
                 Some(&self.vertex_buffer as *const _ as _),
                 Some(&(mem::size_of::<Vertex>() as _)),
                 Some(&0),
             );
-            self.context
-                .VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
+            cx.VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
 
-            self.context
-                .IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);
-            self.context.Draw(4, 0);
-
-            let mut command_list = None;
-            self.context
-                .FinishCommandList(false, Some(&mut command_list))?;
-            let command_list = command_list.context("command list writing failed")?;
-
-            {
-                mutex.AcquireSync(0, u32::MAX)?;
-                defer!({
-                    _ = mutex.ReleaseSync(0);
-                });
-                device
-                    .GetImmediateContext()?
-                    .ExecuteCommandList(&command_list, true);
-            }
+            cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);
+            cx.Draw(4, 0);
         }
 
         Ok(())
