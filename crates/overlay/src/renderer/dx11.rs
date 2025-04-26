@@ -331,7 +331,7 @@ fn open_shared_texture(
         device.CreateShaderResourceView(
             &texture,
             Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: desc.Format,
                 ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
                 Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
                     Texture2D: D3D11_TEX2D_SRV {
