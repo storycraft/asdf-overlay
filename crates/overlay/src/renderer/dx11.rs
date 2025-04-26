@@ -16,10 +16,7 @@ use windows::{
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
-            Dxgi::{
-                Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32_FLOAT},
-                IDXGIKeyedMutex, IDXGISwapChain,
-            },
+            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGISwapChain},
         },
     },
     core::{BOOL, Interface, s},
