@@ -32,8 +32,7 @@ function loadAddon(): Addon {
   process.dlopen(
     nodeModule,
     path.resolve(
-      fileURLToPath(new URL(import.meta.url)),
-      '../',
+      path.dirname(fileURLToPath(new URL(import.meta.url))),
       name,
     ),
   );
@@ -127,5 +126,8 @@ export class Overlay {
  * Default dll directory path
  */
 export function defaultDllDir(): string {
-  return path.resolve(fileURLToPath(import.meta.url), '../../');
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../',
+  );
 }
