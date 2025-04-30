@@ -1,4 +1,4 @@
-import { PercentLength } from './addon';
+import { PercentLength } from './index.js';
 
 export function percent(value: number): PercentLength {
     return {

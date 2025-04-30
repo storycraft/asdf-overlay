@@ -1,3 +1,5 @@
+import { PercentLength } from './index.js';
+
 export type Addon = {
     attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
 
@@ -16,8 +18,3 @@ export type Addon = {
 
     overlayDestroy(id: number): void,
 };
-
-export type PercentLength = {
-    ty: 'percent' | 'length',
-    value: number,
-}
