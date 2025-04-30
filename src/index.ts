@@ -1,18 +1,43 @@
 import path from 'node:path';
-import { arch, platform } from 'node:process';
-import { Addon, PercentLength } from './addon';
+import { arch } from 'node:process';
 
-export * from './util';
+import { Addon } from './addon.js';
+import { fileURLToPath } from 'node:url';
+
+export * from './util.js';
+
+export type PercentLength = {
+  ty: 'percent' | 'length',
+  value: number,
+}
 
 const addon = loadAddon();
 
 function loadAddon(): Addon {
+  const nodeModule = { exports: {} };
+
+  let name: string;
   switch (arch) {
-    case 'arm64': return require('../addon-aarch64.node');
-    case 'x64': return require('../addon-x64.node');
+    case 'arm64': {
+      name = '../addon-aarch64.node';
+      break;
+    }
+    case 'x64': {
+      name = '../addon-x64.node';
+      break;
+    }
 
     default: throw new Error(`Unsupported arch: ${arch}`);
   }
+  process.dlopen(
+    nodeModule,
+    path.resolve(
+      path.dirname(fileURLToPath(new URL(import.meta.url))),
+      name,
+    ),
+  );
+
+  return nodeModule.exports as Addon;
 }
 
 const idSym: unique symbol = Symbol("id");
@@ -101,5 +126,8 @@ export class Overlay {
  * Default dll directory path
  */
 export function defaultDllDir(): string {
-  return path.resolve(__dirname, '..');
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../',
+  );
 }
