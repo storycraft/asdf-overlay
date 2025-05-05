@@ -2,6 +2,7 @@ pub mod dx11;
 pub mod dx12;
 pub mod dx9;
 pub mod opengl;
+mod dx;
 
 use dx9::Dx9Renderer;
 use dx11::Dx11Renderer;

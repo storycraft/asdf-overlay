@@ -10,7 +10,7 @@ use windows::{
             Direct3D::*,
             Direct3D11::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
+                Common::{DXGI_FORMAT_R32_UINT, DXGI_SAMPLE_DESC},
                 IDXGIKeyedMutex, IDXGIResource,
             },
         },
@@ -196,7 +196,7 @@ fn create_surface_texture(
                 Height: height,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: DXGI_FORMAT_R32_UINT,
                 SampleDesc: DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,

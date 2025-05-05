@@ -24,7 +24,7 @@ use windows::{
 
 use crate::texture::OverlayTextureState;
 
-const TEXTURE_SHADER: &str = include_str!("dx11/shaders/texture.hlsl");
+use super::dx::TEXTURE_SHADER;
 
 #[derive(Clone, Copy)]
 #[repr(C)]

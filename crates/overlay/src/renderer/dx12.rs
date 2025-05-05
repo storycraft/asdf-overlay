@@ -8,7 +8,6 @@ use buffer::UploadBuffer;
 use core::{
     mem::{self, ManuallyDrop},
     slice::{self},
-    str,
 };
 use rtv::RtvDescriptors;
 use sync::RendererFence;
@@ -35,7 +34,7 @@ use crate::{
     util::wrap_com_manually_drop,
 };
 
-const TEXTURE_SHADER: &str = include_str!("dx12/shaders/texture.hlsl");
+use super::dx::TEXTURE_SHADER;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -78,22 +77,6 @@ const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TA
     LogicOp: D3D12_LOGIC_OP_NOOP,
 };
 
-const SAMPLER: D3D12_STATIC_SAMPLER_DESC = D3D12_STATIC_SAMPLER_DESC {
-    Filter: D3D12_FILTER_MIN_MAG_MIP_POINT,
-    AddressU: D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-    AddressV: D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-    AddressW: D3D12_TEXTURE_ADDRESS_MODE_BORDER,
-    MipLODBias: 0.0,
-    MaxAnisotropy: 0,
-    ComparisonFunc: D3D12_COMPARISON_FUNC_NEVER,
-    BorderColor: D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
-    MinLOD: 0.0,
-    MaxLOD: D3D12_FLOAT32_MAX,
-    ShaderRegister: 0,
-    RegisterSpace: 0,
-    ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
-};
-
 #[inline]
 fn root_sig() -> D3D12_ROOT_SIGNATURE_DESC {
     D3D12_ROOT_SIGNATURE_DESC {
@@ -128,8 +111,8 @@ fn root_sig() -> D3D12_ROOT_SIGNATURE_DESC {
             },
         ]
         .as_ptr() as _,
-        NumStaticSamplers: 1,
-        pStaticSamplers: &SAMPLER,
+        NumStaticSamplers: 0,
+        pStaticSamplers: [].as_ptr(),
         Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
             | D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS
             | D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS
@@ -290,7 +273,7 @@ impl Dx12Renderer {
                     },
                     ..Default::default()
                 },
-                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_COMMON,
                 None,
                 &mut vertex_buffer,
             )?;

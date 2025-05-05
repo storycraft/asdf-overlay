@@ -7,5 +7,11 @@ uniform sampler2D tex;
 
 void main()
 {
-    FragColor = texture(tex, TexCoord);
+    uint rawPacked = floatBitsToUint(texture(tex, TexCoord).r);
+    FragColor = vec4(
+        float((rawPacked & 0xffu)) / 255.0,
+	  	float((rawPacked >> 8) & 0xffu) / 255.0,
+		float((rawPacked >> 16) & 0xffu) / 255.0,
+		float(rawPacked >> 24) / 255.0
+    );
 }

@@ -9,9 +9,6 @@ struct vs_out
 	float2 texCoord : TEXCOORD;
 };
 
-Texture2D overlay : register(t0);
-SamplerState overlaySampler : register(s0);
-
 cbuffer OverlayBuffer : register(b0)
 {
 	float4 rect;
@@ -26,7 +23,18 @@ vs_out vs_main(vs_in input)
 	return output;
 }
 
+Texture2D<uint> overlay : register(t0);
 float4 ps_main(vs_out input) : SV_TARGET
 {
-	return overlay.Sample(overlaySampler, input.texCoord);
+	uint width;
+	uint height;
+	overlay.GetDimensions(width, height);
+
+	const uint packed = overlay.Load(int3(input.texCoord.x * width, input.texCoord.y * height, 0));
+	return float4(
+		(packed & 0x000000ff) / 255.0,
+		((packed >> 8) & 0x000000ff) / 255.0,
+		((packed >> 16) & 0x000000ff) / 255.0,
+		(packed >> 24) / 255.0
+	);
 }
