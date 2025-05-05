@@ -192,7 +192,8 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
             trace!("using dx12 renderer");
-            _ = renderer.draw(&device, &swapchain, &queue, position, screen);
+            let _res = renderer.draw(&device, &swapchain, &queue, position, screen);
+            trace!("dx12 render: {:?}", _res);
         }
     } else if let Ok(device) = device.cast::<ID3D11Device1>() {
         let cx = unsafe { device.GetImmediateContext1().unwrap() };
@@ -247,7 +248,8 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
 
-        _ = renderer.draw(&device, &cx, swapchain, position, screen);
+        let _res = renderer.draw(&device, &cx, swapchain, position, screen);
+        trace!("dx11 render: {:?}", _res);
     }
 }
 

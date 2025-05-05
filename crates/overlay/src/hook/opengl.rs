@@ -75,7 +75,8 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
 
-            _ = renderer.draw(position, screen);
+            let _res = renderer.draw(position, screen);
+            trace!("opengl render: {:?}", _res);
         });
     });
 
