@@ -49,6 +49,19 @@ const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
     InstanceDataStepRate: 0,
 }];
 
+const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
+    Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
+    AddressU: D3D11_TEXTURE_ADDRESS_BORDER,
+    AddressV: D3D11_TEXTURE_ADDRESS_BORDER,
+    AddressW: D3D11_TEXTURE_ADDRESS_BORDER,
+    MipLODBias: 0.0,
+    MaxAnisotropy: 0,
+    ComparisonFunc: D3D11_COMPARISON_NEVER,
+    BorderColor: [0.0; 4],
+    MinLOD: 0.0,
+    MaxLOD: D3D11_FLOAT32_MAX,
+};
+
 struct Dx11Tex {
     size: (u32, u32),
     _texture: ID3D11Texture2D,
@@ -64,7 +77,8 @@ pub struct Dx11Renderer {
 
     vertex_shader: ID3D11VertexShader,
     pixel_shader: ID3D11PixelShader,
-    blend_state: windows::Win32::Graphics::Direct3D11::ID3D11BlendState,
+    blend_state: ID3D11BlendState,
+    sampler_state: ID3D11SamplerState,
 }
 
 impl Dx11Renderer {
@@ -84,8 +98,9 @@ impl Dx11Renderer {
                 0,
                 &mut vs_blob,
                 None,
-            )?;
-            let vs_blob = vs_blob.context("vertex shader failed to build")?;
+            )
+            .context("vertex shader failed to build")?;
+            let vs_blob = vs_blob.unwrap();
 
             let vs_blob_slice = slice::from_raw_parts::<u8>(
                 vs_blob.GetBufferPointer() as _,
@@ -93,12 +108,16 @@ impl Dx11Renderer {
             );
 
             let mut input_layout = None;
-            device.CreateInputLayout(&INPUT_DESC, vs_blob_slice, Some(&mut input_layout))?;
-            let input_layout = input_layout.context("failed to create input layout")?;
+            device
+                .CreateInputLayout(&INPUT_DESC, vs_blob_slice, Some(&mut input_layout))
+                .context("failed to create input layout")?;
+            let input_layout = input_layout.unwrap();
 
             let mut vertex_shader = None;
-            device.CreateVertexShader(vs_blob_slice, None, Some(&mut vertex_shader))?;
-            let vertex_shader = vertex_shader.context("vertex shader failed to link")?;
+            device
+                .CreateVertexShader(vs_blob_slice, None, Some(&mut vertex_shader))
+                .context("vertex shader failed to link")?;
+            let vertex_shader = vertex_shader.unwrap();
 
             let mut ps_blob = None;
             D3DCompile(
@@ -113,77 +132,92 @@ impl Dx11Renderer {
                 0,
                 &mut ps_blob,
                 None,
-            )?;
-            let ps_blob = ps_blob.context("pixel shader failed to build")?;
+            )
+            .context("vertex shader failed to build")?;
+            let ps_blob = ps_blob.unwrap();
 
             let mut pixel_shader = None;
-            device.CreatePixelShader(
-                slice::from_raw_parts::<u8>(
-                    ps_blob.GetBufferPointer() as _,
-                    ps_blob.GetBufferSize(),
-                ),
-                None,
-                Some(&mut pixel_shader),
-            )?;
-            let pixel_shader = pixel_shader.context("pixel shader failed to link")?;
+            device
+                .CreatePixelShader(
+                    slice::from_raw_parts::<u8>(
+                        ps_blob.GetBufferPointer() as _,
+                        ps_blob.GetBufferSize(),
+                    ),
+                    None,
+                    Some(&mut pixel_shader),
+                )
+                .context("pixel shader failed to link")?;
+            let pixel_shader = pixel_shader.unwrap();
 
             let mut vertex_buffer = None;
-            device.CreateBuffer(
-                &D3D11_BUFFER_DESC {
-                    ByteWidth: mem::size_of::<VertexArray>() as _,
-                    Usage: D3D11_USAGE_DEFAULT,
-                    BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as _,
-                    CPUAccessFlags: 0,
-                    MiscFlags: 0,
-                    StructureByteStride: 0,
-                },
-                Some(&D3D11_SUBRESOURCE_DATA {
-                    pSysMem: &VERTICES as *const _ as _,
-                    SysMemPitch: 0,
-                    SysMemSlicePitch: 0,
-                }),
-                Some(&mut vertex_buffer),
-            )?;
-            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
+            device
+                .CreateBuffer(
+                    &D3D11_BUFFER_DESC {
+                        ByteWidth: mem::size_of::<VertexArray>() as _,
+                        Usage: D3D11_USAGE_DEFAULT,
+                        BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as _,
+                        CPUAccessFlags: 0,
+                        MiscFlags: 0,
+                        StructureByteStride: 0,
+                    },
+                    Some(&D3D11_SUBRESOURCE_DATA {
+                        pSysMem: &VERTICES as *const _ as _,
+                        SysMemPitch: 0,
+                        SysMemSlicePitch: 0,
+                    }),
+                    Some(&mut vertex_buffer),
+                )
+                .context("cannot create vertex buffer")?;
+            let vertex_buffer = vertex_buffer.unwrap();
 
             let mut constant_buffer = None;
-            device.CreateBuffer(
-                &D3D11_BUFFER_DESC {
-                    ByteWidth: mem::size_of::<[f32; 4]>() as _,
-                    Usage: D3D11_USAGE_DYNAMIC,
-                    BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as _,
-                    CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as _,
-                    MiscFlags: 0,
-                    StructureByteStride: 0,
-                },
-                Some(&D3D11_SUBRESOURCE_DATA {
-                    pSysMem: &VERTICES as *const _ as _,
-                    SysMemPitch: 0,
-                    SysMemSlicePitch: 0,
-                }),
-                Some(&mut constant_buffer),
-            )?;
-            let constant_buffer = constant_buffer.context("cannot create vertex buffer")?;
+            device
+                .CreateBuffer(
+                    &D3D11_BUFFER_DESC {
+                        ByteWidth: mem::size_of::<[f32; 4]>() as _,
+                        Usage: D3D11_USAGE_DYNAMIC,
+                        BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as _,
+                        CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as _,
+                        MiscFlags: 0,
+                        StructureByteStride: 0,
+                    },
+                    Some(&D3D11_SUBRESOURCE_DATA {
+                        pSysMem: &VERTICES as *const _ as _,
+                        SysMemPitch: 0,
+                        SysMemSlicePitch: 0,
+                    }),
+                    Some(&mut constant_buffer),
+                )
+                .context("cannot create constant buffer")?;
+            let constant_buffer = constant_buffer.unwrap();
 
             let mut blend_state = None;
-            device.CreateBlendState(
-                &D3D11_BLEND_DESC {
-                    AlphaToCoverageEnable: BOOL(0),
-                    IndependentBlendEnable: BOOL(0),
-                    RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
-                        BlendEnable: BOOL(1),
-                        SrcBlend: D3D11_BLEND_SRC_ALPHA,
-                        DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
-                        BlendOp: D3D11_BLEND_OP_ADD,
-                        SrcBlendAlpha: D3D11_BLEND_ONE,
-                        DestBlendAlpha: D3D11_BLEND_INV_SRC_ALPHA,
-                        BlendOpAlpha: D3D11_BLEND_OP_ADD,
-                        RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as _,
-                    }; 8],
-                },
-                Some(&mut blend_state),
-            )?;
-            let blend_state = blend_state.context("cannot create blend state")?;
+            device
+                .CreateBlendState(
+                    &D3D11_BLEND_DESC {
+                        AlphaToCoverageEnable: BOOL(0),
+                        IndependentBlendEnable: BOOL(0),
+                        RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
+                            BlendEnable: BOOL(1),
+                            SrcBlend: D3D11_BLEND_SRC_ALPHA,
+                            DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
+                            BlendOp: D3D11_BLEND_OP_ADD,
+                            SrcBlendAlpha: D3D11_BLEND_ONE,
+                            DestBlendAlpha: D3D11_BLEND_INV_SRC_ALPHA,
+                            BlendOpAlpha: D3D11_BLEND_OP_ADD,
+                            RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as _,
+                        }; 8],
+                    },
+                    Some(&mut blend_state),
+                )
+                .context("cannot create blend state")?;
+            let blend_state = blend_state.unwrap();
+
+            let mut sampler_state = None;
+            device
+                .CreateSamplerState(&SAMPLER_DESC, Some(&mut sampler_state))
+                .context("cannot create blend state")?;
+            let sampler_state = sampler_state.unwrap();
 
             Ok(Self {
                 input_layout,
@@ -194,6 +228,7 @@ impl Dx11Renderer {
                 vertex_shader,
                 pixel_shader,
                 blend_state,
+                sampler_state,
             })
         }
     }
@@ -279,6 +314,7 @@ impl Dx11Renderer {
             });
 
             cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
+            cx.PSSetSamplers(0, Some(&[Some(self.sampler_state.clone())]));
 
             cx.IASetVertexBuffers(
                 0,

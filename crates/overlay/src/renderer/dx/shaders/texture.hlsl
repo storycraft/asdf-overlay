@@ -24,15 +24,9 @@ vs_out vs_main(vs_in input)
 }
 
 Texture2D overlay : register(t0);
+SamplerState overlaySampler: register(s0);
+
 float4 ps_main(vs_out input) : SV_TARGET
 {
-	uint width;
-	uint height;
-	overlay.GetDimensions(width, height);
-
-	return overlay.Load(int3(
-		input.texCoord.x * width,
-		input.texCoord.y * height,
-		0
-	));
+	return overlay.Sample(overlaySampler, input.texCoord);
 }
