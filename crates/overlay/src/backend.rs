@@ -8,7 +8,8 @@ use tracing::{debug, trace};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcW, DefWindowProcW, GWLP_WNDPROC, SetWindowLongPtrW, WNDPROC,
+        CallWindowProcW, DefWindowProcW, GCLP_WNDPROC, SetClassLongPtrW,
+        WNDPROC,
     },
 };
 
@@ -30,11 +31,11 @@ impl Backends {
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
         let mut backend = BACKENDS.map.entry(hwnd.0 as usize).or_try_insert_with(|| {
-            let original_proc: isize =
-                unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, hooked_wnd_proc as usize as _) }
-                    as isize;
+            let original_proc: usize =
+                unsafe { SetClassLongPtrW(hwnd, GCLP_WNDPROC, hooked_wnd_proc as usize as _) }
+                    as usize;
             if original_proc == 0 {
-                bail!("SetWindowLongPtrW failed");
+                bail!("SetClassLongPtrW failed");
             }
 
             Ok::<_, anyhow::Error>(WindowBackend {
@@ -62,7 +63,7 @@ impl Backends {
 
 pub struct WindowBackend {
     hwnd: usize,
-    original_proc: isize,
+    original_proc: usize,
 
     pub renderers: Renderers,
 }
@@ -70,9 +71,9 @@ pub struct WindowBackend {
 impl Drop for WindowBackend {
     fn drop(&mut self) {
         unsafe {
-            SetWindowLongPtrW(
+            SetClassLongPtrW(
                 HWND(ptr::null_mut::<c_void>().with_addr(self.hwnd)),
-                GWLP_WNDPROC,
+                GCLP_WNDPROC,
                 self.original_proc as _,
             )
         };
@@ -86,7 +87,6 @@ pub struct Renderers {
     pub dx9: Option<Dx9Renderer>,
 }
 
-#[tracing::instrument]
 extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
@@ -100,7 +100,7 @@ extern "system" fn hooked_wnd_proc(
 
     unsafe {
         CallWindowProcW(
-            mem::transmute::<isize, WNDPROC>(backend.original_proc),
+            mem::transmute::<isize, WNDPROC>(backend.original_proc as isize),
             hwnd,
             msg,
             wparam,
