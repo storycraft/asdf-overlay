@@ -1,6 +1,6 @@
 {
   "name": "asdf-overlay-node",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Asdf Overlay Node Addon",
   "main": "./lib/index.js",
   "homepage": "https://github.com/storycraft/asdf-overlay#readme",
