@@ -27,10 +27,10 @@ struct Vertex {
 }
 type VertexArray = [Vertex; 4];
 const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 0.0) },
-    Vertex { pos: (1.0, 0.0) },
-    Vertex { pos: (1.0, 1.0) },
-    Vertex { pos: (0.0, 1.0) },
+    Vertex { pos: (0.0, 1.0) }, // bottom left
+    Vertex { pos: (0.0, 0.0) }, // top left
+    Vertex { pos: (1.0, 1.0) }, // bottom right
+    Vertex { pos: (1.0, 0.0) }, // top right
 ];
 
 static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
@@ -235,7 +235,7 @@ impl OpenglRenderer {
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
 
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+            gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         }
 
         Ok(())
