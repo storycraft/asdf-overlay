@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::{ClientOptions, NamedPipeClient},
-    sync::mpsc::{self, Sender, channel},
+    sync::mpsc::{UnboundedSender, unbounded_channel},
     task::JoinHandle,
 };
 
@@ -13,14 +13,14 @@ use crate::message::{ClientEvent, Request, Response};
 pub struct IpcClientConn {
     rx: ReadHalf<NamedPipeClient>,
     buf: Vec<u8>,
-    chan: Sender<ClientToServerPacket>,
+    chan: UnboundedSender<ClientToServerPacket>,
     write_task: JoinHandle<anyhow::Result<()>>,
 }
 
 impl IpcClientConn {
     pub async fn connect(addr: impl AsRef<OsStr>) -> anyhow::Result<Self> {
         let (rx, mut tx) = split(ClientOptions::new().open(addr)?);
-        let (chan_tx, mut chan_rx) = channel(4);
+        let (chan_tx, mut chan_rx) = unbounded_channel();
 
         let write_task = tokio::spawn({
             async move {
@@ -74,8 +74,7 @@ impl IpcClientConn {
             .send(ClientToServerPacket::Response(ClientResponse {
                 id: packet.id,
                 body: f(packet.req).await?,
-            }))
-            .await;
+            }));
 
         Ok(())
     }
@@ -89,12 +88,12 @@ impl IpcClientConn {
 }
 
 pub struct IpcClientEventEmitter {
-    inner: mpsc::Sender<ClientToServerPacket>,
+    inner: UnboundedSender<ClientToServerPacket>,
 }
 
 impl IpcClientEventEmitter {
-    pub async fn emit(&self, event: ClientEvent) -> anyhow::Result<()> {
-        self.inner.send(ClientToServerPacket::Event(event)).await?;
+    pub fn emit(&self, event: ClientEvent) -> anyhow::Result<()> {
+        self.inner.send(ClientToServerPacket::Event(event))?;
 
         Ok(())
     }
