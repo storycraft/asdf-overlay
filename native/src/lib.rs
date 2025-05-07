@@ -250,15 +250,13 @@ fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(&mut cx, async move {
         MANAGER
             .with(id, async move |overlay| {
-                Ok::<_, anyhow::Error>(
-                    overlay
-                        .event
-                        .lock()
-                        .await
-                        .next()
-                        .await
-                        .context("event stream closed")?,
-                )
+                overlay
+                    .event
+                    .lock()
+                    .await
+                    .next()
+                    .await
+                    .context("event stream closed")
             })
             .await??;
 

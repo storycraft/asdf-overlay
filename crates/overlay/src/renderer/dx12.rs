@@ -476,6 +476,9 @@ impl Drop for Dx12Renderer {
     }
 }
 
+unsafe impl Send for Dx12Renderer {}
+unsafe impl Sync for Dx12Renderer {}
+
 unsafe fn transition(
     res: &ID3D12Resource,
     from: D3D12_RESOURCE_STATES,

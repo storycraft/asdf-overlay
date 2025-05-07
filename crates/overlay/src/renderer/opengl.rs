@@ -260,6 +260,7 @@ impl Drop for OpenglRenderer {
 }
 
 unsafe impl Send for OpenglRenderer {}
+unsafe impl Sync for OpenglRenderer {}
 
 struct Tex {
     size: (u32, u32),

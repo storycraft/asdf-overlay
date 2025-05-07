@@ -33,7 +33,8 @@ use windows::{
 
 use crate::{
     app::Overlay,
-    renderer::{Renderers, dx11::Dx11Renderer, dx12::Dx12Renderer},
+    backend::{Backends, WindowBackend},
+    renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
     util::get_client_size,
 };
 
@@ -65,22 +66,19 @@ pub unsafe extern "system" fn hooked_present(
     };
     trace!("Present called");
 
-    Renderers::with(move |renderers| {
-        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-        if !test {
-            draw_overlay(renderers, unsafe {
-                IDXGISwapChain::from_raw_borrowed(&this).unwrap()
-            });
-        }
+    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
+        let hwnd = unsafe { swapchain.GetDesc() }.unwrap().OutputWindow;
 
-        unsafe {
-            mem::transmute::<*const (), PresentFn>(present.original_fn())(
-                this,
-                sync_interval,
-                flags,
-            )
-        }
-    })
+        Backends::with_backend(hwnd, |backend| {
+            draw_overlay(backend, swapchain);
+        })
+        .expect("Backends::with_backend failed");
+    }
+
+    unsafe {
+        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
+    }
 }
 
 #[tracing::instrument]
@@ -114,18 +112,16 @@ pub unsafe extern "system" fn hooked_resize_buffers(
         return res;
     }
 
-    Renderers::with(|renderer| {
-        if let Some(ref mut renderer) = renderer.dx12 {
-            let (device, swapchain) = unsafe {
-                let swapchain = IDXGISwapChain::from_raw_borrowed(&this).unwrap();
-                let device = swapchain.GetDevice::<ID3D12Device>().unwrap();
+    let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this) }.unwrap();
+    let hwnd = unsafe { swapchain.GetDesc().unwrap() }.OutputWindow;
 
-                (device, swapchain)
-            };
-
+    Backends::with_backend(hwnd, |backend| {
+        if let Some(ref mut renderer) = backend.renderers.dx12 {
+            let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
             renderer.resize(&device, swapchain);
         }
-    });
+    })
+    .unwrap();
 
     res
 }
@@ -142,27 +138,28 @@ pub unsafe extern "system" fn hooked_present1(
     };
     trace!("Present1 called");
 
-    Renderers::with(move |renderers| {
-        let test = flags & DXGI_PRESENT_TEST == DXGI_PRESENT_TEST;
-        if !test {
-            draw_overlay(renderers, unsafe {
-                IDXGISwapChain1::from_raw_borrowed(&this).unwrap()
-            });
-        }
+    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
+        let hwnd = unsafe { swapchain.GetDesc() }.unwrap().OutputWindow;
 
-        unsafe {
-            mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
-                this,
-                sync_interval,
-                flags,
-                present_params,
-            )
-        }
-    })
+        Backends::with_backend(hwnd, |backend| {
+            draw_overlay(backend, swapchain);
+        })
+        .unwrap();
+    }
+
+    unsafe {
+        mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
+            this,
+            sync_interval,
+            flags,
+            present_params,
+        )
+    }
 }
 
-#[tracing::instrument(skip(renderers))]
-fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
+#[tracing::instrument(skip(backend))]
+fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = {
@@ -177,7 +174,7 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
         let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
 
         if let Some(queue) = get_queue_for(&device) {
-            let renderer = renderers.dx12.get_or_insert_with(|| {
+            let renderer = backend.renderers.dx12.get_or_insert_with(|| {
                 debug!("initializing dx12 renderer");
                 Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
             });
@@ -234,7 +231,7 @@ fn draw_overlay(renderers: &mut Renderers, swapchain: &IDXGISwapChain) {
         });
 
         trace!("using dx11 renderer");
-        let renderer = renderers.dx11.get_or_insert_with(|| {
+        let renderer = backend.renderers.dx11.get_or_insert_with(|| {
             debug!("initializing dx11 renderer");
             Dx11Renderer::new(&device).expect("renderer creation failed")
         });

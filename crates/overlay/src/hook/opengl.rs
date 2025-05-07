@@ -21,10 +21,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
-    renderer::{Renderers, opengl::OpenglRenderer},
-    util::get_client_size,
-    wgl,
+    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, util::get_client_size, wgl,
 };
 
 use super::DetourHook;
@@ -38,16 +35,17 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     };
     trace!("WglSwapBuffers called");
 
-    Renderers::with(|renderers| {
+    let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
+    Backends::with_backend(hwnd, |backend| {
         let cx = CX
             .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
             .unwrap();
 
-        if renderers.dx11.is_some() {
-            if renderers.opengl.is_some() {
+        if backend.renderers.dx11.is_some() {
+            if backend.renderers.opengl.is_some() {
                 debug!("Skipping opengl overlay due to dx11 layer");
                 cx.with(HDC(hdc), || {
-                    renderers.opengl = None;
+                    backend.renderers.opengl = None;
                 });
             }
 
@@ -56,7 +54,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
         cx.with(HDC(hdc), || {
             trace!("using opengl renderer");
-            let renderer = renderers.opengl.get_or_insert_with(|| {
+            let renderer = backend.renderers.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
 
@@ -78,7 +76,8 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             let _res = renderer.draw(position, screen);
             trace!("opengl render: {:?}", _res);
         });
-    });
+    })
+    .expect("Backends::with_backend failed");
 
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }

@@ -8,17 +8,16 @@ use windows::{
         Foundation::HWND,
         Graphics::Direct3D9::{
             D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DBACKBUFFER_TYPE_MONO,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING, D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS,
-            D3DSURFACE_DESC, D3DSWAPEFFECT_DISCARD, Direct3DCreate9, IDirect3DDevice9,
+            D3DCREATE_SOFTWARE_VERTEXPROCESSING, D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_NULLREF,
+            D3DPRESENT_PARAMETERS, D3DSURFACE_DESC, D3DSWAPEFFECT_DISCARD, Direct3DCreate9,
+            IDirect3DDevice9,
         },
     },
     core::{BOOL, HRESULT, Interface},
 };
 
 use crate::{
-    app::Overlay,
-    reader::SharedHandleReader,
-    renderer::{Renderers, dx9::Dx9Renderer},
+    app::Overlay, backend::Backends, reader::SharedHandleReader, renderer::dx9::Dx9Renderer,
 };
 
 use super::HOOK;
@@ -41,6 +40,9 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
 
     let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
+    let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
+    unsafe { device.GetCreationParameters(&mut params) }.unwrap();
+
     let screen = {
         let mut desc = D3DSURFACE_DESC::default();
         unsafe {
@@ -54,8 +56,9 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let mut reader = READER.lock();
     let reader = reader.get_or_insert_with(|| SharedHandleReader::new().unwrap());
 
-    Renderers::with(|renderers| {
-        let renderer = renderers
+    Backends::with_backend(params.hFocusWindow, |backend| {
+        let renderer = backend
+            .renderers
             .dx9
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
         let position = Overlay::with(|overlay| {
@@ -75,7 +78,8 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
         });
 
         _ = renderer.draw(device, position, screen);
-    });
+    })
+    .expect("Backends::with_backend failed");
 
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
 }
@@ -89,9 +93,10 @@ pub unsafe extern "system" fn hooked_reset(
         return HRESULT(0);
     };
 
-    Renderers::with(|renderers| {
-        renderers.dx9.take();
-    });
+    Backends::with_backend(unsafe { &*param }.hDeviceWindow, |backend| {
+        backend.renderers.dx9.take();
+    })
+    .expect("Backends::with_backend failed");
 
     unsafe { mem::transmute::<*const (), ResetFn>(reset.original_fn())(this, param) }
 }

@@ -1,18 +1,19 @@
 use std::sync::Once;
 
 use asdf_overlay_common::{
-    ipc::client::IpcClientConn,
-    message::{Anchor, Margin, Position, Request, Response, SharedHandle},
+    ipc::client::{IpcClientConn, IpcClientEventEmitter},
+    message::{Anchor, ClientEvent, Margin, Position, Request, Response, SharedHandle},
     size::PercentLength,
 };
 use parking_lot::Mutex;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
 
-use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
+use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
 pub struct Overlay {
     pending_handle: Option<SharedHandle>,
+    emitter: Option<IpcClientEventEmitter>,
     position: Position,
     anchor: Anchor,
     margin: Margin,
@@ -40,6 +41,12 @@ impl Overlay {
         self.pending_handle.take()
     }
 
+    pub fn emit_event(event: ClientEvent) {
+        if let Some(ref mut emitter) = CURRENT.lock().emitter {
+            _ = emitter.emit(event);
+        }
+    }
+
     pub fn with<R>(f: impl FnOnce(&mut Self) -> R) -> R {
         f(&mut CURRENT.lock())
     }
@@ -47,6 +54,7 @@ impl Overlay {
 
 static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
     pending_handle: None,
+    emitter: None,
     position: Position {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
@@ -109,10 +117,14 @@ pub async fn app(addr: &str) {
         defer!({
             debug!("cleanup start");
             hook::cleanup();
-            Renderers::with(|renderers| {
-                renderers.cleanup();
+            Backends::cleanup();
+            Overlay::with(|overlay| {
+                overlay.pending_handle.take();
+                overlay.emitter.take();
             });
         });
+
+        Overlay::with(|overlay| overlay.emitter = Some(client.create_emitter()));
 
         _ = run_client(client).await;
         Ok(())

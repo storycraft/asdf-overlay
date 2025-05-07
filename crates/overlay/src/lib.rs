@@ -11,14 +11,15 @@ mod detours {
 }
 
 mod app;
+mod backend;
 mod hook;
+mod reader;
 mod renderer;
+mod texture;
 mod util;
 
 #[cfg(debug_assertions)]
 mod dbg;
-mod reader;
-mod texture;
 
 use app::app;
 use asdf_overlay_common::ipc::create_ipc_path;
