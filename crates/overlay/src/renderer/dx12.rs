@@ -12,11 +12,12 @@ use core::{
 use rtv::RtvDescriptors;
 use sync::RendererFence;
 use windows::{
-    core::{s, BOOL}, Win32::{
+    Win32::{
         Foundation::{HANDLE, RECT},
         Graphics::{
             Direct3D::{
-                Fxc::{D3DCompile, D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS}, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP
+                D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D12::*,
             Dxgi::{
@@ -24,7 +25,8 @@ use windows::{
                 IDXGISwapChain, IDXGISwapChain3,
             },
         },
-    }
+    },
+    core::{BOOL, s},
 };
 
 use crate::{
