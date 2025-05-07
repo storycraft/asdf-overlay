@@ -12,12 +12,11 @@ use core::{
 use rtv::RtvDescriptors;
 use sync::RendererFence;
 use windows::{
-    Win32::{
+    core::{s, BOOL}, Win32::{
         Foundation::{HANDLE, RECT},
         Graphics::{
             Direct3D::{
-                D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN,
-                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
+                Fxc::{D3DCompile, D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS}, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP
             },
             Direct3D12::*,
             Dxgi::{
@@ -25,8 +24,7 @@ use windows::{
                 IDXGISwapChain, IDXGISwapChain3,
             },
         },
-    },
-    core::{BOOL, s},
+    }
 };
 
 use crate::{
@@ -43,10 +41,10 @@ struct Vertex {
 }
 type VertexArray = [Vertex; 4];
 const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 0.0) },
-    Vertex { pos: (1.0, 0.0) },
-    Vertex { pos: (1.0, 1.0) },
-    Vertex { pos: (0.0, 1.0) },
+    Vertex { pos: (0.0, 1.0) }, // bottom left
+    Vertex { pos: (0.0, 0.0) }, // top left
+    Vertex { pos: (1.0, 1.0) }, // bottom right
+    Vertex { pos: (1.0, 0.0) }, // top right
 ];
 
 struct Dx12Tex {
@@ -443,7 +441,7 @@ impl Dx12Renderer {
 
             let render_target_desc = self.rtv.desc_for(backbuffer_index as _);
             command_list.OMSetRenderTargets(1, Some(&render_target_desc), true, None);
-            command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);
+            command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
             command_list.IASetVertexBuffers(
                 0,
                 Some(&[D3D12_VERTEX_BUFFER_VIEW {

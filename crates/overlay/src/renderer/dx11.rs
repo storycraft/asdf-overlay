@@ -12,7 +12,7 @@ use windows::{
         Foundation::HANDLE,
         Graphics::{
             Direct3D::{
-                D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN, D3D_SRV_DIMENSION_TEXTURE2D,
+                D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D,
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
@@ -33,10 +33,10 @@ struct Vertex {
 }
 type VertexArray = [Vertex; 4];
 const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 0.0) },
-    Vertex { pos: (1.0, 0.0) },
-    Vertex { pos: (1.0, 1.0) },
-    Vertex { pos: (0.0, 1.0) },
+    Vertex { pos: (0.0, 1.0) }, // bottom left
+    Vertex { pos: (0.0, 0.0) }, // top left
+    Vertex { pos: (1.0, 1.0) }, // bottom right
+    Vertex { pos: (1.0, 0.0) }, // top right
 ];
 
 const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
@@ -325,7 +325,7 @@ impl Dx11Renderer {
             );
             cx.VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
 
-            cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN);
+            cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
             cx.Draw(4, 0);
         }
 

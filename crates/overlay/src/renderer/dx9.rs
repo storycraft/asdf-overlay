@@ -157,13 +157,13 @@ impl Dx9Renderer {
             );
 
             [
-                Vertex::new(pos, (0.0, 0.0)),
-                Vertex::new((pos.0 + size.0, pos.1), (texture_size.0, 0.0)),
+                Vertex::new((pos.0, pos.1 + size.1), (0.0, texture_size.1)), // bottom left
+                Vertex::new(pos, (0.0, 0.0)),                                // top left
                 Vertex::new(
                     (pos.0 + size.0, pos.1 + size.1),
                     (texture_size.0, texture_size.1),
-                ),
-                Vertex::new((pos.0, pos.1 + size.1), (0.0, texture_size.1)),
+                ), // bottom right
+                Vertex::new((pos.0 + size.0, pos.1), (texture_size.0, 0.0)), // top right
             ]
         };
 
@@ -201,7 +201,7 @@ impl Dx9Renderer {
             device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as _)?;
             device.SetFVF(Vertex::FVF)?;
             device.SetTexture(0, texture)?;
-            device.DrawPrimitive(D3DPT_TRIANGLEFAN, 0, 2)?;
+            device.DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2)?;
 
             Ok(())
         }
