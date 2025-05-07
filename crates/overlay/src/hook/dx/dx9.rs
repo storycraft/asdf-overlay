@@ -92,8 +92,13 @@ pub unsafe extern "system" fn hooked_reset(
     let Some(ref reset) = HOOK.read().reset else {
         return HRESULT(0);
     };
+    
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
-    Backends::with_backend(unsafe { &*param }.hDeviceWindow, |backend| {
+    let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
+    unsafe { device.GetCreationParameters(&mut params) }.unwrap();
+
+    Backends::with_backend(params.hFocusWindow, |backend| {
         backend.renderers.dx9.take();
     })
     .expect("Backends::with_backend failed");
