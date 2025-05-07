@@ -59,3 +59,16 @@ impl Margin {
 pub struct SharedHandle {
     pub handle: Option<NonZeroUsize>,
 }
+
+#[derive(Debug, Encode, Decode, Clone)]
+#[non_exhaustive]
+pub enum ClientEvent {
+    Resize(ResizeEvent),
+}
+
+#[derive(Debug, Encode, Decode, Clone, PartialEq)]
+pub struct ResizeEvent {
+    pub hwnd: u32,
+    pub width: u32,
+    pub height: u32,
+}

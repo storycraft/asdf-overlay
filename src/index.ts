@@ -3,6 +3,7 @@ import { arch } from 'node:process';
 
 import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
 
 export * from './util.js';
 
@@ -42,11 +43,26 @@ function loadAddon(): Addon {
 
 const idSym: unique symbol = Symbol("id");
 
+export type OverlayEventEmitter = EventEmitter<{
+  'closed': [],
+}>;
+
 export class Overlay {
+  readonly event: OverlayEventEmitter = new EventEmitter();
   readonly [idSym]: number;
 
   private constructor(id: number) {
     this[idSym] = id;
+
+    void (async () => {
+      try {
+        for (;;) {
+          await addon.overlayNextEvent(id);
+        }
+      } catch (e) {
+        this.event.emit('closed');
+      }
+    })();
   }
 
   /**

@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     let process = OwnedProcess::find_first_by_name(name).context("process not found")?;
 
     // inject overlay dll into target process
-    let mut conn = inject(
+    let (mut conn, _) = inject(
         "asdf-overlay-example".to_string(),
         process,
         Some({

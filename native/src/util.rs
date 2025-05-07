@@ -54,8 +54,8 @@ pub fn request_promise<'a>(
 ) -> JsResult<'a, JsPromise> {
     with_rt(cx, async move {
         MANAGER
-            .with_mut(id, async |overlay| {
-                overlay.ipc.request(request).await?;
+            .with(id, async |overlay| {
+                overlay.ipc.lock().await.request(request).await?;
 
                 Ok::<_, anyhow::Error>(())
             })

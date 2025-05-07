@@ -3,17 +3,17 @@ use std::ffi::OsStr;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::{ClientOptions, NamedPipeClient},
-    sync::mpsc::{Sender, channel},
+    sync::mpsc::{self, Sender, channel},
     task::JoinHandle,
 };
 
-use super::{ClientResponse, Frame, ServerRequest};
-use crate::message::{Request, Response};
+use super::{ClientResponse, ClientToServerPacket, Frame, ServerRequest};
+use crate::message::{ClientEvent, Request, Response};
 
 pub struct IpcClientConn {
     rx: ReadHalf<NamedPipeClient>,
     buf: Vec<u8>,
-    chan: Sender<ClientResponse>,
+    chan: Sender<ClientToServerPacket>,
     write_task: JoinHandle<anyhow::Result<()>>,
 }
 
@@ -52,6 +52,12 @@ impl IpcClientConn {
         })
     }
 
+    pub fn create_emitter(&self) -> IpcClientEventEmitter {
+        IpcClientEventEmitter {
+            inner: self.chan.clone(),
+        }
+    }
+
     pub async fn recv(
         &mut self,
         f: impl AsyncFnOnce(Request) -> anyhow::Result<Response>,
@@ -65,10 +71,10 @@ impl IpcClientConn {
 
         _ = self
             .chan
-            .send(ClientResponse {
+            .send(ClientToServerPacket::Response(ClientResponse {
                 id: packet.id,
                 body: f(packet.req).await?,
-            })
+            }))
             .await;
 
         Ok(())
@@ -77,6 +83,18 @@ impl IpcClientConn {
     pub async fn close(self) -> anyhow::Result<()> {
         drop(self.chan);
         self.write_task.await??;
+
+        Ok(())
+    }
+}
+
+pub struct IpcClientEventEmitter {
+    inner: mpsc::Sender<ClientToServerPacket>,
+}
+
+impl IpcClientEventEmitter {
+    pub async fn emit(&self, event: ClientEvent) -> anyhow::Result<()> {
+        self.inner.send(ClientToServerPacket::Event(event)).await?;
 
         Ok(())
     }
