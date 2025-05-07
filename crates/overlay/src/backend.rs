@@ -4,7 +4,7 @@ use anyhow::bail;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use rustc_hash::FxBuildHasher;
-use tracing::debug;
+use tracing::{debug, trace};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
@@ -86,6 +86,7 @@ pub struct Renderers {
     pub dx9: Option<Dx9Renderer>,
 }
 
+#[tracing::instrument]
 extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
@@ -95,6 +96,7 @@ extern "system" fn hooked_wnd_proc(
     let Some(backend) = BACKENDS.map.get(&(hwnd.0 as usize)) else {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
     };
+    trace!("WNDPROC called for hwnd: {:p}", hwnd.0);
 
     unsafe {
         CallWindowProcW(
