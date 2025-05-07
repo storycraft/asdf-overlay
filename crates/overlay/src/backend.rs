@@ -8,8 +8,7 @@ use tracing::{debug, trace};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcW, DefWindowProcW, GCLP_WNDPROC, SetClassLongPtrW,
-        WNDPROC,
+        CallWindowProcW, DefWindowProcW, GCLP_WNDPROC, GET_CLASS_LONG_INDEX, WNDPROC,
     },
 };
 
@@ -32,10 +31,9 @@ impl Backends {
     ) -> anyhow::Result<R> {
         let mut backend = BACKENDS.map.entry(hwnd.0 as usize).or_try_insert_with(|| {
             let original_proc: usize =
-                unsafe { SetClassLongPtrW(hwnd, GCLP_WNDPROC, hooked_wnd_proc as usize as _) }
-                    as usize;
+                unsafe { SetClassLongPtr(hwnd, GCLP_WNDPROC, hooked_wnd_proc as isize) } as usize;
             if original_proc == 0 {
-                bail!("SetClassLongPtrW failed");
+                bail!("SetClassLongPtr failed");
             }
 
             Ok::<_, anyhow::Error>(WindowBackend {
@@ -71,7 +69,7 @@ pub struct WindowBackend {
 impl Drop for WindowBackend {
     fn drop(&mut self) {
         unsafe {
-            SetClassLongPtrW(
+            SetClassLongPtr(
                 HWND(ptr::null_mut::<c_void>().with_addr(self.hwnd)),
                 GCLP_WNDPROC,
                 self.original_proc as _,
@@ -106,5 +104,24 @@ extern "system" fn hooked_wnd_proc(
             wparam,
             lparam,
         )
+    }
+}
+
+#[allow(non_snake_case)]
+unsafe fn SetClassLongPtr(hwnd: HWND, nindex: GET_CLASS_LONG_INDEX, dwnewlong: isize) -> usize {
+    #[cfg(any(
+        target_arch = "aarch64",
+        target_arch = "arm64ec",
+        target_arch = "x86_64"
+    ))]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::SetClassLongPtrW;
+        unsafe { SetClassLongPtrW(hwnd, nindex, dwnewlong) }
+    }
+
+    #[cfg(any(target_arch = "x86"))]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::SetClassLongW;
+        unsafe { SetClassLongW(hwnd, nindex, dwnewlong as i32) as usize }
     }
 }
