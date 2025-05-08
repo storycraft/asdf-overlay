@@ -11,7 +11,7 @@ use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        message::{Anchor, Margin, Position, Request, SharedHandle},
+        message::{Anchor, ClientEvent, Margin, Position, Request, SharedHandle},
     },
     inject,
     process::OwnedProcess,
@@ -258,7 +258,7 @@ fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
     with_rt(&mut cx, async move {
-        MANAGER
+        let event: ClientEvent = MANAGER
             .with(id, async move |overlay| {
                 overlay
                     .event

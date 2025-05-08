@@ -63,12 +63,12 @@ pub struct SharedHandle {
 #[derive(Debug, Encode, Decode, Clone)]
 #[non_exhaustive]
 pub enum ClientEvent {
-    Resize(ResizeEvent),
+    Window { hwnd: u32, event: WindowEvent },
 }
 
-#[derive(Debug, Encode, Decode, Clone, PartialEq)]
-pub struct ResizeEvent {
-    pub hwnd: u32,
-    pub width: u32,
-    pub height: u32,
+#[derive(Debug, Encode, Decode, Clone)]
+#[non_exhaustive]
+pub enum WindowEvent {
+    Resized { width: u32, height: u32 },
+    Destroyed,
 }

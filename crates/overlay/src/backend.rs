@@ -2,7 +2,7 @@ pub mod renderers;
 
 use core::{ffi::c_void, mem, ptr};
 
-use asdf_overlay_common::message::{ClientEvent, ResizeEvent};
+use asdf_overlay_common::message::{ClientEvent, WindowEvent};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use renderers::Renderers;
@@ -11,7 +11,7 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_WINDOWPOSCHANGED, WNDPROC,
+        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_DESTROY, WM_WINDOWPOSCHANGED, WNDPROC,
     },
 };
 
@@ -92,13 +92,26 @@ fn process_wnd_proc(
     _wparam: WPARAM,
     _lparam: LPARAM,
 ) -> Option<LRESULT> {
-    if msg == WM_WINDOWPOSCHANGED {
-        backend.size = get_client_size(hwnd).unwrap();
-        Overlay::emit_event(ClientEvent::Resize(ResizeEvent {
-            hwnd: hwnd.0 as u32,
-            width: backend.size.0,
-            height: backend.size.1,
-        }));
+    match msg {
+        WM_WINDOWPOSCHANGED => {
+            backend.size = get_client_size(hwnd).unwrap();
+            Overlay::emit_event(ClientEvent::Window {
+                hwnd: hwnd.0 as u32,
+                event: WindowEvent::Resized {
+                    width: backend.size.0,
+                    height: backend.size.1,
+                },
+            });
+        }
+
+        WM_DESTROY => {
+            Overlay::emit_event(ClientEvent::Window {
+                hwnd: hwnd.0 as u32,
+                event: WindowEvent::Destroyed,
+            });
+        }
+
+        _ => {}
     }
 
     None
