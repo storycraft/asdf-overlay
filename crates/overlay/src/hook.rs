@@ -1,5 +1,6 @@
 mod dx;
 mod opengl;
+mod message;
 
 pub use dx::util::call_original_execute_command_lists;
 use tracing::debug;
@@ -17,6 +18,7 @@ use crate::detours::{DetourAttach, DetourTransactionBegin, DetourTransactionComm
 
 #[tracing::instrument]
 pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    message::hook().context("DispatchMessage hook initialization failed")?;
     dx::hook(dummy_hwnd).context("Direct3D hook initialization failed")?;
     opengl::hook().context("OpenGL hook initialization failed")?;
 

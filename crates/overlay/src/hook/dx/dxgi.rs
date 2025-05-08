@@ -69,7 +69,7 @@ pub unsafe extern "system" fn hooked_present(
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
         if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_backend(hwnd, |backend| {
+            Backends::with_or_init_backend(hwnd, |backend| {
                 draw_overlay(backend, swapchain);
             })
             .expect("Backends::with_backend failed");
@@ -114,7 +114,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
     if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        Backends::with_backend(hwnd, |backend| {
+        Backends::with_or_init_backend(hwnd, |backend| {
             if let Some(ref mut renderer) = backend.renderers.dx12 {
                 let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
                 renderer.resize(&device, swapchain);
@@ -141,7 +141,7 @@ pub unsafe extern "system" fn hooked_present1(
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
         if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_backend(hwnd, |backend| {
+            Backends::with_or_init_backend(hwnd, |backend| {
                 draw_overlay(backend, swapchain);
             })
             .expect("Backends::with_backend failed");

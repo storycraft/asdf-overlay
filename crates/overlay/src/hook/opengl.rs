@@ -36,7 +36,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     trace!("WglSwapBuffers called");
 
     let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
-    Backends::with_backend(hwnd, |backend| {
+    Backends::with_or_init_backend(hwnd, |backend| {
         let cx = CX
             .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
             .unwrap();

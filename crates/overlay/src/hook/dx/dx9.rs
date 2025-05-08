@@ -56,7 +56,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let mut reader = READER.lock();
     let reader = reader.get_or_insert_with(|| SharedHandleReader::new().unwrap());
 
-    Backends::with_backend(params.hFocusWindow, |backend| {
+    Backends::with_or_init_backend(params.hFocusWindow, |backend| {
         let renderer = backend
             .renderers
             .dx9
@@ -98,7 +98,7 @@ pub unsafe extern "system" fn hooked_reset(
     let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
     unsafe { device.GetCreationParameters(&mut params) }.unwrap();
 
-    Backends::with_backend(params.hFocusWindow, |backend| {
+    Backends::with_or_init_backend(params.hFocusWindow, |backend| {
         backend.renderers.dx9.take();
     })
     .expect("Backends::with_backend failed");
