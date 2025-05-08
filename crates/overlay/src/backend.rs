@@ -3,6 +3,7 @@ use core::{ffi::c_void, mem, ptr};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use rustc_hash::FxBuildHasher;
+use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
@@ -89,12 +90,14 @@ pub struct Renderers {
     pub dx9: Option<Dx9Renderer>,
 }
 
+#[tracing::instrument]
 extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    trace!("WNDPROC called");
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize)).unwrap();
 
     if msg == WM_WINDOWPOSCHANGED {
