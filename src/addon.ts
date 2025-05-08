@@ -12,6 +12,8 @@ export type Addon = {
         bottom: PercentLength,
         left: PercentLength
     ): Promise<void>,
+    
+    overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
 
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,

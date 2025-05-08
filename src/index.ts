@@ -130,6 +130,16 @@ export class Overlay {
   }
 
   /**
+   * Get overlay window size
+   * @param hwnd
+   */
+  async getSize(
+    hwnd: number
+  ): Promise<[width: number, height: number] | null> {
+    return await addon.overlayGetSize(this[idSym], hwnd);
+  }
+
+  /**
    * Update overlay using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
    * @param width width of the bitmap
    * @param data bgra formatted bitmap
