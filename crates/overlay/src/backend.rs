@@ -89,14 +89,17 @@ fn process_wnd_proc(
 ) -> Option<LRESULT> {
     match msg {
         WM_WINDOWPOSCHANGED => {
-            backend.size = get_client_size(hwnd).unwrap();
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: hwnd.0 as u32,
-                event: WindowEvent::Resized {
-                    width: backend.size.0,
-                    height: backend.size.1,
-                },
-            });
+            let new_size = get_client_size(hwnd).unwrap();
+            if backend.size != new_size {
+                backend.size = new_size;
+                Overlay::emit_event(ClientEvent::Window {
+                    hwnd: hwnd.0 as u32,
+                    event: WindowEvent::Resized {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
+                });
+            }
         }
 
         WM_DESTROY => {
