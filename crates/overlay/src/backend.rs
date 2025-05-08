@@ -1,20 +1,20 @@
+pub mod renderers;
+
 use core::{ffi::c_void, mem, ptr};
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
+use renderers::Renderers;
 use rustc_hash::FxBuildHasher;
 use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WINDOWPOS, WM_WINDOWPOSCHANGED, WNDPROC,
+        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_WINDOWPOSCHANGED, WNDPROC,
     },
 };
 
-use crate::{
-    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, opengl::OpenglRenderer},
-    util::get_client_size,
-};
+use crate::util::get_client_size;
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: DashMap::default(),
@@ -84,28 +84,18 @@ pub struct WindowBackend {
     pub renderers: Renderers,
 }
 
-pub struct Renderers {
-    pub dx12: Option<Dx12Renderer>,
-    pub dx11: Option<Dx11Renderer>,
-    pub opengl: Option<OpenglRenderer>,
-    pub dx9: Option<Dx9Renderer>,
-}
-
-impl Renderers {
-    pub fn new() -> Self {
-        Self {
-            dx12: None,
-            dx11: None,
-            opengl: None,
-            dx9: None,
-        }
+fn process_wnd_proc(
+    backend: &mut WindowBackend,
+    hwnd: HWND,
+    msg: u32,
+    _wparam: WPARAM,
+    _lparam: LPARAM,
+) -> Option<LRESULT> {
+    if msg == WM_WINDOWPOSCHANGED {
+        backend.size = get_client_size(hwnd).unwrap();
     }
-}
 
-impl Default for Renderers {
-    fn default() -> Self {
-        Self::new()
-    }
+    None
 }
 
 #[tracing::instrument]
@@ -117,10 +107,8 @@ extern "system" fn hooked_wnd_proc(
 ) -> LRESULT {
     trace!("WNDPROC called");
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize)).unwrap();
-
-    if msg == WM_WINDOWPOSCHANGED {
-        let pos = unsafe { &*(lparam.0 as *const WINDOWPOS) };
-        backend.size = (pos.cx as u32, pos.cy as u32);
+    if let Some(filtered) = process_wnd_proc(&mut backend, hwnd, msg, wparam, lparam) {
+        return filtered;
     }
 
     let original_proc = backend.original_proc;
