@@ -67,13 +67,13 @@ pub unsafe extern "system" fn hooked_present(
     trace!("Present called");
 
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
-        let hwnd = unsafe { swapchain.GetDesc() }.unwrap().OutputWindow;
-
-        Backends::with_backend(hwnd, |backend| {
-            draw_overlay(backend, swapchain);
-        })
-        .expect("Backends::with_backend failed");
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            Backends::with_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            })
+            .expect("Backends::with_backend failed");
+        }
     }
 
     unsafe {
@@ -112,16 +112,16 @@ pub unsafe extern "system" fn hooked_resize_buffers(
         return res;
     }
 
-    let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this) }.unwrap();
-    let hwnd = unsafe { swapchain.GetDesc().unwrap() }.OutputWindow;
-
-    Backends::with_backend(hwnd, |backend| {
-        if let Some(ref mut renderer) = backend.renderers.dx12 {
-            let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
-            renderer.resize(&device, swapchain);
-        }
-    })
-    .unwrap();
+    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
+    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+        Backends::with_backend(hwnd, |backend| {
+            if let Some(ref mut renderer) = backend.renderers.dx12 {
+                let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
+                renderer.resize(&device, swapchain);
+            }
+        })
+        .unwrap();
+    }
 
     res
 }
@@ -139,13 +139,13 @@ pub unsafe extern "system" fn hooked_present1(
     trace!("Present1 called");
 
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
-        let hwnd = unsafe { swapchain.GetDesc() }.unwrap().OutputWindow;
-
-        Backends::with_backend(hwnd, |backend| {
-            draw_overlay(backend, swapchain);
-        })
-        .unwrap();
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            Backends::with_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            })
+            .expect("Backends::with_backend failed");
+        }
     }
 
     unsafe {
