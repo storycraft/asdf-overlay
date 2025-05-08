@@ -9,6 +9,7 @@ pub enum Request {
     SetPosition(SetPosition),
     SetAnchor(SetAnchor),
     SetMargin(SetMargin),
+    GetSize(GetSize),
     UpdateSharedHandle(UpdateSharedHandle),
 }
 
@@ -44,6 +45,12 @@ impl SetMargin {
             left: x,
         }
     }
+}
+
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+/// Get size of overlay window
+pub struct GetSize {
+    pub hwnd: u32,
 }
 
 #[derive(Debug, Encode, Decode, Clone, PartialEq)]

@@ -18,7 +18,7 @@ use tokio::{
 use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
-    request::{Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
+    request::{GetSize, Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
 };
 
 use super::{Frame, ServerRequest};
@@ -149,10 +149,12 @@ macro_rules! requests {
         );* $(;)?
     ) => {
         impl IpcServerConn {
-            $(request_method!(
-                $(#[$meta])*
-                $name($req) -> $res
-            );)*
+            $(
+                request_method!(
+                    $(#[$meta])*
+                    $name($req) -> $res
+                );
+            )*
         }
     };
 }
@@ -166,6 +168,9 @@ requests! {
 
     /// Set overlay margin
     set_margin(SetMargin) -> ();
+
+    /// Get overlay size
+    get_size(GetSize) -> Option<(u32, u32)>;
 
     /// Update overlay surface
     update_shtex(UpdateSharedHandle) -> ();

@@ -1,3 +1,4 @@
+use core::{ffi::c_void, ptr};
 use std::sync::Once;
 
 use asdf_overlay_common::{
@@ -9,6 +10,7 @@ use asdf_overlay_common::{
 use parking_lot::Mutex;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
+use windows::Win32::Foundation::HWND;
 
 use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
@@ -92,6 +94,16 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
             Request::SetMargin(margin) => {
                 Overlay::with(|overlay| overlay.margin = margin);
                 client.reply(id, ())?;
+            }
+
+            Request::GetSize(get_size) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(
+                        HWND(ptr::null_mut::<c_void>().with_addr(get_size.hwnd as usize)),
+                        |backend| backend.size,
+                    ),
+                )?;
             }
 
             Request::UpdateSharedHandle(shared) => {
