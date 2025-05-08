@@ -2,6 +2,7 @@ pub mod renderers;
 
 use core::{ffi::c_void, mem, ptr};
 
+use asdf_overlay_common::message::{ClientEvent, ResizeEvent};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use renderers::Renderers;
@@ -14,7 +15,7 @@ use windows::Win32::{
     },
 };
 
-use crate::util::get_client_size;
+use crate::{app::Overlay, util::get_client_size};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: DashMap::default(),
@@ -93,6 +94,11 @@ fn process_wnd_proc(
 ) -> Option<LRESULT> {
     if msg == WM_WINDOWPOSCHANGED {
         backend.size = get_client_size(hwnd).unwrap();
+        Overlay::emit_event(ClientEvent::Resize(ResizeEvent {
+            hwnd: hwnd.0 as u32,
+            width: backend.size.0,
+            height: backend.size.1,
+        }));
     }
 
     None
