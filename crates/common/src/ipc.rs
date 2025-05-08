@@ -1,7 +1,7 @@
 use bincode::{Decode, Encode};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::message::{ClientEvent, Request, Response};
+use crate::{event::ClientEvent, request::Request};
 
 pub mod client;
 pub mod server;
@@ -20,7 +20,7 @@ struct ServerRequest {
 #[derive(Encode, Decode)]
 struct ClientResponse {
     pub id: u32,
-    pub body: Response,
+    pub data: Vec<u8>,
 }
 
 #[derive(Encode, Decode)]

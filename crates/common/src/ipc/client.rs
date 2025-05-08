@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 
+use bincode::Encode;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::{ClientOptions, NamedPipeClient},
@@ -8,7 +9,7 @@ use tokio::{
 };
 
 use super::{ClientResponse, ClientToServerPacket, Frame, ServerRequest};
-use crate::message::{ClientEvent, Request, Response};
+use crate::{event::ClientEvent, request::Request};
 
 pub struct IpcClientConn {
     rx: ReadHalf<NamedPipeClient>,
@@ -58,22 +59,22 @@ impl IpcClientConn {
         }
     }
 
-    pub async fn recv(
-        &mut self,
-        f: impl AsyncFnOnce(Request) -> anyhow::Result<Response>,
-    ) -> anyhow::Result<()> {
+    pub async fn recv(&mut self) -> anyhow::Result<(u32, Request)> {
         let frame = Frame::read(&mut self.rx).await?;
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
         let packet: ServerRequest =
             bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
+        Ok((packet.id, packet.req))
+    }
 
+    pub fn reply(&mut self, id: u32, data: impl Encode) -> anyhow::Result<()> {
         _ = self
             .chan
             .send(ClientToServerPacket::Response(ClientResponse {
-                id: packet.id,
-                body: f(packet.req).await?,
+                id,
+                data: bincode::encode_to_vec(data, bincode::config::standard())?,
             }));
 
         Ok(())

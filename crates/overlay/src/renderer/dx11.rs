@@ -5,7 +5,7 @@ use core::{
 };
 
 use anyhow::Context;
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -237,7 +237,7 @@ impl Dx11Renderer {
         self.texture.map(|tex| tex.size).unwrap_or((0, 0))
     }
 
-    pub fn update_texture(&mut self, shared: SharedHandle) {
+    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         self.texture.update(shared);
     }
 

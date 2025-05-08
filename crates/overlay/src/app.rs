@@ -1,8 +1,9 @@
 use std::sync::Once;
 
 use asdf_overlay_common::{
+    event::ClientEvent,
     ipc::client::{IpcClientConn, IpcClientEventEmitter},
-    message::{Anchor, ClientEvent, Margin, Position, Request, Response, SharedHandle},
+    request::{Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
     size::PercentLength,
 };
 use parking_lot::Mutex;
@@ -12,11 +13,11 @@ use tracing::{debug, error, trace};
 use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
 pub struct Overlay {
-    pending_handle: Option<SharedHandle>,
+    pending_handle: Option<UpdateSharedHandle>,
     emitter: Option<IpcClientEventEmitter>,
-    position: Position,
-    anchor: Anchor,
-    margin: Margin,
+    position: SetPosition,
+    anchor: SetAnchor,
+    margin: SetMargin,
 }
 
 impl Overlay {
@@ -37,7 +38,7 @@ impl Overlay {
         (x, y)
     }
 
-    pub fn take_pending_handle(&mut self) -> Option<SharedHandle> {
+    pub fn take_pending_handle(&mut self) -> Option<UpdateSharedHandle> {
         self.pending_handle.take()
     }
 
@@ -55,15 +56,15 @@ impl Overlay {
 static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
     pending_handle: None,
     emitter: None,
-    position: Position {
+    position: SetPosition {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
     },
-    anchor: Anchor {
+    anchor: SetAnchor {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
     },
-    margin: Margin {
+    margin: SetMargin {
         top: PercentLength::ZERO,
         right: PercentLength::ZERO,
         bottom: PercentLength::ZERO,
@@ -74,33 +75,30 @@ static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
 #[tracing::instrument(skip(client))]
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     loop {
-        client
-            .recv(async |message| {
-                trace!("recv: {:?}", message);
+        let (id, req) = client.recv().await?;
+        trace!("recv id: {id} req: {req:?}");
 
-                match message {
-                    Request::UpdatePosition(position) => {
-                        Overlay::with(|overlay| overlay.position = position);
-                    }
+        match req {
+            Request::SetPosition(position) => {
+                Overlay::with(|overlay| overlay.position = position);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateAnchor(anchor) => {
-                        Overlay::with(|overlay| overlay.anchor = anchor);
-                    }
+            Request::SetAnchor(anchor) => {
+                Overlay::with(|overlay| overlay.anchor = anchor);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateMargin(margin) => {
-                        Overlay::with(|overlay| overlay.margin = margin);
-                    }
+            Request::SetMargin(margin) => {
+                Overlay::with(|overlay| overlay.margin = margin);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateShtex(shared) => {
-                        Overlay::with(|overlay| overlay.pending_handle = Some(shared));
-                    }
-
-                    _ => {}
-                }
-
-                Ok(Response::Success)
-            })
-            .await?;
+            Request::UpdateSharedHandle(shared) => {
+                Overlay::with(|overlay| overlay.pending_handle = Some(shared));
+                client.reply(id, ())?;
+            }
+        }
     }
 }
 

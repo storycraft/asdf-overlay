@@ -2,7 +2,7 @@ pub mod renderers;
 
 use core::{ffi::c_void, mem, ptr};
 
-use asdf_overlay_common::message::{ClientEvent, WindowEvent};
+use asdf_overlay_common::event::{ClientEvent, WindowEvent};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use renderers::Renderers;

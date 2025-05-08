@@ -1,7 +1,7 @@
 use core::{num::NonZeroUsize, ptr};
 
 use anyhow::Context;
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -61,13 +61,16 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     pub fn update_from_nt_shared(
         &mut self,
         handle: HANDLE,
-    ) -> anyhow::Result<Option<SharedHandle>> {
+    ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let device1 = self.device.cast::<ID3D11Device1>()?;
         let src_texture = unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(handle)? };
         self.update_copy_from(&src_texture)
     }
 
-    pub fn update_from_shared(&mut self, handle: HANDLE) -> anyhow::Result<Option<SharedHandle>> {
+    pub fn update_from_shared(
+        &mut self,
+        handle: HANDLE,
+    ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let mut src_texture = None;
         unsafe {
             self.device
@@ -81,7 +84,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     fn update_copy_from(
         &mut self,
         src_texture: &ID3D11Texture2D,
-    ) -> anyhow::Result<Option<SharedHandle>> {
+    ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe {
             src_texture.GetDesc(&mut desc);
@@ -115,7 +118,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     self.cx.CopyResource(&*surface, src_texture);
                 }
 
-                Ok(Some(SharedHandle {
+                Ok(Some(UpdateSharedHandle {
                     handle: NonZeroUsize::new(
                         unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as usize,
                     ),
@@ -128,9 +131,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         &mut self,
         width: u32,
         data: &[u8],
-    ) -> anyhow::Result<Option<SharedHandle>> {
+    ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         if width == 0 || data.is_empty() {
-            return Ok(Some(SharedHandle { handle: None }));
+            return Ok(Some(UpdateSharedHandle { handle: None }));
         }
 
         let size = (width, (data.len() / width as usize / 4) as u32);
@@ -171,7 +174,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                         _ = mutex.ReleaseSync(0);
                     });
 
-                    Ok(Some(SharedHandle {
+                    Ok(Some(UpdateSharedHandle {
                         handle: NonZeroUsize::new(
                             texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,
                         ),

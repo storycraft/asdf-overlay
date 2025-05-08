@@ -10,8 +10,9 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
+        event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        message::{Anchor, ClientEvent, Margin, Position, Request, SharedHandle},
+        request::{SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
     },
     inject,
     process::OwnedProcess,
@@ -25,7 +26,7 @@ use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
-use util::{get_process_arch, request_promise, with_rt};
+use util::{get_process_arch, try_with_ipc, with_rt};
 use windows::Win32::{
     Foundation::HANDLE,
     System::SystemInformation::{
@@ -153,7 +154,13 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdatePosition(Position { x, y }))
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_position(SetPosition { x, y }).await?;
+            Ok(())
+        }),
+    )
 }
 
 fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -163,7 +170,13 @@ fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdateAnchor(Anchor { x, y }))
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_anchor(SetAnchor { x, y }).await?;
+            Ok(())
+        }),
+    )
 }
 
 fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -177,14 +190,17 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let left = cx.argument::<JsObject>(4)?;
     let left = percent_length_from_object(&mut cx, &left)?;
 
-    request_promise(
+    with_rt(
         &mut cx,
-        id,
-        Request::UpdateMargin(Margin {
-            top,
-            right,
-            bottom,
-            left,
+        try_with_ipc(id, async move |conn| {
+            conn.set_margin(SetMargin {
+                top,
+                right,
+                bottom,
+                left,
+            })
+            .await?;
+            Ok(())
         }),
     )
 }
@@ -198,18 +214,12 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
         MANAGER
             .with(id, async move |overlay| {
                 if let Some(shared) = overlay.surface.lock().await.update_bitmap(width, &data)? {
-                    overlay
-                        .ipc
-                        .lock()
-                        .await
-                        .request(Request::UpdateShtex(shared))
-                        .await?;
+                    overlay.ipc.lock().await.update_shtex(shared).await?;
                 }
 
                 Ok::<_, anyhow::Error>(())
             })
             .await??;
-
         Ok(())
     })
 }
@@ -228,12 +238,7 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
                     .await
                     .update_from_nt_shared(HANDLE(handle as _))?
                 {
-                    overlay
-                        .ipc
-                        .lock()
-                        .await
-                        .request(Request::UpdateShtex(shared))
-                        .await?;
+                    overlay.ipc.lock().await.update_shtex(shared).await?;
                 }
 
                 Ok::<_, anyhow::Error>(())
@@ -247,10 +252,14 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
 fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
-    request_promise(
+    with_rt(
         &mut cx,
-        id,
-        Request::UpdateShtex(SharedHandle { handle: None }),
+        try_with_ipc(id, async move |conn| {
+            conn.update_shtex(UpdateSharedHandle { handle: None })
+                .await?;
+
+            Ok(())
+        }),
     )
 }
 

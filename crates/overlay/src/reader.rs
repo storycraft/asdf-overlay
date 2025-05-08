@@ -1,6 +1,6 @@
 use core::ptr;
 
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -49,7 +49,7 @@ impl SharedHandleReader {
         }
     }
 
-    pub fn update_shared(&mut self, shared: SharedHandle) {
+    pub fn update_shared(&mut self, shared: UpdateSharedHandle) {
         self.state.update(shared);
     }
 

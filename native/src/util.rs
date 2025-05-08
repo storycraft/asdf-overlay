@@ -1,4 +1,4 @@
-use asdf_overlay_client::common::message::Request;
+use asdf_overlay_client::common::ipc::server::IpcServerConn;
 use neon::{
     prelude::{Context, FunctionContext},
     result::JsResult,
@@ -47,20 +47,13 @@ pub fn with_rt<'a>(
     Ok(promise)
 }
 
-pub fn request_promise<'a>(
-    cx: &mut FunctionContext<'a>,
+pub async fn try_with_ipc<'a, T>(
     id: u32,
-    request: Request,
-) -> JsResult<'a, JsPromise> {
-    with_rt(cx, async move {
-        MANAGER
-            .with(id, async |overlay| {
-                overlay.ipc.lock().await.request(request).await?;
-
-                Ok::<_, anyhow::Error>(())
-            })
-            .await??;
-
-        Ok(())
-    })
+    f: impl AsyncFnOnce(&mut IpcServerConn) -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    MANAGER
+        .with(id, async move |overlay| {
+            f(&mut *overlay.ipc.lock().await).await
+        })
+        .await?
 }

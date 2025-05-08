@@ -3,7 +3,7 @@ mod rtv;
 mod sync;
 
 use anyhow::Context;
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use buffer::UploadBuffer;
 use core::{
     mem::{self, ManuallyDrop},
@@ -336,7 +336,7 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: SharedHandle) {
+    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
