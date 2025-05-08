@@ -50,16 +50,17 @@ impl Backends {
                 original_proc,
 
                 size,
-                renderers: Renderers {
-                    dx12: None,
-                    dx11: None,
-                    opengl: None,
-                    dx9: None,
-                },
+                renderers: Renderers::new(),
             })
         })?;
 
         Ok(f(&mut backend))
+    }
+
+    pub fn cleanup_renderers() {
+        for mut backend in BACKENDS.map.iter_mut() {
+            mem::take(&mut backend.renderers);
+        }
     }
 }
 
@@ -88,6 +89,23 @@ pub struct Renderers {
     pub dx11: Option<Dx11Renderer>,
     pub opengl: Option<OpenglRenderer>,
     pub dx9: Option<Dx9Renderer>,
+}
+
+impl Renderers {
+    pub fn new() -> Self {
+        Self {
+            dx12: None,
+            dx11: None,
+            opengl: None,
+            dx9: None,
+        }
+    }
+}
+
+impl Default for Renderers {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[tracing::instrument]

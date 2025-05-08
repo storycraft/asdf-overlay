@@ -19,9 +19,7 @@ use windows::{
     core::{BOOL, PCSTR, s},
 };
 
-use crate::{
-    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, wgl,
-};
+use crate::{app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, wgl};
 
 use super::DetourHook;
 
