@@ -61,9 +61,6 @@ pub unsafe extern "system" fn hooked_present(
     sync_interval: u32,
     flags: DXGI_PRESENT,
 ) -> HRESULT {
-    let Some(ref present) = HOOK.read().present else {
-        return HRESULT(0);
-    };
     trace!("Present called");
 
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
@@ -76,6 +73,7 @@ pub unsafe extern "system" fn hooked_present(
         }
     }
 
+    let present = HOOK.present.get().unwrap();
     unsafe {
         mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
     }
@@ -90,14 +88,12 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     format: DXGI_FORMAT,
     flags: u32,
 ) -> HRESULT {
-    let Some(ref resize_buffers) = HOOK.read().resize_buffers else {
-        return HRESULT(0);
-    };
     trace!("ResizeBuffers called");
 
     D3D11_STATE.lock().take();
     dx12::clear();
 
+    let resize_buffers = HOOK.resize_buffers.get().unwrap();
     let res = unsafe {
         mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
             this,
@@ -133,9 +129,6 @@ pub unsafe extern "system" fn hooked_present1(
     flags: DXGI_PRESENT,
     present_params: *const DXGI_PRESENT_PARAMETERS,
 ) -> HRESULT {
-    let Some(ref present1) = HOOK.read().present1 else {
-        return HRESULT(0);
-    };
     trace!("Present1 called");
 
     if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
@@ -148,6 +141,7 @@ pub unsafe extern "system" fn hooked_present1(
         }
     }
 
+    let present1 = HOOK.present1.get().unwrap();
     unsafe {
         mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
             this,

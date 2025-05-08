@@ -33,9 +33,6 @@ pub fn cleanup() {
 
 #[tracing::instrument]
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
-    let Some(ref end_scene) = HOOK.read().end_scene else {
-        return HRESULT(0);
-    };
     trace!("EndScene called");
 
     let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
@@ -81,6 +78,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     })
     .expect("Backends::with_backend failed");
 
+    let end_scene = HOOK.end_scene.get().unwrap();
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
 }
 
@@ -89,10 +87,6 @@ pub unsafe extern "system" fn hooked_reset(
     this: *mut c_void,
     param: *mut D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
-    let Some(ref reset) = HOOK.read().reset else {
-        return HRESULT(0);
-    };
-    
     let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
     let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
@@ -103,6 +97,7 @@ pub unsafe extern "system" fn hooked_reset(
     })
     .expect("Backends::with_backend failed");
 
+    let reset = HOOK.reset.get().unwrap();
     unsafe { mem::transmute::<*const (), ResetFn>(reset.original_fn())(this, param) }
 }
 

@@ -6,7 +6,6 @@ use std::ffi::CString;
 use anyhow::Context;
 use cx::OverlayGlContext;
 use once_cell::sync::OnceCell;
-use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -30,9 +29,6 @@ static CX: OnceCell<OverlayGlContext> = OnceCell::new();
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
-    let Some(ref hook) = *HOOK.read() else {
-        return BOOL(0);
-    };
     trace!("WglSwapBuffers called");
 
     let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
@@ -79,20 +75,21 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     })
     .expect("Backends::with_backend failed");
 
+    let hook = HOOK.get().unwrap();
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
-static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
+static HOOK: OnceCell<DetourHook> = OnceCell::new();
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
         debug!("hooking WglSwapBuffers");
-        let hook =
-            unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
-        *HOOK.write() = Some(hook);
+        HOOK.get_or_try_init(|| unsafe {
+            DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)
+        })?;
     }
 
     Ok(())
