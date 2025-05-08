@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
 
-use crate::{backend::Backends, hook, util::with_dummy_hwnd};
+use crate::{hook, util::with_dummy_hwnd};
 
 pub struct Overlay {
     pending_handle: Option<SharedHandle>,
@@ -117,7 +117,6 @@ pub async fn app(addr: &str) {
         defer!({
             debug!("cleanup start");
             hook::cleanup();
-            Backends::cleanup();
             Overlay::with(|overlay| {
                 overlay.pending_handle.take();
                 overlay.emitter.take();

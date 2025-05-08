@@ -7,10 +7,9 @@ use windows::{
     Win32::{
         Foundation::HWND,
         Graphics::Direct3D9::{
-            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DBACKBUFFER_TYPE_MONO,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING, D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_NULLREF,
-            D3DPRESENT_PARAMETERS, D3DSURFACE_DESC, D3DSWAPEFFECT_DISCARD, Direct3DCreate9,
-            IDirect3DDevice9,
+            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+            D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS,
+            D3DSWAPEFFECT_DISCARD, Direct3DCreate9, IDirect3DDevice9,
         },
     },
     core::{BOOL, HRESULT, Interface},
@@ -40,20 +39,12 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
     unsafe { device.GetCreationParameters(&mut params) }.unwrap();
 
-    let screen = {
-        let mut desc = D3DSURFACE_DESC::default();
-        unsafe {
-            let surface = device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO).unwrap();
-            surface.GetDesc(&mut desc).unwrap();
-        }
-
-        (desc.Width, desc.Height)
-    };
-
     let mut reader = READER.lock();
     let reader = reader.get_or_insert_with(|| SharedHandleReader::new().unwrap());
 
-    Backends::with_or_init_backend(params.hFocusWindow, |backend| {
+    Backends::with_backend(params.hFocusWindow, |backend| {
+        let screen = backend.size;
+
         let renderer = backend
             .renderers
             .dx9
@@ -76,7 +67,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
 
         _ = renderer.draw(device, position, screen);
     })
-    .expect("Backends::with_backend failed");
+    .expect("Backends::with_or_init_backend failed");
 
     let end_scene = HOOK.end_scene.get().unwrap();
     unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }

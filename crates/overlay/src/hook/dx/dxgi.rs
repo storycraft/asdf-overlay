@@ -35,7 +35,6 @@ use crate::{
     app::Overlay,
     backend::{Backends, WindowBackend},
     renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
-    util::get_client_size,
 };
 
 use super::{
@@ -156,14 +155,7 @@ pub unsafe extern "system" fn hooked_present1(
 fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
-    let screen = {
-        let Ok(desc) = (unsafe { swapchain.GetDesc() }) else {
-            return;
-        };
-
-        get_client_size(desc.OutputWindow).unwrap_or_default()
-    };
-
+    let screen = backend.size;
     if let Ok(device) = device.cast::<ID3D12Device>() {
         let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
 

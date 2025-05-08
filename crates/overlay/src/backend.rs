@@ -1,11 +1,18 @@
+use core::{ffi::c_void, mem, ptr};
+
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use rustc_hash::FxBuildHasher;
-use tracing::debug;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::{
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    UI::WindowsAndMessaging::{
+        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WINDOWPOS, WM_WINDOWPOSCHANGED, WNDPROC,
+    },
+};
 
-use crate::renderer::{
-    dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, opengl::OpenglRenderer,
+use crate::{
+    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, opengl::OpenglRenderer},
+    util::get_client_size,
 };
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
@@ -18,40 +25,60 @@ pub struct Backends {
 
 impl Backends {
     pub fn with_backend<R>(hwnd: HWND, f: impl FnOnce(&mut WindowBackend) -> R) -> Option<R> {
-        let Some(mut backend) = BACKENDS.map.get_mut(&(hwnd.0 as usize)) else {
-            return None;
-        };
-
-        Some(f(&mut *backend))
+        let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize))?;
+        Some(f(&mut backend))
     }
 
     pub fn with_or_init_backend<R>(
         hwnd: HWND,
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
-        let mut backend = BACKENDS
-            .map
-            .entry(hwnd.0 as usize)
-            .or_insert_with(|| WindowBackend {
+        let mut backend = BACKENDS.map.entry(hwnd.0 as usize).or_try_insert_with(|| {
+            let original_proc: WNDPROC = unsafe {
+                mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
+                    hwnd,
+                    GWLP_WNDPROC,
+                    hooked_wnd_proc as usize as _,
+                ) as _)
+            };
+
+            let size = get_client_size(hwnd)?;
+
+            Ok::<_, anyhow::Error>(WindowBackend {
+                hwnd: hwnd.0 as usize,
+                original_proc,
+
+                size,
                 renderers: Renderers {
                     dx12: None,
                     dx11: None,
                     opengl: None,
                     dx9: None,
                 },
-            });
+            })
+        })?;
 
         Ok(f(&mut backend))
     }
+}
 
-    #[tracing::instrument()]
-    pub fn cleanup() {
-        BACKENDS.map.clear();
-        debug!("backends cleaned up");
+impl Drop for WindowBackend {
+    fn drop(&mut self) {
+        unsafe {
+            SetWindowLongPtrA(
+                HWND(ptr::null_mut::<c_void>().with_addr(self.hwnd)),
+                GWLP_WNDPROC,
+                mem::transmute::<WNDPROC, isize>(self.original_proc) as _,
+            )
+        };
     }
 }
 
 pub struct WindowBackend {
+    hwnd: usize,
+    original_proc: WNDPROC,
+
+    pub size: (u32, u32),
     pub renderers: Renderers,
 }
 
@@ -60,4 +87,23 @@ pub struct Renderers {
     pub dx11: Option<Dx11Renderer>,
     pub opengl: Option<OpenglRenderer>,
     pub dx9: Option<Dx9Renderer>,
+}
+
+extern "system" fn hooked_wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize)).unwrap();
+
+    if msg == WM_WINDOWPOSCHANGED {
+        let pos = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+        backend.size = (pos.cx as u32, pos.cy as u32);
+    }
+
+    let original_proc = backend.original_proc;
+    // prevent deadlock
+    drop(backend);
+    unsafe { CallWindowProcA(original_proc, hwnd, msg, wparam, lparam) }
 }

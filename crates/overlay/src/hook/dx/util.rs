@@ -13,7 +13,7 @@ pub unsafe fn call_original_execute_command_lists(
     command_lists: &[Option<ID3D12CommandList>],
 ) {
     match HOOK.execute_command_lists.get() {
-        Some(ref hook) => unsafe {
+        Some(hook) => unsafe {
             mem::transmute::<*const (), ExecuteCommandListsFn>(hook.original_fn())(
                 queue.as_raw(),
                 command_lists.len() as _,

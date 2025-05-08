@@ -20,7 +20,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, util::get_client_size, wgl,
+    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, wgl,
 };
 
 use super::DetourHook;
@@ -58,7 +58,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                 OpenglRenderer::new().expect("renderer creation failed")
             });
 
-            let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
+            let screen = backend.size;
             let position = Overlay::with(|overlay| {
                 let size = renderer.size();
 
