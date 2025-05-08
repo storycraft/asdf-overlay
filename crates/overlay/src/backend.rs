@@ -1,9 +1,9 @@
 pub mod renderers;
 
-use core::{ffi::c_void, mem, ptr};
+use core::mem;
 
 use asdf_overlay_common::event::{ClientEvent, WindowEvent};
-use dashmap::DashMap;
+use dashmap::{DashMap, mapref::multiple::RefMulti};
 use once_cell::sync::Lazy;
 use renderers::Renderers;
 use rustc_hash::FxBuildHasher;
@@ -26,6 +26,10 @@ pub struct Backends {
 }
 
 impl Backends {
+    pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, usize, WindowBackend>> {
+        BACKENDS.map.iter()
+    }
+
     pub fn with_backend<R>(hwnd: HWND, f: impl FnOnce(&mut WindowBackend) -> R) -> Option<R> {
         let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize))?;
         Some(f(&mut backend))
@@ -46,8 +50,12 @@ impl Backends {
 
             let size = get_client_size(hwnd)?;
 
+            Overlay::emit_event(ClientEvent::Window {
+                hwnd: hwnd.0 as u32,
+                event: WindowEvent::Added,
+            });
+
             Ok::<_, anyhow::Error>(WindowBackend {
-                hwnd: hwnd.0 as usize,
                 original_proc,
 
                 size,
@@ -65,20 +73,7 @@ impl Backends {
     }
 }
 
-impl Drop for WindowBackend {
-    fn drop(&mut self) {
-        unsafe {
-            SetWindowLongPtrA(
-                HWND(ptr::null_mut::<c_void>().with_addr(self.hwnd)),
-                GWLP_WNDPROC,
-                mem::transmute::<WNDPROC, isize>(self.original_proc) as _,
-            )
-        };
-    }
-}
-
 pub struct WindowBackend {
-    hwnd: usize,
     original_proc: WNDPROC,
 
     pub size: (u32, u32),
@@ -124,7 +119,8 @@ extern "system" fn hooked_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    trace!("WNDPROC called");
+    trace!("WndProc called");
+
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize)).unwrap();
     if let Some(filtered) = process_wnd_proc(&mut backend, hwnd, msg, wparam, lparam) {
         return filtered;

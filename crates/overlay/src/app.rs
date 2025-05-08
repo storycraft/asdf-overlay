@@ -1,7 +1,7 @@
 use std::sync::Once;
 
 use asdf_overlay_common::{
-    event::ClientEvent,
+    event::{ClientEvent, WindowEvent},
     ipc::client::{IpcClientConn, IpcClientEventEmitter},
     request::{Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
     size::PercentLength,
@@ -109,9 +109,7 @@ pub async fn app(addr: &str) {
             debug!("exiting");
         });
 
-        debug!("connecting ipc");
-        let client = IpcClientConn::connect(addr).await?;
-        debug!("ipc client connected");
+        let client = setup_ipc_client(addr).await?;
         defer!({
             debug!("cleanup start");
             hook::cleanup();
@@ -122,8 +120,6 @@ pub async fn app(addr: &str) {
             });
         });
 
-        Overlay::with(|overlay| overlay.emitter = Some(client.create_emitter()));
-
         _ = run_client(client).await;
         Ok(())
     }
@@ -132,6 +128,29 @@ pub async fn app(addr: &str) {
     if let Err(err) = inner(addr).await {
         error!("{:?}", err);
     }
+}
+
+async fn setup_ipc_client(addr: &str) -> anyhow::Result<IpcClientConn> {
+    debug!("connecting ipc");
+    let client = IpcClientConn::connect(addr).await?;
+    debug!("ipc client connected");
+
+    debug!("sending initial data");
+    let emitter = client.create_emitter();
+    // send existing windows
+    for backend in Backends::iter() {
+        _ = emitter.emit(ClientEvent::Window {
+            hwnd: *backend.key() as _,
+            event: WindowEvent::Added,
+        });
+    }
+
+    Overlay::with(|overlay| {
+        overlay.emitter = Some(emitter);
+    });
+    debug!("initial data sent");
+
+    Ok(client)
 }
 
 fn setup_once() {
