@@ -57,8 +57,11 @@ export class Overlay {
     this[idSym] = id;
 
     void (async () => {
+      // wait until next tick so no events are lost
+      await new Promise(process.nextTick);
+
       try {
-        for (;;) {
+        for (; ;) {
           await addon.overlayNextEvent(id);
         }
       } catch (e) {
