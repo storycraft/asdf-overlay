@@ -11,7 +11,7 @@ use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        message::{Anchor, Margin, Position, Request},
+        message::{Anchor, Margin, Position, Request, SharedHandle},
     },
     inject,
     process::OwnedProcess,
@@ -244,6 +244,16 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     })
 }
 
+fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+
+    request_promise(
+        &mut cx,
+        id,
+        Request::UpdateShtex(SharedHandle { handle: None }),
+    )
+}
+
 fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
@@ -286,6 +296,8 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
     cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;
+    cx.export_function("overlayClearSurface", overlay_clear_surface)?;
+
     cx.export_function("overlayNextEvent", overlay_next_event)?;
 
     cx.export_function("overlayDestroy", overlay_destroy)?;

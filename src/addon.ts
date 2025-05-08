@@ -15,6 +15,7 @@ export type Addon = {
 
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
+    overlayClearSurface(id: number): Promise<void>,
 
     overlayNextEvent(id: number): Promise<void>,
 

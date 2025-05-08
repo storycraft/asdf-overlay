@@ -117,6 +117,13 @@ export class Overlay {
   }
 
   /**
+   * Clear overlay
+   */
+  async clearSurface() {
+    await addon.overlayClearSurface(this[idSym]);
+  }
+
+  /**
    * Destroy overlay
    */
   destroy() {
