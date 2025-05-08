@@ -29,16 +29,17 @@ impl Backends {
         hwnd: HWND,
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
-        let mut backend = BACKENDS.map.entry(hwnd.0 as usize).or_try_insert_with(|| {
-            Ok::<_, anyhow::Error>(WindowBackend {
+        let mut backend = BACKENDS
+            .map
+            .entry(hwnd.0 as usize)
+            .or_insert_with(|| WindowBackend {
                 renderers: Renderers {
                     dx12: None,
                     dx11: None,
                     opengl: None,
                     dx9: None,
                 },
-            })
-        })?;
+            });
 
         Ok(f(&mut backend))
     }
