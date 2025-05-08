@@ -47,7 +47,7 @@ pub fn with_rt<'a>(
     Ok(promise)
 }
 
-pub async fn try_with_ipc<'a, T>(
+pub async fn try_with_ipc<T>(
     id: u32,
     f: impl AsyncFnOnce(&mut IpcServerConn) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
