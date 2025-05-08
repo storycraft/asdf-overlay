@@ -17,7 +17,23 @@ export type Addon = {
     overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
     overlayClearSurface(id: number): Promise<void>,
 
-    overlayNextEvent(id: number): Promise<void>,
+    overlayNextEvent(id: number): Promise<Event>,
 
     overlayDestroy(id: number): void,
+};
+
+export type Event = {
+    kind: 'window',
+    hwnd: number,
+    event: WindowEvent,
+};
+
+type WindowEvent = {
+    kind: 'added',
+} | {
+    kind: 'resized',
+    width: number,
+    height: number,
+} | {
+    kind: 'destroyed',
 };

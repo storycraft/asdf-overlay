@@ -44,6 +44,7 @@ function loadAddon(): Addon {
 const idSym: unique symbol = Symbol("id");
 
 export type OverlayEventEmitter = EventEmitter<{
+  'added': [hwnd: number],
   'resized': [hwnd: number, width: number, height: number],
   'destroyed': [hwnd: number],
   'disconnected': [],
@@ -62,7 +63,31 @@ export class Overlay {
 
       try {
         for (; ;) {
-          await addon.overlayNextEvent(id);
+          const next = await addon.overlayNextEvent(id);
+
+          switch (next.kind) {
+            case 'window': {
+              const inner = next.event;
+              switch (inner.kind) {
+                case 'added': {
+                  this.event.emit('added', next.hwnd);
+                  break;
+                }
+
+                case 'resized': {
+                  this.event.emit('resized', next.hwnd, inner.width, inner.height);
+                  break;
+                }
+
+                case 'destroyed': {
+                  this.event.emit('destroyed', next.hwnd);
+                  break;
+                }
+              }
+
+              break;
+            }
+          }
         }
       } catch (e) {
         this.event.emit('disconnected');

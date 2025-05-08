@@ -21,6 +21,7 @@ use asdf_overlay_client::{
 };
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
+use event::serialize_event;
 use futures::StreamExt;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
@@ -267,21 +268,34 @@ fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
 fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
-    with_rt(&mut cx, async move {
-        let event: ClientEvent = MANAGER
-            .with(id, async move |overlay| {
-                overlay
-                    .event
-                    .lock()
-                    .await
-                    .next()
-                    .await
-                    .context("event stream closed")
-            })
-            .await??;
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
 
-        Ok(())
-    })
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = async move {
+            let event: ClientEvent = MANAGER
+                .with(id, async move |overlay| {
+                    overlay
+                        .event
+                        .lock()
+                        .await
+                        .next()
+                        .await
+                        .context("event stream closed")
+                })
+                .await??;
+            Ok::<_, anyhow::Error>(event)
+        }
+        .await;
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(event) => Ok(serialize_event(&mut cx, event)?),
+            Err(err) => cx.throw_error(format!("{err:?}")),
+        });
+    });
+
+    Ok(promise)
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
