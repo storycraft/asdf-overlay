@@ -24,7 +24,7 @@ pub fn serialize_event<'a>(
 
                 WindowEvent::Resized { width, height } => {
                     let kind = cx.string("resized");
-                    inner.set(cx, "resized", kind)?;
+                    inner.set(cx, "kind", kind)?;
 
                     let width = cx.number(width);
                     inner.set(cx, "width", width)?;
