@@ -62,13 +62,12 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             });
 
             let screen = backend.size;
+            if let Some(shared) = backend.pending_handle.take() {
+                renderer.update_texture(shared);
+            }
+
+            let size = renderer.size();
             let position = Overlay::with(|overlay| {
-                let size = renderer.size();
-
-                if let Some(shared) = overlay.take_pending_handle() {
-                    renderer.update_texture(shared);
-                }
-
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
 

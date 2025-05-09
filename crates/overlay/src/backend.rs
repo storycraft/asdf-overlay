@@ -3,9 +3,15 @@ pub mod renderers;
 
 use core::mem;
 
-use asdf_overlay_common::event::{ClientEvent, WindowEvent};
+use asdf_overlay_common::{
+    event::{ClientEvent, WindowEvent},
+    request::UpdateSharedHandle,
+};
 use cx::DrawContext;
-use dashmap::{DashMap, mapref::multiple::RefMulti};
+use dashmap::{
+    DashMap,
+    mapref::multiple::{RefMulti, RefMutMulti},
+};
 use once_cell::sync::Lazy;
 use renderers::Renderer;
 use rustc_hash::FxBuildHasher;
@@ -14,7 +20,8 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_DESTROY, WM_WINDOWPOSCHANGED, WNDPROC,
+        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY, WM_WINDOWPOSCHANGED,
+        WNDPROC,
     },
 };
 
@@ -31,6 +38,10 @@ pub struct Backends {
 impl Backends {
     pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, u32, WindowBackend>> {
         BACKENDS.map.iter()
+    }
+
+    pub fn iter_mut<'a>() -> impl Iterator<Item = RefMutMulti<'a, u32, WindowBackend>> {
+        BACKENDS.map.iter_mut()
     }
 
     #[must_use]
@@ -62,6 +73,7 @@ impl Backends {
             Ok::<_, anyhow::Error>(WindowBackend {
                 original_proc,
 
+                pending_handle: None,
                 size,
                 renderer: Renderer::new(),
                 cx: DrawContext::new(),
@@ -74,6 +86,7 @@ impl Backends {
     pub fn cleanup_renderers() {
         for mut backend in BACKENDS.map.iter_mut() {
             mem::take(&mut backend.renderer);
+            backend.pending_handle.take();
         }
     }
 }
@@ -82,6 +95,7 @@ pub struct WindowBackend {
     original_proc: WNDPROC,
 
     pub size: (u32, u32),
+    pub pending_handle: Option<UpdateSharedHandle>,
     pub renderer: Renderer,
     pub cx: DrawContext,
 }
@@ -108,7 +122,7 @@ fn process_wnd_proc(
             }
         }
 
-        WM_DESTROY => {
+        WM_NCDESTROY => {
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: hwnd.0 as u32,
                 event: WindowEvent::Destroyed,
@@ -132,7 +146,7 @@ extern "system" fn hooked_wnd_proc(
     let key = hwnd.0 as u32;
     defer!({
         // cleanup backend
-        if msg == WM_DESTROY {
+        if msg == WM_NCDESTROY {
             trace!("cleanup hwnd: {hwnd:?}");
             BACKENDS.map.remove(&key);
         }

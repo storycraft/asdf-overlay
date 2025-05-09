@@ -4,7 +4,7 @@ use std::sync::Once;
 use asdf_overlay_common::{
     event::{ClientEvent, WindowEvent},
     ipc::client::{IpcClientConn, IpcClientEventEmitter},
-    request::{Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
+    request::{Request, SetAnchor, SetMargin, SetPosition},
     size::PercentLength,
 };
 use parking_lot::Mutex;
@@ -15,7 +15,6 @@ use windows::Win32::Foundation::HWND;
 use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
 pub struct Overlay {
-    pending_handle: Option<UpdateSharedHandle>,
     emitter: Option<IpcClientEventEmitter>,
     position: SetPosition,
     anchor: SetAnchor,
@@ -40,10 +39,6 @@ impl Overlay {
         (x, y)
     }
 
-    pub fn take_pending_handle(&mut self) -> Option<UpdateSharedHandle> {
-        self.pending_handle.take()
-    }
-
     pub fn emit_event(event: ClientEvent) {
         if let Some(ref mut emitter) = CURRENT.lock().emitter {
             _ = emitter.emit(event);
@@ -56,7 +51,6 @@ impl Overlay {
 }
 
 static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
-    pending_handle: None,
     emitter: None,
     position: SetPosition {
         x: PercentLength::ZERO,
@@ -107,7 +101,10 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
             }
 
             Request::UpdateSharedHandle(shared) => {
-                Overlay::with(|overlay| overlay.pending_handle = Some(shared));
+                for mut backend in Backends::iter_mut() {
+                    backend.pending_handle = Some(shared.clone());
+                }
+
                 client.reply(id, ())?;
             }
         }
@@ -127,7 +124,6 @@ pub async fn app(addr: &str) {
             hook::cleanup();
             Backends::cleanup_renderers();
             Overlay::with(|overlay| {
-                overlay.pending_handle.take();
                 overlay.emitter.take();
             });
         });
