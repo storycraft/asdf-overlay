@@ -20,9 +20,12 @@ use scopeguard::defer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    UI::WindowsAndMessaging::{
-        self as msg, CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY,
-        WM_WINDOWPOSCHANGED, WNDPROC,
+    UI::{
+        Controls,
+        WindowsAndMessaging::{
+            self as msg, CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY,
+            WM_WINDOWPOSCHANGED, WNDPROC,
+        },
     },
 };
 
@@ -159,9 +162,9 @@ fn process_input_capture(
         | msg::WM_MBUTTONDOWN
         | msg::WM_MBUTTONUP
         | msg::WM_MOUSEACTIVATE
-        | msg::WM_MOUSEHOVER
+        | Controls::WM_MOUSEHOVER
         | msg::WM_MOUSEHWHEEL
-        | msg::WM_MOUSELEAVE
+        | Controls::WM_MOUSELEAVE
         | msg::WM_MOUSEMOVE
         | msg::WM_MOUSEWHEEL
         | msg::WM_NCHITTEST
