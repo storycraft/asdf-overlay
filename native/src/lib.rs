@@ -216,10 +216,7 @@ fn overlay_get_size(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = try_with_ipc(id, async move |conn| {
-            conn.get_size(GetSize { hwnd }).await
-        })
-        .await;
+        let res = try_with_ipc(id, async move |conn| conn.get_size(GetSize { hwnd }).await).await;
 
         match res {
             Ok(Some(size)) => {

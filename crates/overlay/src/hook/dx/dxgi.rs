@@ -125,14 +125,15 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
 }
 
 #[tracing::instrument]
-fn cleanup_state(swapchain: &IDXGISwapChain1) {
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+fn cleanup_state(swapchain: &IDXGISwapChain1, hwnd: Option<HWND>) {
+    if let Some(hwnd) = hwnd {
         _ = Backends::with_backend(hwnd, |backend| {
             backend.cx.dx11.take();
         });
     }
 
     dx12::clear();
+    trace!("cleanedup render states");
 }
 
 #[tracing::instrument]
@@ -169,7 +170,12 @@ pub unsafe extern "system" fn hooked_create_swapchain(
     trace!("CreateSwapChain called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
-    cleanup_state(swapchain);
+    let desc = unsafe { &*desc };
+    let hwnd = desc.OutputWindow;
+
+    if !hwnd.is_invalid() {
+        cleanup_state(swapchain, if hwnd.is_invalid() { None } else { Some(hwnd) });
+    }
 
     let create_swapchain = HOOK.create_swapchain.get().unwrap();
     unsafe {
@@ -194,7 +200,8 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     trace!("ResizeBuffers called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
-    cleanup_state(swapchain);
+    let hwnd = unsafe { swapchain.GetHwnd().ok() };
+    cleanup_state(swapchain, hwnd);
 
     let resize_buffers = HOOK.resize_buffers.get().unwrap();
     let res = unsafe {
@@ -211,7 +218,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
         return res;
     }
 
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+    if let Some(hwnd) = hwnd {
         Backends::with_or_init_backend(hwnd, |backend| {
             if let Some(ref mut renderer) = backend.renderer.dx12 {
                 let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
