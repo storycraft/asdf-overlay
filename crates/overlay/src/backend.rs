@@ -20,8 +20,8 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_DESTROY, WM_NCDESTROY,
-        WM_WINDOWPOSCHANGED, WNDPROC,
+        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY, WM_WINDOWPOSCHANGED,
+        WNDPROC,
     },
 };
 
