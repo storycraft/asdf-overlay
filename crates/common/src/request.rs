@@ -10,6 +10,7 @@ pub enum Request {
     SetAnchor(SetAnchor),
     SetMargin(SetMargin),
     GetSize(GetSize),
+    SetInputCapture(SetInputCapture),
     UpdateSharedHandle(UpdateSharedHandle),
 }
 
@@ -51,6 +52,13 @@ impl SetMargin {
 /// Get size of overlay window
 pub struct GetSize {
     pub hwnd: u32,
+}
+
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+/// Set input capture of a overlay window
+pub struct SetInputCapture {
+    pub hwnd: u32,
+    pub capture: bool,
 }
 
 #[derive(Debug, Encode, Decode, Clone, PartialEq)]
