@@ -18,7 +18,9 @@ use tokio::{
 use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
-    request::{GetSize, Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
+    request::{
+        GetSize, Request, SetAnchor, SetInputCapture, SetMargin, SetPosition, UpdateSharedHandle,
+    },
 };
 
 use super::{Frame, ServerRequest};
@@ -175,6 +177,9 @@ requests! {
 
     /// Get overlay size
     get_size(GetSize) -> Option<(u32, u32)>;
+
+    /// Set input capture
+    set_input_capture(SetInputCapture) -> bool;
 
     /// Update overlay surface
     update_shtex(UpdateSharedHandle) -> ();

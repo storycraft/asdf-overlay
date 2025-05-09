@@ -33,6 +33,8 @@ pub fn serialize_event<'a>(
                     inner.set(cx, "height", height)?;
                 }
 
+                WindowEvent::Input(_) => {}
+
                 WindowEvent::Destroyed => {
                     let kind = cx.string("destroyed");
                     inner.set(cx, "kind", kind)?;

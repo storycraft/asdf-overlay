@@ -21,8 +21,8 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY, WM_WINDOWPOSCHANGED,
-        WNDPROC,
+        self as msg, CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY,
+        WM_WINDOWPOSCHANGED, WNDPROC,
     },
 };
 
@@ -75,6 +75,7 @@ impl Backends {
                 original_proc,
 
                 pending_handle: None,
+                capture_input: false,
                 size,
                 renderer: Renderer::new(),
                 cx: DrawContext::new(),
@@ -88,6 +89,7 @@ impl Backends {
         for mut backend in BACKENDS.map.iter_mut() {
             mem::take(&mut backend.renderer);
             backend.pending_handle.take();
+            backend.capture_input = false;
         }
     }
 }
@@ -96,6 +98,7 @@ pub struct WindowBackend {
     original_proc: WNDPROC,
 
     pub size: (u32, u32),
+    pub capture_input: bool,
     pub pending_handle: Option<UpdateSharedHandle>,
     pub renderer: Renderer,
     pub cx: DrawContext,
@@ -105,8 +108,8 @@ fn process_wnd_proc(
     backend: &mut WindowBackend,
     hwnd: HWND,
     msg: u32,
-    _wparam: WPARAM,
-    _lparam: LPARAM,
+    wparam: WPARAM,
+    lparam: LPARAM,
 ) -> Option<LRESULT> {
     match msg {
         WM_WINDOWPOSCHANGED => {
@@ -133,7 +136,81 @@ fn process_wnd_proc(
         _ => {}
     }
 
+    if backend.capture_input && process_input_capture(backend, hwnd, msg, wparam, lparam) {
+        return Some(LRESULT(0));
+    }
+
     None
+}
+
+fn process_input_capture(
+    backend: &mut WindowBackend,
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> bool {
+    const WM_MOUSEHOVER: u32 = 0x02A1;
+    const WM_MOUSELEAVE: u32 = 0x02A3;
+
+    match msg {
+        // capture cursor input
+        msg::WM_LBUTTONDBLCLK
+        | msg::WM_LBUTTONDOWN
+        | msg::WM_LBUTTONUP
+        | msg::WM_MBUTTONDBLCLK
+        | msg::WM_MBUTTONDOWN
+        | msg::WM_MBUTTONUP
+        | msg::WM_MOUSEACTIVATE
+        | WM_MOUSEHOVER
+        | msg::WM_MOUSEHWHEEL
+        | WM_MOUSELEAVE
+        | msg::WM_MOUSEMOVE
+        | msg::WM_MOUSEWHEEL
+        | msg::WM_NCHITTEST
+        | msg::WM_NCLBUTTONDBLCLK
+        | msg::WM_NCLBUTTONDOWN
+        | msg::WM_NCLBUTTONUP
+        | msg::WM_NCMBUTTONDBLCLK
+        | msg::WM_NCMBUTTONDOWN
+        | msg::WM_NCMBUTTONUP
+        | msg::WM_NCMOUSEHOVER
+        | msg::WM_NCMOUSELEAVE
+        | msg::WM_NCMOUSEMOVE
+        | msg::WM_NCRBUTTONDBLCLK
+        | msg::WM_NCRBUTTONDOWN
+        | msg::WM_NCRBUTTONUP
+        | msg::WM_NCXBUTTONDBLCLK
+        | msg::WM_NCXBUTTONDOWN
+        | msg::WM_NCXBUTTONUP
+        | msg::WM_RBUTTONDBLCLK
+        | msg::WM_RBUTTONDOWN
+        | msg::WM_RBUTTONUP
+        | msg::WM_XBUTTONDBLCLK
+        | msg::WM_XBUTTONDOWN
+        | msg::WM_XBUTTONUP => {}
+
+        // capture keyboard input
+        msg::WM_APPCOMMAND
+        | msg::WM_CHAR
+        | msg::WM_DEADCHAR
+        | msg::WM_HOTKEY
+        | msg::WM_KEYDOWN
+        | msg::WM_KEYUP
+        | msg::WM_KILLFOCUS
+        | msg::WM_SETFOCUS
+        | msg::WM_SYSDEADCHAR
+        | msg::WM_SYSKEYDOWN
+        | msg::WM_SYSKEYUP
+        | msg::WM_UNICHAR => {}
+
+        // capture raw input
+        msg::WM_INPUT => {}
+
+        _ => return false,
+    }
+
+    true
 }
 
 #[tracing::instrument]

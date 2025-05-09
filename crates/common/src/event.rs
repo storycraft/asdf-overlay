@@ -1,4 +1,7 @@
+pub mod input;
+
 use bincode::{Decode, Encode};
+use input::InputEvent;
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum ClientEvent {
@@ -9,5 +12,6 @@ pub enum ClientEvent {
 pub enum WindowEvent {
     Added,
     Resized { width: u32, height: u32 },
+    Input(InputEvent),
     Destroyed,
 }
