@@ -13,6 +13,8 @@ pub enum CursorEvent {
     Input {
         state: InputState,
         input: CursorInput,
+        x: u16,
+        y: u16,
     },
     Move {
         x: u16,
