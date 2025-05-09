@@ -1,11 +1,13 @@
 pub mod renderers;
+pub mod cx;
 
 use core::mem;
 
 use asdf_overlay_common::event::{ClientEvent, WindowEvent};
+use cx::DrawContext;
 use dashmap::{DashMap, mapref::multiple::RefMulti};
 use once_cell::sync::Lazy;
-use renderers::Renderers;
+use renderers::Renderer;
 use rustc_hash::FxBuildHasher;
 use tracing::trace;
 use windows::Win32::{
@@ -30,6 +32,7 @@ impl Backends {
         BACKENDS.map.iter()
     }
 
+    #[must_use]
     pub fn with_backend<R>(hwnd: HWND, f: impl FnOnce(&mut WindowBackend) -> R) -> Option<R> {
         let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize))?;
         Some(f(&mut backend))
@@ -59,7 +62,8 @@ impl Backends {
                 original_proc,
 
                 size,
-                renderers: Renderers::new(),
+                renderer: Renderer::new(),
+                cx: DrawContext::new(),
             })
         })?;
 
@@ -68,7 +72,7 @@ impl Backends {
 
     pub fn cleanup_renderers() {
         for mut backend in BACKENDS.map.iter_mut() {
-            mem::take(&mut backend.renderers);
+            mem::take(&mut backend.renderer);
         }
     }
 }
@@ -77,7 +81,8 @@ pub struct WindowBackend {
     original_proc: WNDPROC,
 
     pub size: (u32, u32),
-    pub renderers: Renderers,
+    pub renderer: Renderer,
+    pub cx: DrawContext,
 }
 
 fn process_wnd_proc(

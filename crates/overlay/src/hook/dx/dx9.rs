@@ -46,7 +46,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
         let screen = backend.size;
 
         let renderer = backend
-            .renderers
+            .renderer
             .dx9
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
         let position = Overlay::with(|overlay| {
@@ -84,7 +84,7 @@ pub unsafe extern "system" fn hooked_reset(
     unsafe { device.GetCreationParameters(&mut params) }.unwrap();
 
     Backends::with_or_init_backend(params.hFocusWindow, |backend| {
-        backend.renderers.dx9.take();
+        backend.renderer.dx9.take();
     })
     .expect("Backends::with_backend failed");
 

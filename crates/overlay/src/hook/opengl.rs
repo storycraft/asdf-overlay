@@ -1,10 +1,7 @@
-mod cx;
-
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use cx::OverlayGlContext;
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
@@ -19,11 +16,14 @@ use windows::{
     core::{BOOL, PCSTR, s},
 };
 
-use crate::{app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, wgl};
+use crate::{
+    app::Overlay,
+    backend::{Backends, cx::GlContext},
+    renderer::opengl::OpenglRenderer,
+    wgl,
+};
 
 use super::DetourHook;
-
-static CX: OnceCell<OverlayGlContext> = OnceCell::new();
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
@@ -31,15 +31,20 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
     let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
     Backends::with_or_init_backend(hwnd, |backend| {
-        let cx = CX
-            .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
-            .unwrap();
+        let cx = match backend.cx.opengl {
+            Some(ref mut cx) => cx,
 
-        if backend.renderers.dx11.is_some() {
-            if backend.renderers.opengl.is_some() {
+            None => backend
+                .cx
+                .opengl
+                .insert(GlContext::new(HDC(hdc)).expect("failed to create GlContext")),
+        };
+
+        if backend.renderer.dx11.is_some() {
+            if backend.renderer.opengl.is_some() {
                 debug!("Skipping opengl overlay due to dx11 layer");
                 cx.with(HDC(hdc), || {
-                    backend.renderers.opengl = None;
+                    backend.renderer.opengl = None;
                 });
             }
 
@@ -48,7 +53,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
         cx.with(HDC(hdc), || {
             trace!("using opengl renderer");
-            let renderer = backend.renderers.opengl.get_or_insert_with(|| {
+            let renderer = backend.renderer.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
 
