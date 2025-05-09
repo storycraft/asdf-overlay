@@ -9,6 +9,7 @@ use dashmap::{DashMap, mapref::multiple::RefMulti};
 use once_cell::sync::Lazy;
 use renderers::Renderer;
 use rustc_hash::FxBuildHasher;
+use scopeguard::defer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
@@ -128,8 +129,15 @@ extern "system" fn hooked_wnd_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     trace!("WndProc called");
-
     let key = hwnd.0 as u32;
+    defer!({
+        // cleanup backend
+        if msg == WM_DESTROY {
+            trace!("cleanup hwnd: {hwnd:?}");
+            BACKENDS.map.remove(&key);
+        }
+    });
+
     let mut backend = BACKENDS.map.get_mut(&key).unwrap();
     if let Some(filtered) = process_wnd_proc(&mut backend, hwnd, msg, wparam, lparam) {
         return filtered;
@@ -138,12 +146,5 @@ extern "system" fn hooked_wnd_proc(
     let original_proc = backend.original_proc;
     // prevent deadlock
     drop(backend);
-
-    // cleanup backend
-    if msg == WM_DESTROY {
-        trace!("cleanup hwnd: {hwnd:?}");
-        BACKENDS.map.remove(&key);
-    }
-
     unsafe { CallWindowProcA(original_proc, hwnd, msg, wparam, lparam) }
 }
