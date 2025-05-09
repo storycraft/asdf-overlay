@@ -13,6 +13,7 @@ use super::DetourHook;
 struct Hook {
     present: OnceCell<DetourHook>,
     present1: OnceCell<DetourHook>,
+    create_swapchain: OnceCell<DetourHook>,
     resize_buffers: OnceCell<DetourHook>,
     execute_command_lists: OnceCell<DetourHook>,
     end_scene: OnceCell<DetourHook>,
@@ -22,6 +23,7 @@ struct Hook {
 static HOOK: Hook = Hook {
     present: OnceCell::new(),
     present1: OnceCell::new(),
+    create_swapchain: OnceCell::new(),
     resize_buffers: OnceCell::new(),
     execute_command_lists: OnceCell::new(),
     end_scene: OnceCell::new(),
@@ -42,23 +44,34 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     }
 
     // dxgi
-    let (present, resize_buffers, present1) = dxgi::get_dxgi_addr(dummy_hwnd)?;
+    let dxgi_functions = dxgi::get_dxgi_addr(dummy_hwnd)?;
     debug!("hooking IDXGISwapChain::Present");
     HOOK.present.get_or_try_init(|| unsafe {
-        DetourHook::attach(present as _, dxgi::hooked_present as _)
+        DetourHook::attach(dxgi_functions.present as _, dxgi::hooked_present as _)
     })?;
 
-    debug!("hooking IDXGISwapChain::ResizeBuffers");
-    HOOK.resize_buffers.get_or_try_init(|| unsafe {
-        DetourHook::attach(resize_buffers as _, dxgi::hooked_resize_buffers as _)
-    })?;
-
-    if let Some(present1) = present1 {
+    if let Some(present1) = dxgi_functions.present1 {
         debug!("hooking IDXGISwapChain1::Present1");
         HOOK.present1.get_or_try_init(|| unsafe {
             DetourHook::attach(present1 as _, dxgi::hooked_present1 as _)
         })?;
     }
+
+    debug!("hooking IDXGIFactory::CreateSwapChain");
+    HOOK.create_swapchain.get_or_try_init(|| unsafe {
+        DetourHook::attach(
+            dxgi_functions.create_swapchain as _,
+            dxgi::hooked_create_swapchain as _,
+        )
+    })?;
+
+    debug!("hooking IDXGISwapChain::ResizeBuffers");
+    HOOK.resize_buffers.get_or_try_init(|| unsafe {
+        DetourHook::attach(
+            dxgi_functions.resize_buffers as _,
+            dxgi::hooked_resize_buffers as _,
+        )
+    })?;
 
     // dx9
     let (end_scene, reset) = dx9::get_dx9_addr(dummy_hwnd)?;

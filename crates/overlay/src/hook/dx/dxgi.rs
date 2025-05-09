@@ -42,115 +42,6 @@ use super::{
     dx12::{self, get_queue_for},
 };
 
-pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
-pub type Present1Fn = unsafe extern "system" fn(
-    *mut c_void,
-    u32,
-    DXGI_PRESENT,
-    *const DXGI_PRESENT_PARAMETERS,
-) -> HRESULT;
-pub type ResizeBuffersFn =
-    unsafe extern "system" fn(*mut c_void, u32, u32, u32, DXGI_FORMAT, u32) -> HRESULT;
-
-static D3D11_STATE: Mutex<Option<ID3DDeviceContextState>> = Mutex::new(None);
-
-#[tracing::instrument]
-pub unsafe extern "system" fn hooked_present(
-    this: *mut c_void,
-    sync_interval: u32,
-    flags: DXGI_PRESENT,
-) -> HRESULT {
-    trace!("Present called");
-
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_or_init_backend(hwnd, |backend| {
-                draw_overlay(backend, swapchain);
-            })
-            .expect("Backends::with_backend failed");
-        }
-    }
-
-    let present = HOOK.present.get().unwrap();
-    unsafe {
-        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
-    }
-}
-
-#[tracing::instrument]
-pub unsafe extern "system" fn hooked_resize_buffers(
-    this: *mut c_void,
-    buffer_count: u32,
-    width: u32,
-    height: u32,
-    format: DXGI_FORMAT,
-    flags: u32,
-) -> HRESULT {
-    trace!("ResizeBuffers called");
-
-    D3D11_STATE.lock().take();
-    dx12::clear();
-
-    let resize_buffers = HOOK.resize_buffers.get().unwrap();
-    let res = unsafe {
-        mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
-            this,
-            buffer_count,
-            width,
-            height,
-            format,
-            flags,
-        )
-    };
-    if res.is_err() {
-        return res;
-    }
-
-    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        Backends::with_or_init_backend(hwnd, |backend| {
-            if let Some(ref mut renderer) = backend.renderers.dx12 {
-                let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
-                renderer.resize(&device, swapchain);
-            }
-        })
-        .unwrap();
-    }
-
-    res
-}
-
-#[tracing::instrument]
-pub unsafe extern "system" fn hooked_present1(
-    this: *mut c_void,
-    sync_interval: u32,
-    flags: DXGI_PRESENT,
-    present_params: *const DXGI_PRESENT_PARAMETERS,
-) -> HRESULT {
-    trace!("Present1 called");
-
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_or_init_backend(hwnd, |backend| {
-                draw_overlay(backend, swapchain);
-            })
-            .expect("Backends::with_backend failed");
-        }
-    }
-
-    let present1 = HOOK.present1.get().unwrap();
-    unsafe {
-        mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
-            this,
-            sync_interval,
-            flags,
-            present_params,
-        )
-    }
-}
-
 #[tracing::instrument(skip(backend))]
 fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
@@ -236,11 +127,163 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
     }
 }
 
-/// Get pointer to IDXGISwapChain::Present, IDXGISwapChain::ResizeBuffers and IDXGISwapChain1::Present1 by creating dummy swapchain
 #[tracing::instrument]
-pub fn get_dxgi_addr(
-    dummy_hwnd: HWND,
-) -> anyhow::Result<(PresentFn, ResizeBuffersFn, Option<Present1Fn>)> {
+fn cleanup_state(_swapchain: &IDXGISwapChain1) {
+    D3D11_STATE.lock().take();
+    dx12::clear();
+}
+
+static D3D11_STATE: Mutex<Option<ID3DDeviceContextState>> = Mutex::new(None);
+
+#[tracing::instrument]
+pub unsafe extern "system" fn hooked_present(
+    this: *mut c_void,
+    sync_interval: u32,
+    flags: DXGI_PRESENT,
+) -> HRESULT {
+    trace!("Present called");
+
+    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            Backends::with_or_init_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            })
+            .expect("Backends::with_backend failed");
+        }
+    }
+
+    let present = HOOK.present.get().unwrap();
+    unsafe {
+        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
+    }
+}
+
+#[tracing::instrument]
+pub unsafe extern "system" fn hooked_create_swapchain(
+    this: *mut c_void,
+    device: *mut c_void,
+    desc: *const DXGI_SWAP_CHAIN_DESC,
+    out_swap_chain: *mut *mut c_void,
+) -> HRESULT {
+    trace!("CreateSwapChain called");
+
+    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
+    cleanup_state(swapchain);
+
+    let create_swapchain = HOOK.create_swapchain.get().unwrap();
+    unsafe {
+        mem::transmute::<*const (), CreateSwapChainFn>(create_swapchain.original_fn())(
+            this,
+            device,
+            desc,
+            out_swap_chain,
+        )
+    }
+}
+
+#[tracing::instrument]
+pub unsafe extern "system" fn hooked_resize_buffers(
+    this: *mut c_void,
+    buffer_count: u32,
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    flags: u32,
+) -> HRESULT {
+    trace!("ResizeBuffers called");
+
+    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
+    cleanup_state(swapchain);
+
+    let resize_buffers = HOOK.resize_buffers.get().unwrap();
+    let res = unsafe {
+        mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
+            this,
+            buffer_count,
+            width,
+            height,
+            format,
+            flags,
+        )
+    };
+    if res.is_err() {
+        return res;
+    }
+
+    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+        Backends::with_or_init_backend(hwnd, |backend| {
+            if let Some(ref mut renderer) = backend.renderers.dx12 {
+                let device = unsafe { swapchain.GetDevice::<ID3D12Device>() }.unwrap();
+                renderer.resize(&device, swapchain);
+            }
+        })
+        .unwrap();
+    }
+
+    res
+}
+
+#[tracing::instrument]
+pub unsafe extern "system" fn hooked_present1(
+    this: *mut c_void,
+    sync_interval: u32,
+    flags: DXGI_PRESENT,
+    present_params: *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT {
+    trace!("Present1 called");
+
+    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            Backends::with_or_init_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            })
+            .expect("Backends::with_backend failed");
+        }
+    }
+
+    let present1 = HOOK.present1.get().unwrap();
+    unsafe {
+        mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
+            this,
+            sync_interval,
+            flags,
+            present_params,
+        )
+    }
+}
+
+pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
+pub type Present1Fn = unsafe extern "system" fn(
+    *mut c_void,
+    u32,
+    DXGI_PRESENT,
+    *const DXGI_PRESENT_PARAMETERS,
+) -> HRESULT;
+
+pub type CreateSwapChainFn = unsafe extern "system" fn(
+    *mut c_void,
+    *mut c_void,
+    *const DXGI_SWAP_CHAIN_DESC,
+    *mut *mut c_void,
+) -> HRESULT;
+
+pub type ResizeBuffersFn =
+    unsafe extern "system" fn(*mut c_void, u32, u32, u32, DXGI_FORMAT, u32) -> HRESULT;
+
+pub struct DxgiFunctions {
+    pub present: PresentFn,
+    pub present1: Option<Present1Fn>,
+
+    pub create_swapchain: CreateSwapChainFn,
+
+    pub resize_buffers: ResizeBuffersFn,
+}
+
+/// Get pointer to dxgi functions
+#[tracing::instrument]
+pub fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
     unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;
         let adapter = factory.EnumAdapters1(0)?;
@@ -262,6 +305,13 @@ pub fn get_dxgi_addr(
             ..Default::default()
         };
 
+        let dxgi_factory_vtable = Interface::vtable(&*factory);
+        let create_swapchain = dxgi_factory_vtable.CreateSwapChain;
+        debug!(
+            "IDXGIFactory::CreateSwapChain found: {:p}",
+            create_swapchain
+        );
+
         let mut swapchain = None;
         let mut device = None;
 
@@ -282,12 +332,20 @@ pub fn get_dxgi_addr(
         debug!("IDXGISwapChain::Present found: {:p}", present);
         let resize_buffers = swapchain_vtable.ResizeBuffers;
         debug!("IDXGISwapChain::ResizeBuffers found: {:p}", present);
+
         let present1 = swapchain.cast::<IDXGISwapChain1>().ok().map(|swapchain1| {
             let present1 = Interface::vtable(&swapchain1).Present1;
             debug!("IDXGISwapChain1::Present1 found: {:p}", present1);
             present1
         });
 
-        Ok((present, resize_buffers, present1))
+        Ok(DxgiFunctions {
+            present,
+            present1,
+
+            create_swapchain,
+
+            resize_buffers,
+        })
     }
 }
