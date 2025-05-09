@@ -12,9 +12,30 @@ export type Addon = {
         bottom: PercentLength,
         left: PercentLength
     ): Promise<void>,
+    
+    overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
 
     overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
     overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
+    overlayClearSurface(id: number): Promise<void>,
+
+    overlayNextEvent(id: number): Promise<Event>,
 
     overlayDestroy(id: number): void,
+};
+
+export type Event = {
+    kind: 'window',
+    hwnd: number,
+    event: WindowEvent,
+};
+
+type WindowEvent = {
+    kind: 'added',
+} | {
+    kind: 'resized',
+    width: number,
+    height: number,
+} | {
+    kind: 'destroyed',
 };

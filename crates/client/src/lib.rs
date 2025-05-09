@@ -7,7 +7,10 @@ use core::time::Duration;
 use std::{env::current_exe, path::PathBuf};
 
 use anyhow::{Context, bail};
-use asdf_overlay_common::ipc::{create_ipc_path, server::IpcServerConn};
+use asdf_overlay_common::ipc::{
+    create_ipc_path,
+    server::{IpcServerConn, IpcServerEventStream},
+};
 use dll_syringe::{
     Syringe,
     process::{OwnedProcess, Process},
@@ -37,7 +40,7 @@ pub async fn inject(
     process: OwnedProcess,
     dll_path: Option<PathBuf>,
     timeout: Option<Duration>,
-) -> anyhow::Result<IpcServerConn> {
+) -> anyhow::Result<(IpcServerConn, IpcServerEventStream)> {
     let pipe = ServerOptions::new()
         .first_pipe_instance(true)
         .create(create_ipc_path(&name, process.pid()?.get()))?;

@@ -1,21 +1,25 @@
+use core::{ffi::c_void, ptr};
 use std::sync::Once;
 
 use asdf_overlay_common::{
-    ipc::client::IpcClientConn,
-    message::{Anchor, Margin, Position, Request, Response, SharedHandle},
+    event::{ClientEvent, WindowEvent},
+    ipc::client::{IpcClientConn, IpcClientEventEmitter},
+    request::{Request, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
     size::PercentLength,
 };
 use parking_lot::Mutex;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
+use windows::Win32::Foundation::HWND;
 
-use crate::{hook, renderer::Renderers, util::with_dummy_hwnd};
+use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
 pub struct Overlay {
-    pending_handle: Option<SharedHandle>,
-    position: Position,
-    anchor: Anchor,
-    margin: Margin,
+    pending_handle: Option<UpdateSharedHandle>,
+    emitter: Option<IpcClientEventEmitter>,
+    position: SetPosition,
+    anchor: SetAnchor,
+    margin: SetMargin,
 }
 
 impl Overlay {
@@ -36,8 +40,14 @@ impl Overlay {
         (x, y)
     }
 
-    pub fn take_pending_handle(&mut self) -> Option<SharedHandle> {
+    pub fn take_pending_handle(&mut self) -> Option<UpdateSharedHandle> {
         self.pending_handle.take()
+    }
+
+    pub fn emit_event(event: ClientEvent) {
+        if let Some(ref mut emitter) = CURRENT.lock().emitter {
+            _ = emitter.emit(event);
+        }
     }
 
     pub fn with<R>(f: impl FnOnce(&mut Self) -> R) -> R {
@@ -47,15 +57,16 @@ impl Overlay {
 
 static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
     pending_handle: None,
-    position: Position {
+    emitter: None,
+    position: SetPosition {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
     },
-    anchor: Anchor {
+    anchor: SetAnchor {
         x: PercentLength::ZERO,
         y: PercentLength::ZERO,
     },
-    margin: Margin {
+    margin: SetMargin {
         top: PercentLength::ZERO,
         right: PercentLength::ZERO,
         bottom: PercentLength::ZERO,
@@ -66,33 +77,40 @@ static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
 #[tracing::instrument(skip(client))]
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
     loop {
-        client
-            .recv(async |message| {
-                trace!("recv: {:?}", message);
+        let (id, req) = client.recv().await?;
+        trace!("recv id: {id} req: {req:?}");
 
-                match message {
-                    Request::UpdatePosition(position) => {
-                        Overlay::with(|overlay| overlay.position = position);
-                    }
+        match req {
+            Request::SetPosition(position) => {
+                Overlay::with(|overlay| overlay.position = position);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateAnchor(anchor) => {
-                        Overlay::with(|overlay| overlay.anchor = anchor);
-                    }
+            Request::SetAnchor(anchor) => {
+                Overlay::with(|overlay| overlay.anchor = anchor);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateMargin(margin) => {
-                        Overlay::with(|overlay| overlay.margin = margin);
-                    }
+            Request::SetMargin(margin) => {
+                Overlay::with(|overlay| overlay.margin = margin);
+                client.reply(id, ())?;
+            }
 
-                    Request::UpdateShtex(shared) => {
-                        Overlay::with(|overlay| overlay.pending_handle = Some(shared));
-                    }
+            Request::GetSize(get_size) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(
+                        HWND(ptr::null_mut::<c_void>().with_addr(get_size.hwnd as usize)),
+                        |backend| backend.size,
+                    ),
+                )?;
+            }
 
-                    _ => {}
-                }
-
-                Ok(Response::Success)
-            })
-            .await?;
+            Request::UpdateSharedHandle(shared) => {
+                Overlay::with(|overlay| overlay.pending_handle = Some(shared));
+                client.reply(id, ())?;
+            }
+        }
     }
 }
 
@@ -103,14 +121,14 @@ pub async fn app(addr: &str) {
             debug!("exiting");
         });
 
-        debug!("connecting ipc");
-        let client = IpcClientConn::connect(addr).await?;
-        debug!("ipc client connected");
+        let client = setup_ipc_client(addr).await?;
         defer!({
             debug!("cleanup start");
             hook::cleanup();
-            Renderers::with(|renderers| {
-                renderers.cleanup();
+            Backends::cleanup_renderers();
+            Overlay::with(|overlay| {
+                overlay.pending_handle.take();
+                overlay.emitter.take();
             });
         });
 
@@ -122,6 +140,29 @@ pub async fn app(addr: &str) {
     if let Err(err) = inner(addr).await {
         error!("{:?}", err);
     }
+}
+
+async fn setup_ipc_client(addr: &str) -> anyhow::Result<IpcClientConn> {
+    debug!("connecting ipc");
+    let client = IpcClientConn::connect(addr).await?;
+    debug!("ipc client connected");
+
+    debug!("sending initial data");
+    let emitter = client.create_emitter();
+    // send existing windows
+    for backend in Backends::iter() {
+        _ = emitter.emit(ClientEvent::Window {
+            hwnd: *backend.key() as _,
+            event: WindowEvent::Added,
+        });
+    }
+
+    Overlay::with(|overlay| {
+        overlay.emitter = Some(emitter);
+    });
+    debug!("initial data sent");
+
+    Ok(client)
 }
 
 fn setup_once() {

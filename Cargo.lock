@@ -123,6 +123,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows",
+ "windows-link",
 ]
 
 [[package]]
@@ -162,6 +163,7 @@ dependencies = [
  "asdf-overlay-client",
  "bytemuck",
  "dashmap",
+ "futures",
  "mimalloc",
  "neon",
  "once_cell",

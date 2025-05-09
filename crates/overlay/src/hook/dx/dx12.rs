@@ -39,9 +39,6 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
     num_command_lists: u32,
     pp_commmand_lists: *const *mut c_void,
 ) {
-    let Some(ref execute_command_lists) = HOOK.read().execute_command_lists else {
-        return;
-    };
     trace!("ExecuteCommandLists called");
 
     unsafe {
@@ -59,6 +56,7 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
             QUEUE_MAP.insert(DeviceKey::of(&device), queue.clone());
         }
 
+        let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
         mem::transmute::<*const (), ExecuteCommandListsFn>(execute_command_lists.original_fn())(
             this,
             num_command_lists,

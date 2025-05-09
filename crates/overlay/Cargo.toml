@@ -29,6 +29,8 @@ tracing-subscriber = "0.3"
 ash = "0.38.0"
 dll-syringe = { workspace = true, features = ["payload-utils"] }
 array-util = "1.0.2"
+windows-link = "0.1.1"
+
 
 [dependencies.tracing]
 version = "0.1"

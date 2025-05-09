@@ -5,46 +5,38 @@ use bincode::{Decode, Encode};
 use crate::size::PercentLength;
 
 #[derive(Debug, Encode, Decode, Clone)]
-#[non_exhaustive]
 pub enum Request {
-    /// Change overlay position
-    UpdatePosition(Position),
-    /// Change overlay anchor
-    UpdateAnchor(Anchor),
-    /// Change overlay anchor
-    UpdateMargin(Margin),
-
-    /// Update overlay to new texture using shared dx11 texture handle
-    UpdateShtex(SharedHandle),
-}
-
-#[derive(Debug, Encode, Decode, Clone)]
-pub enum Response {
-    Success,
-    Failed { message: String },
+    SetPosition(SetPosition),
+    SetAnchor(SetAnchor),
+    SetMargin(SetMargin),
+    GetSize(GetSize),
+    UpdateSharedHandle(UpdateSharedHandle),
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-pub struct Position {
+/// Set overlay position
+pub struct SetPosition {
     pub x: PercentLength,
     pub y: PercentLength,
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-pub struct Anchor {
+/// Set overlay anchor
+pub struct SetAnchor {
     pub x: PercentLength,
     pub y: PercentLength,
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-pub struct Margin {
+/// Change overlay margin
+pub struct SetMargin {
     pub top: PercentLength,
     pub right: PercentLength,
     pub bottom: PercentLength,
     pub left: PercentLength,
 }
 
-impl Margin {
+impl SetMargin {
     pub const fn xy(x: PercentLength, y: PercentLength) -> Self {
         Self {
             top: y,
@@ -55,7 +47,14 @@ impl Margin {
     }
 }
 
-#[derive(Debug, Encode, Decode, Clone)]
-pub struct SharedHandle {
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+/// Get size of overlay window
+pub struct GetSize {
+    pub hwnd: u32,
+}
+
+#[derive(Debug, Encode, Decode, Clone, PartialEq)]
+/// Update overlay to new texture using shared dx11 texture handle
+pub struct UpdateSharedHandle {
     pub handle: Option<NonZeroUsize>,
 }

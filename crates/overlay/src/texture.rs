@@ -1,6 +1,6 @@
 use core::num::NonZeroUsize;
 
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 #[derive(Debug)]
@@ -23,7 +23,7 @@ impl<T> OverlayTextureState<T> {
         }
     }
 
-    pub fn update(&mut self, shared: SharedHandle) {
+    pub fn update(&mut self, shared: UpdateSharedHandle) {
         match shared.handle {
             Some(handle) => *self = Self::Handle(handle),
             None => *self = Self::None,

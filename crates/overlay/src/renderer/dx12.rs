@@ -3,7 +3,7 @@ mod rtv;
 mod sync;
 
 use anyhow::Context;
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use buffer::UploadBuffer;
 use core::{
     mem::{self, ManuallyDrop},
@@ -336,7 +336,7 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: SharedHandle) {
+    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
@@ -475,6 +475,9 @@ impl Drop for Dx12Renderer {
         self.fence.wait_pending().expect("error while waiting gpu");
     }
 }
+
+unsafe impl Send for Dx12Renderer {}
+unsafe impl Sync for Dx12Renderer {}
 
 unsafe fn transition(
     res: &ID3D12Resource,

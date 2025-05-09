@@ -1,5 +1,5 @@
 use anyhow::bail;
-use asdf_overlay_common::message::SharedHandle;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use core::{ffi::c_void, mem, ptr};
 use gl::types::{GLint, GLuint};
 use scopeguard::defer;
@@ -163,7 +163,7 @@ impl OpenglRenderer {
         self.state.map(|tex| tex.size).unwrap_or((0, 0))
     }
 
-    pub fn update_texture(&mut self, shared: SharedHandle) {
+    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         self.state.update(shared);
     }
 
@@ -260,6 +260,7 @@ impl Drop for OpenglRenderer {
 }
 
 unsafe impl Send for OpenglRenderer {}
+unsafe impl Sync for OpenglRenderer {}
 
 struct Tex {
     size: (u32, u32),

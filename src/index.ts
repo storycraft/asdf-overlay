@@ -3,6 +3,7 @@ import { arch } from 'node:process';
 
 import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
 
 export * from './util.js';
 
@@ -42,11 +43,56 @@ function loadAddon(): Addon {
 
 const idSym: unique symbol = Symbol("id");
 
+export type OverlayEventEmitter = EventEmitter<{
+  'added': [hwnd: number],
+  'resized': [hwnd: number, width: number, height: number],
+  'destroyed': [hwnd: number],
+  'disconnected': [],
+}>;
+
 export class Overlay {
+  readonly event: OverlayEventEmitter = new EventEmitter();
   readonly [idSym]: number;
 
   private constructor(id: number) {
     this[idSym] = id;
+
+    void (async () => {
+      // wait until next tick so no events are lost
+      await new Promise(process.nextTick);
+
+      try {
+        for (; ;) {
+          const next = await addon.overlayNextEvent(id);
+
+          switch (next.kind) {
+            case 'window': {
+              const inner = next.event;
+              switch (inner.kind) {
+                case 'added': {
+                  this.event.emit('added', next.hwnd);
+                  break;
+                }
+
+                case 'resized': {
+                  this.event.emit('resized', next.hwnd, inner.width, inner.height);
+                  break;
+                }
+
+                case 'destroyed': {
+                  this.event.emit('destroyed', next.hwnd);
+                  break;
+                }
+              }
+
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        this.event.emit('disconnected');
+      }
+    })();
   }
 
   /**
@@ -84,6 +130,16 @@ export class Overlay {
   }
 
   /**
+   * Get overlay window size
+   * @param hwnd
+   */
+  async getSize(
+    hwnd: number
+  ): Promise<[width: number, height: number] | null> {
+    return await addon.overlayGetSize(this[idSym], hwnd);
+  }
+
+  /**
    * Update overlay using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
    * @param width width of the bitmap
    * @param data bgra formatted bitmap
@@ -98,6 +154,13 @@ export class Overlay {
    */
   async updateShtex(handle: Buffer) {
     await addon.overlayUpdateShtex(this[idSym], handle);
+  }
+
+  /**
+   * Clear overlay
+   */
+  async clearSurface() {
+    await addon.overlayClearSurface(this[idSym]);
   }
 
   /**

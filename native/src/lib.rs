@@ -1,3 +1,4 @@
+mod event;
 mod util;
 mod wrapper;
 
@@ -10,8 +11,9 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
-        ipc::server::IpcServerConn,
-        message::{Anchor, Margin, Position, Request},
+        event::ClientEvent,
+        ipc::server::{IpcServerConn, IpcServerEventStream},
+        request::{GetSize, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
     },
     inject,
     process::OwnedProcess,
@@ -19,12 +21,14 @@ use asdf_overlay_client::{
 };
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
+use event::serialize_event;
+use futures::StreamExt;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
-use util::{get_process_arch, request_promise, with_rt};
+use util::{get_process_arch, try_with_ipc, with_rt};
 use windows::Win32::{
     Foundation::HANDLE,
     System::SystemInformation::{
@@ -34,13 +38,14 @@ use windows::Win32::{
 use wrapper::percent_length_from_object;
 
 struct Overlay {
-    surface: OverlaySurface,
-    ipc: IpcServerConn,
+    surface: tokio::sync::Mutex<OverlaySurface>,
+    ipc: tokio::sync::Mutex<IpcServerConn>,
+    event: tokio::sync::Mutex<IpcServerEventStream>,
 }
 
 struct Manager {
     next_id: AtomicU32,
-    map: DashMap<u32, tokio::sync::Mutex<Overlay>, FxBuildHasher>,
+    map: DashMap<u32, Overlay, FxBuildHasher>,
 }
 
 impl Manager {
@@ -69,7 +74,7 @@ impl Manager {
         };
 
         let surface = OverlaySurface::new().context("cannot create dx11 device")?;
-        let ipc = inject(
+        let (ipc, stream) = inject(
             name,
             process,
             Some({
@@ -83,20 +88,21 @@ impl Manager {
         .context("cannot inject to the process")?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.map
-            .insert(id, tokio::sync::Mutex::new(Overlay { surface, ipc }));
+        self.map.insert(
+            id,
+            Overlay {
+                surface: tokio::sync::Mutex::new(surface),
+                ipc: tokio::sync::Mutex::new(ipc),
+                event: tokio::sync::Mutex::new(stream),
+            },
+        );
 
         Ok(id)
     }
 
-    async fn with_mut<R>(
-        &self,
-        id: u32,
-        f: impl AsyncFnOnce(&mut Overlay) -> R,
-    ) -> anyhow::Result<R> {
+    async fn with<R>(&self, id: u32, f: impl AsyncFnOnce(&Overlay) -> R) -> anyhow::Result<R> {
         let overlay = self.map.get(&id).context("invalid id")?;
-        let mut overlay = overlay.lock().await;
-        Ok(f(&mut *overlay).await)
+        Ok(f(&*overlay).await)
     }
 
     fn destroy(&self, id: u32) -> anyhow::Result<()> {
@@ -150,7 +156,13 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdatePosition(Position { x, y }))
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_position(SetPosition { x, y }).await?;
+            Ok(())
+        }),
+    )
 }
 
 fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -160,7 +172,13 @@ fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let y = cx.argument::<JsObject>(2)?;
     let y = percent_length_from_object(&mut cx, &y)?;
 
-    request_promise(&mut cx, id, Request::UpdateAnchor(Anchor { x, y }))
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_anchor(SetAnchor { x, y }).await?;
+            Ok(())
+        }),
+    )
 }
 
 fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -174,16 +192,60 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let left = cx.argument::<JsObject>(4)?;
     let left = percent_length_from_object(&mut cx, &left)?;
 
-    request_promise(
+    with_rt(
         &mut cx,
-        id,
-        Request::UpdateMargin(Margin {
-            top,
-            right,
-            bottom,
-            left,
+        try_with_ipc(id, async move |conn| {
+            conn.set_margin(SetMargin {
+                top,
+                right,
+                bottom,
+                left,
+            })
+            .await?;
+            Ok(())
         }),
     )
+}
+
+fn overlay_get_size(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = try_with_ipc(id, async move |conn| conn.get_size(GetSize { hwnd }).await).await;
+
+        match res {
+            Ok(Some(size)) => {
+                deferred.settle_with(&channel, move |mut cx| {
+                    Ok({
+                        let arr = cx.empty_array();
+                        let width = cx.number(size.0);
+                        arr.set(&mut cx, 0, width)?;
+                        let height = cx.number(size.1);
+                        arr.set(&mut cx, 1, height)?;
+
+                        arr
+                    })
+                });
+            }
+
+            Ok(None) => {
+                deferred.settle_with(&channel, |mut cx| Ok(cx.null()));
+            }
+
+            Err(err) => {
+                deferred.settle_with(&channel, move |mut cx| {
+                    cx.throw_error::<_, Handle<'_, JsValue>>(format!("{err:?}"))
+                });
+            }
+        }
+    });
+
+    Ok(promise)
 }
 
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -193,15 +255,14 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     with_rt(&mut cx, async move {
         MANAGER
-            .with_mut(id, async move |overlay| {
-                if let Some(shared) = overlay.surface.update_bitmap(width, &data)? {
-                    overlay.ipc.request(Request::UpdateShtex(shared)).await?;
+            .with(id, async move |overlay| {
+                if let Some(shared) = overlay.surface.lock().await.update_bitmap(width, &data)? {
+                    overlay.ipc.lock().await.update_shtex(shared).await?;
                 }
 
                 Ok::<_, anyhow::Error>(())
             })
             .await??;
-
         Ok(())
     })
 }
@@ -213,9 +274,14 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     with_rt(&mut cx, async move {
         MANAGER
-            .with_mut(id, async move |overlay| {
-                if let Some(shared) = overlay.surface.update_from_nt_shared(HANDLE(handle as _))? {
-                    overlay.ipc.request(Request::UpdateShtex(shared)).await?;
+            .with(id, async move |overlay| {
+                if let Some(shared) = overlay
+                    .surface
+                    .lock()
+                    .await
+                    .update_from_nt_shared(HANDLE(handle as _))?
+                {
+                    overlay.ipc.lock().await.update_shtex(shared).await?;
                 }
 
                 Ok::<_, anyhow::Error>(())
@@ -224,6 +290,53 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
         Ok(())
     })
+}
+
+fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.update_shtex(UpdateSharedHandle { handle: None })
+                .await?;
+
+            Ok(())
+        }),
+    )
+}
+
+fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+
+    let rt = runtime(&mut cx)?;
+    let channel = cx.channel();
+
+    let (deferred, promise) = cx.promise();
+    rt.spawn(async move {
+        let res = async move {
+            let event: ClientEvent = MANAGER
+                .with(id, async move |overlay| {
+                    overlay
+                        .event
+                        .lock()
+                        .await
+                        .next()
+                        .await
+                        .context("event stream closed")
+                })
+                .await??;
+            Ok::<_, anyhow::Error>(event)
+        }
+        .await;
+
+        deferred.settle_with(&channel, move |mut cx| match res {
+            Ok(event) => Ok(serialize_event(&mut cx, event)?),
+            Err(err) => cx.throw_error(format!("{err:?}")),
+        });
+    });
+
+    Ok(promise)
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
@@ -246,8 +359,13 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
 
+    cx.export_function("overlayGetSize", overlay_get_size)?;
+
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
     cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;
+    cx.export_function("overlayClearSurface", overlay_clear_surface)?;
+
+    cx.export_function("overlayNextEvent", overlay_next_event)?;
 
     cx.export_function("overlayDestroy", overlay_destroy)?;
     Ok(())

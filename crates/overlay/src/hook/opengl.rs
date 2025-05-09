@@ -1,12 +1,8 @@
-mod cx;
-
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use cx::OverlayGlContext;
 use once_cell::sync::OnceCell;
-use parking_lot::RwLock;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -22,32 +18,33 @@ use windows::{
 
 use crate::{
     app::Overlay,
-    renderer::{Renderers, opengl::OpenglRenderer},
-    util::get_client_size,
+    backend::{Backends, cx::GlContext},
+    renderer::opengl::OpenglRenderer,
     wgl,
 };
 
 use super::DetourHook;
 
-static CX: OnceCell<OverlayGlContext> = OnceCell::new();
-
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
-    let Some(ref hook) = *HOOK.read() else {
-        return BOOL(0);
-    };
     trace!("WglSwapBuffers called");
 
-    Renderers::with(|renderers| {
-        let cx = CX
-            .get_or_try_init(|| OverlayGlContext::new(HDC(hdc)))
-            .unwrap();
+    let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
+    Backends::with_or_init_backend(hwnd, |backend| {
+        let cx = match backend.cx.opengl {
+            Some(ref mut cx) => cx,
 
-        if renderers.dx11.is_some() {
-            if renderers.opengl.is_some() {
+            None => backend
+                .cx
+                .opengl
+                .insert(GlContext::new(HDC(hdc)).expect("failed to create GlContext")),
+        };
+
+        if backend.renderer.dx11.is_some() {
+            if backend.renderer.opengl.is_some() {
                 debug!("Skipping opengl overlay due to dx11 layer");
                 cx.with(HDC(hdc), || {
-                    renderers.opengl = None;
+                    backend.renderer.opengl = None;
                 });
             }
 
@@ -56,7 +53,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
         cx.with(HDC(hdc), || {
             trace!("using opengl renderer");
-            let renderer = renderers.opengl.get_or_insert_with(|| {
+            let renderer = backend.renderer.opengl.get_or_insert_with(|| {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
 
@@ -64,7 +61,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
                 OpenglRenderer::new().expect("renderer creation failed")
             });
 
-            let screen = get_client_size(unsafe { WindowFromDC(HDC(hdc)) }).unwrap_or_default();
+            let screen = backend.size;
             let position = Overlay::with(|overlay| {
                 let size = renderer.size();
 
@@ -78,22 +75,24 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
             let _res = renderer.draw(position, screen);
             trace!("opengl render: {:?}", _res);
         });
-    });
+    })
+    .expect("Backends::with_backend failed");
 
+    let hook = HOOK.get().unwrap();
     unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
-static HOOK: RwLock<Option<DetourHook>> = RwLock::new(None);
+static HOOK: OnceCell<DetourHook> = OnceCell::new();
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
         debug!("hooking WglSwapBuffers");
-        let hook =
-            unsafe { DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)? };
-        *HOOK.write() = Some(hook);
+        HOOK.get_or_try_init(|| unsafe {
+            DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)
+        })?;
     }
 
     Ok(())
