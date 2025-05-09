@@ -1,5 +1,5 @@
-pub mod renderers;
 pub mod cx;
+pub mod renderers;
 
 use core::mem;
 
@@ -24,17 +24,17 @@ static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
 });
 
 pub struct Backends {
-    map: DashMap<usize, WindowBackend, FxBuildHasher>,
+    map: DashMap<u32, WindowBackend, FxBuildHasher>,
 }
 
 impl Backends {
-    pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, usize, WindowBackend>> {
+    pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, u32, WindowBackend>> {
         BACKENDS.map.iter()
     }
 
     #[must_use]
     pub fn with_backend<R>(hwnd: HWND, f: impl FnOnce(&mut WindowBackend) -> R) -> Option<R> {
-        let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize))?;
+        let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32))?;
         Some(f(&mut backend))
     }
 
@@ -42,7 +42,7 @@ impl Backends {
         hwnd: HWND,
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
-        let mut backend = BACKENDS.map.entry(hwnd.0 as usize).or_try_insert_with(|| {
+        let mut backend = BACKENDS.map.entry(hwnd.0 as u32).or_try_insert_with(|| {
             let original_proc: WNDPROC = unsafe {
                 mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
                     hwnd,
@@ -129,7 +129,8 @@ extern "system" fn hooked_wnd_proc(
 ) -> LRESULT {
     trace!("WndProc called");
 
-    let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as usize)).unwrap();
+    let key = hwnd.0 as u32;
+    let mut backend = BACKENDS.map.get_mut(&key).unwrap();
     if let Some(filtered) = process_wnd_proc(&mut backend, hwnd, msg, wparam, lparam) {
         return filtered;
     }
@@ -137,5 +138,12 @@ extern "system" fn hooked_wnd_proc(
     let original_proc = backend.original_proc;
     // prevent deadlock
     drop(backend);
+
+    // cleanup backend
+    if msg == WM_DESTROY {
+        trace!("cleanup hwnd: {hwnd:?}");
+        BACKENDS.map.remove(&key);
+    }
+
     unsafe { CallWindowProcA(original_proc, hwnd, msg, wparam, lparam) }
 }
