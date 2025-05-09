@@ -150,9 +150,6 @@ fn process_input_capture(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> bool {
-    const WM_MOUSEHOVER: u32 = 0x02A1;
-    const WM_MOUSELEAVE: u32 = 0x02A3;
-
     match msg {
         // capture cursor input
         msg::WM_LBUTTONDBLCLK
@@ -162,9 +159,9 @@ fn process_input_capture(
         | msg::WM_MBUTTONDOWN
         | msg::WM_MBUTTONUP
         | msg::WM_MOUSEACTIVATE
-        | WM_MOUSEHOVER
+        | msg::WM_MOUSEHOVER
         | msg::WM_MOUSEHWHEEL
-        | WM_MOUSELEAVE
+        | msg::WM_MOUSELEAVE
         | msg::WM_MOUSEMOVE
         | msg::WM_MOUSEWHEEL
         | msg::WM_NCHITTEST
