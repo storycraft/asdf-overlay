@@ -54,13 +54,12 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
                 Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
             });
 
+            if let Some(shared) = backend.pending_handle.take() {
+                renderer.update_texture(shared);
+            }
+
+            let size = renderer.size();
             let position = Overlay::with(|overlay| {
-                let size = renderer.size();
-
-                if let Some(shared) = overlay.take_pending_handle() {
-                    renderer.update_texture(shared);
-                }
-
                 overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
             trace!("using dx12 renderer");
@@ -109,13 +108,13 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
             debug!("initializing dx11 renderer");
             Dx11Renderer::new(&device).expect("renderer creation failed")
         });
+
+        if let Some(shared) = backend.pending_handle.take() {
+            renderer.update_texture(shared);
+        }
+
+        let size = renderer.size();
         let position = Overlay::with(|overlay| {
-            let size = renderer.size();
-
-            if let Some(shared) = overlay.take_pending_handle() {
-                renderer.update_texture(shared);
-            }
-
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
 

@@ -49,13 +49,13 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             .renderer
             .dx9
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
+
+        if let Some(shared) = backend.pending_handle.take() {
+            reader.update_shared(shared);
+        }
+
+        let size = renderer.size();
         let position = Overlay::with(|overlay| {
-            let size = renderer.size();
-
-            if let Some(shared) = overlay.take_pending_handle() {
-                reader.update_shared(shared);
-            }
-
             overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
         });
 
