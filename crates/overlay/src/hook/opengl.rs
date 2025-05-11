@@ -53,10 +53,10 @@ pub fn hook() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument]
-unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
+unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
-    let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
+    let hwnd = unsafe { WindowFromDC(hdc) };
     Backends::with_or_init_backend(hwnd, |backend| {
         if backend.renderer.dx11.is_some() {
             if backend.renderer.opengl.is_some() {
@@ -71,7 +71,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
         let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
             debug!("initializing opengl renderer");
             WglContextWrapped::new_with(
-                WglContext::new(HDC(hdc)).expect("failed to create GlContext"),
+                WglContext::new(hdc).expect("failed to create GlContext"),
                 || OpenglRenderer::new().expect("renderer creation failed"),
             )
         });
@@ -97,7 +97,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
 }
 
-type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
+type WglSwapBuffersFn = unsafe extern "system" fn(HDC) -> BOOL;
 
 struct WglAddrs {
     swap_buffers: WglSwapBuffersFn,
