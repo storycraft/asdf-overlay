@@ -36,9 +36,6 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
-    debug!("setting up opengl");
-    setup_gl().unwrap();
-
     let addrs = get_wgl_addrs().expect("cannot get wgl fn addrs");
 
     HOOK.get_or_try_init(|| unsafe {
@@ -69,6 +66,9 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
 
         trace!("using opengl renderer");
         let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
+            debug!("setting up opengl");
+            setup_gl().unwrap();
+
             debug!("initializing opengl renderer");
             WglContextWrapped::new_with(
                 WglContext::new(hdc).expect("failed to create GlContext"),
