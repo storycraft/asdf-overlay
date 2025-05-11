@@ -18,12 +18,39 @@ use windows::{
 
 use crate::{
     app::Overlay,
-    backend::{Backends, cx::GlContext},
+    backend::{
+        Backends,
+        opengl::{WglContext, WglContextWrapped},
+    },
     renderer::opengl::OpenglRenderer,
     wgl,
 };
 
 use super::DetourHook;
+
+struct Hook {
+    wgl_swap_buffers: DetourHook<WglSwapBuffersFn>,
+}
+
+static HOOK: OnceCell<Hook> = OnceCell::new();
+
+#[tracing::instrument]
+pub fn hook() -> anyhow::Result<()> {
+    debug!("setting up opengl");
+    setup_gl().unwrap();
+
+    let addrs = get_wgl_addrs().expect("cannot get wgl fn addrs");
+
+    HOOK.get_or_try_init(|| unsafe {
+        debug!("hooking WglSwapBuffers");
+        let wgl_swap_buffers =
+            DetourHook::attach(addrs.swap_buffers, hooked_wgl_swap_buffers as _)?;
+
+        Ok::<_, anyhow::Error>(Hook { wgl_swap_buffers })
+    })?;
+
+    Ok(())
+}
 
 #[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
@@ -31,36 +58,25 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
 
     let hwnd = unsafe { WindowFromDC(HDC(hdc)) };
     Backends::with_or_init_backend(hwnd, |backend| {
-        let cx = match backend.cx.opengl {
-            Some(ref mut cx) => cx,
-
-            None => backend
-                .cx
-                .opengl
-                .insert(GlContext::new(HDC(hdc)).expect("failed to create GlContext")),
-        };
-
         if backend.renderer.dx11.is_some() {
             if backend.renderer.opengl.is_some() {
                 debug!("Skipping opengl overlay due to dx11 layer");
-                cx.with(HDC(hdc), || {
-                    backend.renderer.opengl = None;
-                });
+                backend.renderer.opengl = None;
             }
 
             return;
         }
 
-        cx.with(HDC(hdc), || {
-            trace!("using opengl renderer");
-            let renderer = backend.renderer.opengl.get_or_insert_with(|| {
-                debug!("setting up opengl");
-                setup_gl().unwrap();
+        trace!("using opengl renderer");
+        let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
+            debug!("initializing opengl renderer");
+            WglContextWrapped::new_with(
+                WglContext::new(HDC(hdc)).expect("failed to create GlContext"),
+                || OpenglRenderer::new().expect("renderer creation failed"),
+            )
+        });
 
-                debug!("initializing opengl renderer");
-                OpenglRenderer::new().expect("renderer creation failed")
-            });
-
+        wrapped.with(|renderer| {
             let screen = backend.size;
             if let Some(shared) = backend.pending_handle.take() {
                 renderer.update_texture(shared);
@@ -78,44 +94,33 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     .expect("Backends::with_backend failed");
 
     let hook = HOOK.get().unwrap();
-    unsafe { hook.original_fn()(hdc) }
+    unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
-static HOOK: OnceCell<DetourHook<WglSwapBuffersFn>> = OnceCell::new();
-
-#[tracing::instrument]
-pub fn hook() -> anyhow::Result<()> {
-    if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
-        debug!("hooking WglSwapBuffers");
-        HOOK.get_or_try_init(|| unsafe {
-            DetourHook::attach(wgl_swap_buffers, hooked_wgl_swap_buffers as _)
-        })?;
-    }
-
-    Ok(())
+struct WglAddrs {
+    swap_buffers: WglSwapBuffersFn,
 }
 
 #[tracing::instrument]
-fn get_wgl_swap_buffers_addr() -> anyhow::Result<WglSwapBuffersFn> {
+fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     // Grab a handle to opengl32.dll
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
-    let wglswapbuffers = CString::new("wglSwapBuffers")?;
     let func = unsafe {
-        GetProcAddress(opengl32module, PCSTR(wglswapbuffers.as_ptr() as *mut _))
-            .context("wglSwapBuffers not found")?
+        GetProcAddress(opengl32module, s!("wglSwapBuffers")).context("wglSwapBuffers not found")?
     };
     debug!("WglSwapBuffers found: {:p}", func);
+    let swap_buffers =
+        unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) };
 
-    Ok(unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) })
+    Ok(WglAddrs { swap_buffers })
 }
 
 #[tracing::instrument]
 fn setup_gl() -> anyhow::Result<()> {
-    let opengl32dll = CString::new("opengl32.dll")?;
-    let opengl32module = unsafe { GetModuleHandleA(PCSTR(opengl32dll.as_ptr() as *mut _))? };
+    let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
     #[tracing::instrument]
     fn loader(module: HMODULE, s: &str) -> *const c_void {

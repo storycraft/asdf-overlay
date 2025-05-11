@@ -2,10 +2,12 @@ use crate::renderer::{
     dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, opengl::OpenglRenderer,
 };
 
+use super::opengl::WglContextWrapped;
+
 pub struct Renderer {
     pub dx12: Option<Dx12Renderer>,
     pub dx11: Option<Dx11Renderer>,
-    pub opengl: Option<OpenglRenderer>,
+    pub opengl: Option<WglContextWrapped<OpenglRenderer>>,
     pub dx9: Option<Dx9Renderer>,
 }
 
