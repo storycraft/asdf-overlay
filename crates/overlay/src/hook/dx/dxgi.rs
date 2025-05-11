@@ -1,4 +1,4 @@
-use core::{ffi::c_void, mem, ptr};
+use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
 use scopeguard::defer;
@@ -154,9 +154,7 @@ pub unsafe extern "system" fn hooked_present(
     }
 
     let present = HOOK.present.get().unwrap();
-    unsafe {
-        mem::transmute::<*const (), PresentFn>(present.original_fn())(this, sync_interval, flags)
-    }
+    unsafe { present.original_fn()(this, sync_interval, flags) }
 }
 
 #[tracing::instrument]
@@ -177,14 +175,7 @@ pub unsafe extern "system" fn hooked_create_swapchain(
     }
 
     let create_swapchain = HOOK.create_swapchain.get().unwrap();
-    unsafe {
-        mem::transmute::<*const (), CreateSwapChainFn>(create_swapchain.original_fn())(
-            this,
-            device,
-            desc,
-            out_swap_chain,
-        )
-    }
+    unsafe { create_swapchain.original_fn()(this, device, desc, out_swap_chain) }
 }
 
 #[tracing::instrument]
@@ -203,16 +194,8 @@ pub unsafe extern "system" fn hooked_resize_buffers(
     cleanup_state(swapchain, hwnd);
 
     let resize_buffers = HOOK.resize_buffers.get().unwrap();
-    let res = unsafe {
-        mem::transmute::<*const (), ResizeBuffersFn>(resize_buffers.original_fn())(
-            this,
-            buffer_count,
-            width,
-            height,
-            format,
-            flags,
-        )
-    };
+    let res =
+        unsafe { resize_buffers.original_fn()(this, buffer_count, width, height, format, flags) };
     if res.is_err() {
         return res;
     }
@@ -250,14 +233,7 @@ pub unsafe extern "system" fn hooked_present1(
     }
 
     let present1 = HOOK.present1.get().unwrap();
-    unsafe {
-        mem::transmute::<*const (), Present1Fn>(present1.original_fn())(
-            this,
-            sync_interval,
-            flags,
-            present_params,
-        )
-    }
+    unsafe { present1.original_fn()(this, sync_interval, flags, present_params) }
 }
 
 pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
