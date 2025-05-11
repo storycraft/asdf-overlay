@@ -78,19 +78,19 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: *mut c_void) -> BOOL {
     .expect("Backends::with_backend failed");
 
     let hook = HOOK.get().unwrap();
-    unsafe { mem::transmute::<*const (), WglSwapBuffersFn>(hook.original_fn())(hdc) }
+    unsafe { hook.original_fn()(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(*mut c_void) -> BOOL;
 
-static HOOK: OnceCell<DetourHook> = OnceCell::new();
+static HOOK: OnceCell<DetourHook<WglSwapBuffersFn>> = OnceCell::new();
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     if let Ok(wgl_swap_buffers) = get_wgl_swap_buffers_addr() {
         debug!("hooking WglSwapBuffers");
         HOOK.get_or_try_init(|| unsafe {
-            DetourHook::attach(wgl_swap_buffers as _, hooked_wgl_swap_buffers as _)
+            DetourHook::attach(wgl_swap_buffers, hooked_wgl_swap_buffers as _)
         })?;
     }
 

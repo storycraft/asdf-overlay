@@ -6,7 +6,7 @@ use tracing::debug;
 
 use core::{
     error::Error,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
 };
 use std::os::raw::c_void;
 
@@ -28,32 +28,31 @@ pub fn cleanup() {
     dx::cleanup();
 }
 
-struct DetourHook {
-    func: *mut (),
+struct DetourHook<F> {
+    func: F,
 }
 
-impl DetourHook {
+impl<F: Copy> DetourHook<F> {
     #[tracing::instrument]
-    pub unsafe fn attach(func: *mut (), detour: *mut ()) -> DetourResult<Self> {
-        let mut func = func.cast::<c_void>();
-
+    pub unsafe fn attach(mut func: F, detour: *mut ()) -> DetourResult<Self>
+    where
+        F: Debug,
+    {
         unsafe {
             wrap_detour_call(|| DetourTransactionBegin())?;
-            wrap_detour_call(|| DetourAttach(&mut func, detour.cast::<c_void>()))?;
+            wrap_detour_call(|| DetourAttach((&raw mut func).cast(), detour.cast::<c_void>()))?;
             wrap_detour_call(|| DetourTransactionCommit())?;
         }
         debug!("hook attached");
 
-        Ok(DetourHook { func: func.cast() })
+        Ok(DetourHook { func })
     }
 
-    pub fn original_fn(&self) -> *const () {
+    #[inline]
+    pub fn original_fn(&self) -> F {
         self.func
     }
 }
-
-unsafe impl Send for DetourHook {}
-unsafe impl Sync for DetourHook {}
 
 type DetourResult<T> = Result<T, DetourError>;
 

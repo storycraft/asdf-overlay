@@ -1,4 +1,4 @@
-use core::{ffi::c_void, hash::Hash, mem};
+use core::{ffi::c_void, hash::Hash};
 
 use anyhow::Context;
 use dashmap::DashMap;
@@ -57,11 +57,7 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
         }
 
         let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
-        mem::transmute::<*const (), ExecuteCommandListsFn>(execute_command_lists.original_fn())(
-            this,
-            num_command_lists,
-            pp_commmand_lists,
-        )
+        execute_command_lists.original_fn()(this, num_command_lists, pp_commmand_lists)
     }
 }
 

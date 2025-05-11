@@ -3,6 +3,9 @@ mod dx9;
 mod dxgi;
 pub mod util;
 
+use dx9::{EndSceneFn, ResetFn};
+use dx12::ExecuteCommandListsFn;
+use dxgi::{CreateSwapChainFn, Present1Fn, PresentFn, ResizeBuffersFn};
 use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::Win32::Foundation::HWND;
@@ -11,13 +14,13 @@ use super::DetourHook;
 
 #[derive(Default)]
 struct Hook {
-    present: OnceCell<DetourHook>,
-    present1: OnceCell<DetourHook>,
-    create_swapchain: OnceCell<DetourHook>,
-    resize_buffers: OnceCell<DetourHook>,
-    execute_command_lists: OnceCell<DetourHook>,
-    end_scene: OnceCell<DetourHook>,
-    reset: OnceCell<DetourHook>,
+    present: OnceCell<DetourHook<PresentFn>>,
+    present1: OnceCell<DetourHook<Present1Fn>>,
+    create_swapchain: OnceCell<DetourHook<CreateSwapChainFn>>,
+    resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
+    execute_command_lists: OnceCell<DetourHook<ExecuteCommandListsFn>>,
+    end_scene: OnceCell<DetourHook<EndSceneFn>>,
+    reset: OnceCell<DetourHook<ResetFn>>,
 }
 
 static HOOK: Hook = Hook {

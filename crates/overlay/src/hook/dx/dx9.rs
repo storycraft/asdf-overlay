@@ -1,4 +1,4 @@
-use core::{ffi::c_void, mem, ptr};
+use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
 use parking_lot::Mutex;
@@ -70,7 +70,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     .expect("Backends::with_or_init_backend failed");
 
     let end_scene = HOOK.end_scene.get().unwrap();
-    unsafe { mem::transmute::<*const (), EndSceneFn>(end_scene.original_fn())(this) }
+    unsafe { end_scene.original_fn()(this) }
 }
 
 #[tracing::instrument]
@@ -89,7 +89,7 @@ pub unsafe extern "system" fn hooked_reset(
     .expect("Backends::with_backend failed");
 
     let reset = HOOK.reset.get().unwrap();
-    unsafe { mem::transmute::<*const (), ResetFn>(reset.original_fn())(this, param) }
+    unsafe { reset.original_fn()(this, param) }
 }
 
 /// Get pointer to IDirect3DDevice9::EndScene, IDirect3DDevice9::Reset by creating dummy device
