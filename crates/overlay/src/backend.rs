@@ -285,21 +285,6 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         msg::WM_LBUTTONDBLCLK
         | msg::WM_MBUTTONDBLCLK
         | msg::WM_MOUSEACTIVATE
-        | msg::WM_NCLBUTTONDBLCLK
-        | msg::WM_NCLBUTTONDOWN
-        | msg::WM_NCLBUTTONUP
-        | msg::WM_NCMBUTTONDBLCLK
-        | msg::WM_NCMBUTTONDOWN
-        | msg::WM_NCMBUTTONUP
-        | msg::WM_NCMOUSEHOVER
-        | msg::WM_NCMOUSELEAVE
-        | msg::WM_NCMOUSEMOVE
-        | msg::WM_NCRBUTTONDBLCLK
-        | msg::WM_NCRBUTTONDOWN
-        | msg::WM_NCRBUTTONUP
-        | msg::WM_NCXBUTTONDBLCLK
-        | msg::WM_NCXBUTTONDOWN
-        | msg::WM_NCXBUTTONUP
         | msg::WM_RBUTTONDBLCLK
         | msg::WM_XBUTTONDBLCLK => {}
 
@@ -336,7 +321,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         _ => return None,
     }
 
-    Some(LRESULT(0))
+    return Some(LRESULT(0));
 }
 
 #[tracing::instrument]
