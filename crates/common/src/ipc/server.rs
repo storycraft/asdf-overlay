@@ -2,7 +2,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};
 use bincode::Decode;
@@ -27,7 +27,7 @@ pub struct IpcServerConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeServer>,
     buf: Vec<u8>,
-    map: Arc<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
+    map: Weak<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
     read_task: JoinHandle<anyhow::Result<()>>,
 }
 
@@ -70,7 +70,7 @@ impl IpcServerConn {
             next_id: 0,
             tx,
             buf: Vec::new(),
-            map,
+            map: Arc::downgrade(&map),
             read_task,
         };
 
@@ -101,6 +101,10 @@ impl IpcServerConn {
     }
 
     async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Vec<u8>>> {
+        let Some(map) = self.map.upgrade() else {
+            bail!("connection closed");
+        };
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -117,7 +121,7 @@ impl IpcServerConn {
         .await?;
 
         let (tx, rx) = oneshot::channel();
-        self.map.insert(id, tx);
+        map.insert(id, tx);
         self.tx.write_all(&self.buf).await?;
 
         self.tx.flush().await?;
