@@ -1,4 +1,7 @@
-use core::{fmt::Debug, num::NonZeroUsize};
+use core::{
+    fmt::Debug,
+    num::{NonZeroU32, NonZeroUsize},
+};
 
 use bincode::{Decode, Encode};
 
@@ -10,7 +13,7 @@ pub enum Request {
     SetAnchor(SetAnchor),
     SetMargin(SetMargin),
     GetSize(GetSize),
-    SetInputCapture(SetInputCapture),
+    SetInputCaptureKeybind(SetInputCaptureKeybind),
     UpdateSharedHandle(UpdateSharedHandle),
 }
 
@@ -55,10 +58,12 @@ pub struct GetSize {
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-/// Set input capture of a overlay window
-pub struct SetInputCapture {
+/// Set input capture keybind of a window
+pub struct SetInputCaptureKeybind {
     pub hwnd: u32,
-    pub capture: bool,
+
+    // key code each byte, up to 4 keys
+    pub keybind: Option<NonZeroU32>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, PartialEq)]

@@ -31,6 +31,7 @@ dll-syringe = { workspace = true, features = ["payload-utils"] }
 array-util = "1.0.2"
 windows-link = "0.1.1"
 bytemuck = "1.22.0"
+bitvec = "1"
 
 [dependencies.tracing]
 version = "0.1"

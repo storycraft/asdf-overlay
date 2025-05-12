@@ -66,7 +66,8 @@ Glitching squares appear and disappear on target process
 ```bash
 cargo build && cargo run -p input-capture <process_name>
 ```
-Input will be captured for 5 seconds from target process
+Pressing `Left Shift + A` key will capture input from target process 
+until user trying to close window or pressing `Left Shift + A` again.
 
 ## Debugging
 Run with debug build.

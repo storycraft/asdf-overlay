@@ -1,16 +1,15 @@
-use core::time::Duration;
+use core::num::NonZeroU32;
 use std::env::{self, current_exe};
 
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
     common::{
         event::{ClientEvent, WindowEvent},
-        request::SetInputCapture,
+        request::SetInputCaptureKeybind,
     },
     inject,
     process::OwnedProcess,
 };
-use tokio::{spawn, time::sleep};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -45,19 +44,24 @@ async fn main() -> anyhow::Result<()> {
         bail!("failed to receive main window");
     };
 
-    conn.set_input_capture(SetInputCapture {
+    conn.set_input_capture_keybind(SetInputCaptureKeybind {
         hwnd,
-        capture: true,
+        // LeftShift = 0x10, A = 0x41
+        keybind: NonZeroU32::new(0x00001041),
     })
     .await?;
-    spawn(async move {
-        while let Some(event) = event.recv().await {
-            dbg!(event);
-        }
-    });
 
-    // sleep for 5 secs and remove overlay (dropped)
-    sleep(Duration::from_secs(5)).await;
+    while let Some(event) = event.recv().await {
+        dbg!(&event);
+
+        if let ClientEvent::Window {
+            event: WindowEvent::InputCaptureEnd,
+            ..
+        } = event
+        {
+            break;
+        }
+    }
 
     Ok(())
 }

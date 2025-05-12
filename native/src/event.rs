@@ -33,6 +33,10 @@ pub fn serialize_event<'a>(
                     inner.set(cx, "height", height)?;
                 }
 
+                WindowEvent::InputCaptureStart => {}
+
+                WindowEvent::InputCaptureEnd => {}
+
                 WindowEvent::Input(_) => {}
 
                 WindowEvent::Destroyed => {
