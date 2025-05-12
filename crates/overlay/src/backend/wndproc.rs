@@ -11,7 +11,9 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        Input::KeyboardAndMouse::{
+            self, TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY,
+        },
         WindowsAndMessaging::{
             self as msg, CallWindowProcA, DefWindowProcA, WHEEL_DELTA, WM_CLOSE, WM_NCDESTROY,
             WM_WINDOWPOSCHANGED, XBUTTON1,
@@ -50,13 +52,13 @@ fn process_wnd_proc(
         }
 
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = NonZeroU8::new(wparam.0 as u8) {
+            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(wparam, lparam)) {
                 backend.update_key_state(key, true);
             }
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = NonZeroU8::new(wparam.0 as u8) {
+            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(wparam, lparam)) {
                 backend.update_key_state(key, false);
             }
         }
@@ -108,7 +110,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
             Overlay::emit_event(input(
                 hwnd,
                 InputEvent::Keyboard(KeyboardInput {
-                    key: wparam.0 as u8,
+                    key: get_distinguished_keycode(wparam, lparam),
                     state: $state,
                 }),
             ));
@@ -246,6 +248,28 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
     }
 
     Some(LRESULT(0))
+}
+
+// get distinguished key code
+fn get_distinguished_keycode(wparam: WPARAM, lparam: LPARAM) -> u8 {
+    let code = wparam.0 as u16;
+    let flags = lparam.0 as u32;
+
+    match VIRTUAL_KEY(code) {
+        KeyboardAndMouse::VK_SHIFT if flags & 0x01000000 != 0 => {
+            KeyboardAndMouse::VK_RSHIFT.0 as u8
+        }
+        KeyboardAndMouse::VK_CONTROL if flags & 0x01000000 != 0 => {
+            KeyboardAndMouse::VK_RCONTROL.0 as u8
+        }
+        KeyboardAndMouse::VK_MENU if flags & 0x01000000 != 0 => KeyboardAndMouse::VK_RMENU.0 as u8,
+
+        KeyboardAndMouse::VK_SHIFT => KeyboardAndMouse::VK_LSHIFT.0 as u8,
+        KeyboardAndMouse::VK_CONTROL => KeyboardAndMouse::VK_LCONTROL.0 as u8,
+        KeyboardAndMouse::VK_MENU => KeyboardAndMouse::VK_LMENU.0 as u8,
+
+        VIRTUAL_KEY(code) => code as u8,
+    }
 }
 
 #[tracing::instrument]
