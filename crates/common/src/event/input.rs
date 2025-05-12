@@ -22,7 +22,7 @@ pub enum CursorEvent {
     },
     Scroll {
         axis: ScrollAxis,
-        delta: i16,
+        delta: f32,
     },
 }
 
@@ -39,17 +39,12 @@ pub enum CursorInput {
     Middle,
     Back,
     Forward,
-    Other(u16),
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollAxis {
-    Left,
-    Right,
-    Middle,
-    Back,
-    Forward,
-    Other(u16),
+    X,
+    Y,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]

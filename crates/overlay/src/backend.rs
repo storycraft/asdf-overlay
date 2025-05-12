@@ -5,7 +5,10 @@ pub mod renderers;
 use core::mem;
 
 use asdf_overlay_common::{
-    event::{ClientEvent, WindowEvent},
+    event::{
+        ClientEvent, WindowEvent,
+        input::{CursorEvent, CursorInput, InputEvent, InputState, ScrollAxis},
+    },
     request::UpdateSharedHandle,
 };
 use cx::DrawContext;
@@ -21,10 +24,11 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
-        Controls,
+        Controls::{self, HOVER_DEFAULT},
+        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WM_NCDESTROY,
-            WM_WINDOWPOSCHANGED, WNDPROC,
+            self as msg, CallWindowProcA, DefWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA,
+            WHEEL_DELTA, WM_NCDESTROY, WM_WINDOWPOSCHANGED, WNDPROC, XBUTTON1,
         },
     },
 };
@@ -107,6 +111,7 @@ pub struct WindowBackend {
     pub cx: DrawContext,
 }
 
+#[inline]
 fn process_wnd_proc(
     backend: &mut WindowBackend,
     hwnd: HWND,
@@ -139,35 +144,135 @@ fn process_wnd_proc(
         _ => {}
     }
 
-    if backend.capture_input && process_input_capture(backend, hwnd, msg, wparam, lparam) {
-        return Some(LRESULT(0));
+    if backend.capture_input {
+        if let Some(res) = process_input_capture(hwnd, msg, wparam, lparam) {
+            return Some(res);
+        }
     }
 
     None
 }
 
-fn process_input_capture(
-    backend: &mut WindowBackend,
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> bool {
+#[inline]
+fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    #[inline(always)]
+    fn input(hwnd: HWND, input: InputEvent) -> ClientEvent {
+        ClientEvent::Window {
+            hwnd: hwnd.0 as u32,
+            event: WindowEvent::Input(input),
+        }
+    }
+
+    macro_rules! emit_cursor_input_event {
+        ($input:expr, $state:expr $(,)?) => {{
+            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+
+            Overlay::emit_event(input(
+                hwnd,
+                InputEvent::Cursor(CursorEvent::Input {
+                    state: $state,
+                    input: $input,
+                    x,
+                    y,
+                }),
+            ));
+        }};
+    }
+
     match msg {
-        // capture cursor input
+        msg::WM_LBUTTONDOWN => emit_cursor_input_event!(CursorInput::Left, InputState::Pressed),
+        msg::WM_MBUTTONDOWN => emit_cursor_input_event!(CursorInput::Middle, InputState::Pressed),
+        msg::WM_RBUTTONDOWN => emit_cursor_input_event!(CursorInput::Right, InputState::Pressed),
+        msg::WM_XBUTTONDOWN => {
+            let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+            emit_cursor_input_event!(
+                if button == XBUTTON1 {
+                    CursorInput::Back
+                } else {
+                    CursorInput::Forward
+                },
+                InputState::Pressed
+            );
+
+            // for xbutton it should return 1 for handled
+            return Some(LRESULT(1));
+        }
+
+        msg::WM_LBUTTONUP => emit_cursor_input_event!(CursorInput::Left, InputState::Released),
+        msg::WM_MBUTTONUP => emit_cursor_input_event!(CursorInput::Middle, InputState::Released),
+        msg::WM_RBUTTONUP => emit_cursor_input_event!(CursorInput::Right, InputState::Released),
+        msg::WM_XBUTTONUP => {
+            let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+            emit_cursor_input_event!(
+                if button == XBUTTON1 {
+                    CursorInput::Back
+                } else {
+                    CursorInput::Forward
+                },
+                InputState::Pressed
+            );
+
+            // for xbutton it should return 1 for handled
+            return Some(LRESULT(1));
+        }
+
+        Controls::WM_MOUSEHOVER => {
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Enter)));
+        }
+        Controls::WM_MOUSELEAVE => {
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Leave)));
+        }
+
+        msg::WM_MOUSEMOVE => {
+            // track for leave and hover event
+            _ = unsafe {
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                    cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_HOVER | TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: HOVER_DEFAULT,
+                })
+            };
+
+            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Move { x, y })));
+        }
+
+        msg::WM_MOUSEWHEEL => {
+            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let delta = delta as f32 / WHEEL_DELTA as f32;
+
+            Overlay::emit_event(input(
+                hwnd,
+                InputEvent::Cursor(CursorEvent::Scroll {
+                    axis: ScrollAxis::Y,
+                    delta,
+                }),
+            ));
+        }
+
+        msg::WM_MOUSEHWHEEL => {
+            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let delta = delta as f32 / WHEEL_DELTA as f32;
+
+            Overlay::emit_event(input(
+                hwnd,
+                InputEvent::Cursor(CursorEvent::Scroll {
+                    axis: ScrollAxis::X,
+                    delta,
+                }),
+            ));
+        }
+
+        // handle hit test event
+        msg::WM_NCHITTEST => {
+            return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
+        }
+
+        // ignore cursor input
         msg::WM_LBUTTONDBLCLK
-        | msg::WM_LBUTTONDOWN
-        | msg::WM_LBUTTONUP
         | msg::WM_MBUTTONDBLCLK
-        | msg::WM_MBUTTONDOWN
-        | msg::WM_MBUTTONUP
         | msg::WM_MOUSEACTIVATE
-        | Controls::WM_MOUSEHOVER
-        | msg::WM_MOUSEHWHEEL
-        | Controls::WM_MOUSELEAVE
-        | msg::WM_MOUSEMOVE
-        | msg::WM_MOUSEWHEEL
-        | msg::WM_NCHITTEST
         | msg::WM_NCLBUTTONDBLCLK
         | msg::WM_NCLBUTTONDOWN
         | msg::WM_NCLBUTTONUP
@@ -184,13 +289,9 @@ fn process_input_capture(
         | msg::WM_NCXBUTTONDOWN
         | msg::WM_NCXBUTTONUP
         | msg::WM_RBUTTONDBLCLK
-        | msg::WM_RBUTTONDOWN
-        | msg::WM_RBUTTONUP
-        | msg::WM_XBUTTONDBLCLK
-        | msg::WM_XBUTTONDOWN
-        | msg::WM_XBUTTONUP => {}
+        | msg::WM_XBUTTONDBLCLK => {}
 
-        // capture keyboard input
+        // ignore keyboard input
         msg::WM_APPCOMMAND
         | msg::WM_CHAR
         | msg::WM_DEADCHAR
@@ -204,13 +305,13 @@ fn process_input_capture(
         | msg::WM_SYSKEYUP
         | msg::WM_UNICHAR => {}
 
-        // capture raw input
+        // ignore raw input
         msg::WM_INPUT => {}
 
-        _ => return false,
+        _ => return None,
     }
 
-    true
+    return Some(LRESULT(0));
 }
 
 #[tracing::instrument]
