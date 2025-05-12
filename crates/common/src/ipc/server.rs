@@ -1,7 +1,3 @@
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};

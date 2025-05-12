@@ -22,7 +22,6 @@ use asdf_overlay_client::{
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
 use event::serialize_event;
-use futures::StreamExt;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
@@ -321,7 +320,7 @@ fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
                         .event
                         .lock()
                         .await
-                        .next()
+                        .recv()
                         .await
                         .context("event stream closed")
                 })

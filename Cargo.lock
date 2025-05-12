@@ -106,7 +106,6 @@ dependencies = [
  "asdf-overlay-common",
  "ash",
  "bindgen",
- "bytemuck",
  "camino",
  "cc",
  "dashmap",
