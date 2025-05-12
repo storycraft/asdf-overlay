@@ -276,7 +276,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
             ));
         }
 
-        // handle hit test event
+        // handle hit test
         msg::WM_NCHITTEST => {
             return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
         }
@@ -318,6 +318,20 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
 
         // ignore raw input
         msg::WM_INPUT => {}
+
+        // ignore ime messages
+        msg::WM_IME_CHAR
+        | msg::WM_IME_COMPOSITION
+        | msg::WM_IME_COMPOSITIONFULL
+        | msg::WM_IME_CONTROL
+        | msg::WM_IME_ENDCOMPOSITION
+        | msg::WM_IME_KEYDOWN
+        | msg::WM_IME_KEYUP
+        | msg::WM_IME_NOTIFY
+        | msg::WM_IME_REQUEST
+        | msg::WM_IME_SELECT
+        | msg::WM_IME_SETCONTEXT
+        | msg::WM_IME_STARTCOMPOSITION => {}
 
         _ => return None,
     }

@@ -1,14 +1,18 @@
 use core::time::Duration;
 use std::env::{self, current_exe};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use asdf_overlay_client::{
-    common::{request::SetPosition, size::PercentLength},
+    common::{
+        event::{ClientEvent, WindowEvent},
+        request::{SetInputCapture, SetPosition},
+        size::PercentLength,
+    },
     inject,
     process::OwnedProcess,
     surface::OverlaySurface,
 };
-use tokio::time::sleep;
+use tokio::{spawn, time::sleep};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     let process = OwnedProcess::find_first_by_name(name).context("process not found")?;
 
     // inject overlay dll into target process
-    let (mut conn, _) = inject(
+    let (mut conn, mut event) = inject(
         "asdf-overlay-example".to_string(),
         process,
         Some({
@@ -34,6 +38,20 @@ async fn main() -> anyhow::Result<()> {
         None,
     )
     .await?;
+
+    let Some(ClientEvent::Window {
+        hwnd,
+        event: WindowEvent::Added,
+    }) = event.recv().await else {
+        bail!("failed to receive main window");
+    };
+
+    conn.set_input_capture(SetInputCapture { hwnd, capture: true}).await?;
+    spawn(async move {
+        while let Some(event) = event.recv().await {
+            dbg!(event);
+        }
+    });
 
     sleep(Duration::from_secs(1)).await;
 
