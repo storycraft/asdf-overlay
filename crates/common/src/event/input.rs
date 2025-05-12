@@ -13,12 +13,12 @@ pub enum CursorEvent {
     Input {
         state: InputState,
         input: CursorInput,
-        x: u16,
-        y: u16,
+        x: i16,
+        y: i16,
     },
     Move {
-        x: u16,
-        y: u16,
+        x: i16,
+        y: i16,
     },
     Scroll {
         axis: ScrollAxis,
