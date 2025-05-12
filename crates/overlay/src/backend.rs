@@ -336,7 +336,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         _ => return None,
     }
 
-    return Some(LRESULT(0));
+    Some(LRESULT(0))
 }
 
 #[tracing::instrument]

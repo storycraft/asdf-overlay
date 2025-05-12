@@ -56,11 +56,17 @@ pnpm build && pnpm --filter electron-overlay start <process_name>
 Electron window overlay will be added on target process
 
 ### Rust
-Run
+1. Run
 ```bash
 cargo build && cargo run -p noise-rectangle <process_name>
 ```
 Glitching squares appear and disappear on target process
+
+2. Run
+```bash
+cargo build && cargo run -p input-capture <process_name>
+```
+Input will be captured for 5 seconds from target process
 
 ## Debugging
 Run with debug build.
