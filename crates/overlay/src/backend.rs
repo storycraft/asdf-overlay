@@ -25,10 +25,9 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        Input::KeyboardAndMouse::{TrackMouseEvent, TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT},
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA,
-            WHEEL_DELTA, WM_NCDESTROY, WM_WINDOWPOSCHANGED, WNDPROC, XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, SetWindowLongPtrA, GWLP_WNDPROC, WHEEL_DELTA, WM_CLOSE, WM_NCDESTROY, WM_WINDOWPOSCHANGED, WNDPROC, XBUTTON1
         },
     },
 };
@@ -145,7 +144,10 @@ fn process_wnd_proc(
     }
 
     if backend.capture_input {
-        if let Some(res) = process_input_capture(hwnd, msg, wparam, lparam) {
+        if msg == WM_CLOSE {
+            backend.capture_input = false;
+            return Some(LRESULT(0));
+        } else if let Some(res) = process_input_capture(hwnd, msg, wparam, lparam) {
             return Some(res);
         }
     }
