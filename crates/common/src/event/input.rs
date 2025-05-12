@@ -2,17 +2,17 @@ use bincode::{Decode, Encode};
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum InputEvent {
-    Cursor(CursorEvent),
+    Cursor(CursorInput),
     Keyboard(KeyboardInput),
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub enum CursorEvent {
+pub enum CursorInput {
     Enter,
     Leave,
-    Input {
+    Action {
         state: InputState,
-        input: CursorInput,
+        action: CursorAction,
         x: i16,
         y: i16,
     },
@@ -28,12 +28,12 @@ pub enum CursorEvent {
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub struct KeyboardInput {
-    key: u8,
-    state: InputState,
+    pub key: u8,
+    pub state: InputState,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
-pub enum CursorInput {
+pub enum CursorAction {
     Left,
     Right,
     Middle,

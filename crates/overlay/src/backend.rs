@@ -7,7 +7,7 @@ use core::mem;
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{CursorEvent, CursorInput, InputEvent, InputState, ScrollAxis},
+        input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
     },
     request::UpdateSharedHandle,
 };
@@ -163,15 +163,15 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         }
     }
 
-    macro_rules! emit_cursor_input_event {
-        ($input:expr, $state:expr $(,)?) => {{
+    macro_rules! emit_cursor_input {
+        ($action:expr, $state:expr $(,)?) => {{
             let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
             Overlay::emit_event(input(
                 hwnd,
-                InputEvent::Cursor(CursorEvent::Input {
+                InputEvent::Cursor(CursorInput::Action {
                     state: $state,
-                    input: $input,
+                    action: $action,
                     x,
                     y,
                 }),
@@ -179,17 +179,29 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         }};
     }
 
+    macro_rules! emit_keyboard_input {
+        ($state:expr $(,)?) => {{
+            Overlay::emit_event(input(
+                hwnd,
+                InputEvent::Keyboard(KeyboardInput {
+                    key: wparam.0 as u8,
+                    state: $state,
+                }),
+            ));
+        }};
+    }
+
     match msg {
-        msg::WM_LBUTTONDOWN => emit_cursor_input_event!(CursorInput::Left, InputState::Pressed),
-        msg::WM_MBUTTONDOWN => emit_cursor_input_event!(CursorInput::Middle, InputState::Pressed),
-        msg::WM_RBUTTONDOWN => emit_cursor_input_event!(CursorInput::Right, InputState::Pressed),
+        msg::WM_LBUTTONDOWN => emit_cursor_input!(CursorAction::Left, InputState::Pressed),
+        msg::WM_MBUTTONDOWN => emit_cursor_input!(CursorAction::Middle, InputState::Pressed),
+        msg::WM_RBUTTONDOWN => emit_cursor_input!(CursorAction::Right, InputState::Pressed),
         msg::WM_XBUTTONDOWN => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-            emit_cursor_input_event!(
+            emit_cursor_input!(
                 if button == XBUTTON1 {
-                    CursorInput::Back
+                    CursorAction::Back
                 } else {
-                    CursorInput::Forward
+                    CursorAction::Forward
                 },
                 InputState::Pressed
             );
@@ -198,16 +210,16 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
             return Some(LRESULT(1));
         }
 
-        msg::WM_LBUTTONUP => emit_cursor_input_event!(CursorInput::Left, InputState::Released),
-        msg::WM_MBUTTONUP => emit_cursor_input_event!(CursorInput::Middle, InputState::Released),
-        msg::WM_RBUTTONUP => emit_cursor_input_event!(CursorInput::Right, InputState::Released),
+        msg::WM_LBUTTONUP => emit_cursor_input!(CursorAction::Left, InputState::Released),
+        msg::WM_MBUTTONUP => emit_cursor_input!(CursorAction::Middle, InputState::Released),
+        msg::WM_RBUTTONUP => emit_cursor_input!(CursorAction::Right, InputState::Released),
         msg::WM_XBUTTONUP => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-            emit_cursor_input_event!(
+            emit_cursor_input!(
                 if button == XBUTTON1 {
-                    CursorInput::Back
+                    CursorAction::Back
                 } else {
-                    CursorInput::Forward
+                    CursorAction::Forward
                 },
                 InputState::Pressed
             );
@@ -217,10 +229,10 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         }
 
         Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Enter)));
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Enter)));
         }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Leave)));
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Leave)));
         }
 
         msg::WM_MOUSEMOVE => {
@@ -235,7 +247,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
             };
 
             let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorEvent::Move { x, y })));
+            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Move { x, y })));
         }
 
         msg::WM_MOUSEWHEEL => {
@@ -244,7 +256,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
 
             Overlay::emit_event(input(
                 hwnd,
-                InputEvent::Cursor(CursorEvent::Scroll {
+                InputEvent::Cursor(CursorInput::Scroll {
                     axis: ScrollAxis::Y,
                     delta,
                 }),
@@ -257,7 +269,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
 
             Overlay::emit_event(input(
                 hwnd,
-                InputEvent::Cursor(CursorEvent::Scroll {
+                InputEvent::Cursor(CursorInput::Scroll {
                     axis: ScrollAxis::X,
                     delta,
                 }),
@@ -269,7 +281,7 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
             return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
         }
 
-        // ignore cursor input
+        // ignore other cursor inputs
         msg::WM_LBUTTONDBLCLK
         | msg::WM_MBUTTONDBLCLK
         | msg::WM_MOUSEACTIVATE
@@ -291,18 +303,17 @@ fn process_input_capture(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         | msg::WM_RBUTTONDBLCLK
         | msg::WM_XBUTTONDBLCLK => {}
 
-        // ignore keyboard input
+        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => emit_keyboard_input!(InputState::Pressed),
+        msg::WM_KEYUP | msg::WM_SYSKEYUP => emit_keyboard_input!(InputState::Released),
+
+        // ignore other keyboard inputs
         msg::WM_APPCOMMAND
         | msg::WM_CHAR
         | msg::WM_DEADCHAR
         | msg::WM_HOTKEY
-        | msg::WM_KEYDOWN
-        | msg::WM_KEYUP
         | msg::WM_KILLFOCUS
         | msg::WM_SETFOCUS
         | msg::WM_SYSDEADCHAR
-        | msg::WM_SYSKEYDOWN
-        | msg::WM_SYSKEYUP
         | msg::WM_UNICHAR => {}
 
         // ignore raw input
