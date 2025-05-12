@@ -7,7 +7,6 @@ use std::sync::{Arc, Weak};
 use anyhow::{Context as AnyhowContext, bail};
 use bincode::Decode;
 use dashmap::DashMap;
-use futures_core::Stream;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
     net::windows::named_pipe::NamedPipeServer,
@@ -195,10 +194,9 @@ pub struct IpcServerEventStream {
     inner: mpsc::UnboundedReceiver<ClientEvent>,
 }
 
-impl Stream for IpcServerEventStream {
-    type Item = ClientEvent;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.inner.poll_recv(cx)
+impl IpcServerEventStream {
+    #[inline]
+    pub async fn recv(&mut self) -> Option<ClientEvent> {
+        self.inner.recv().await
     }
 }

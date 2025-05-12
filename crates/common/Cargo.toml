@@ -15,7 +15,6 @@ winapi = { version = "0.3", features = ["winerror"] }
 anyhow = "1.0.97"
 parking_lot = "0.12.3"
 dashmap = "6.1.0"
-futures-core = "0.3.31"
 async-stream = "0.3.6"
 rustc-hash = "2.1.1"
 scopeguard = "1.2.0"
