@@ -13,6 +13,7 @@ use scopeguard::defer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
         Input::KeyboardAndMouse::{
@@ -20,8 +21,8 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HC_ACTION, MSG, PM_REMOVE, WHEEL_DELTA, WM_CLOSE, WM_NCDESTROY, WM_NULL,
-            WM_WINDOWPOSCHANGED, XBUTTON1,
+            HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WHEEL_DELTA, WM_CLOSE,
+            WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED, XBUTTON1,
         },
     },
 };
@@ -321,10 +322,22 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
     if ncode == HC_ACTION as i32 && wparam.0 as u32 == PM_REMOVE.0 {
         let msg = unsafe { &mut *(lparam.0 as *mut MSG) };
 
-        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-        _ = Backends::with_backend(root_hwnd, |backend| {
-            process_call_wnd_proc_hook(backend, msg)
-        });
+        if msg.message == WM_QUIT {
+            // remove hook
+            if let Some((_, hhook)) = BACKENDS
+                .thread_hook_map
+                .remove(&unsafe { GetCurrentThreadId() })
+            {
+                _ = unsafe { UnhookWindowsHookEx(HHOOK(hhook as _)) };
+            }
+        }
+
+        if !msg.hwnd.is_invalid() {
+            let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
+            _ = Backends::with_backend(root_hwnd, |backend| {
+                process_call_wnd_proc_hook(backend, msg)
+            });
+        }
     }
 
     unsafe { CallNextHookEx(None, ncode, wparam, lparam) }

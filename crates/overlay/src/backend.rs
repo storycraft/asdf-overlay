@@ -26,8 +26,8 @@ use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, HHOOK, SetWindowLongPtrA, SetWindowsHookExA,
-        UnhookWindowsHookEx, WH_GETMESSAGE, WNDPROC,
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA,
+        WH_GETMESSAGE, WNDPROC,
     },
 };
 
@@ -121,25 +121,6 @@ impl Backends {
             hwnd: key,
             event: WindowEvent::Destroyed,
         });
-
-        let hwnd_thread = unsafe { GetWindowThreadProcessId(hwnd, None) };
-        if hwnd_thread == 0 {
-            return;
-        }
-
-        if let Some((_, hhook)) = BACKENDS.thread_hook_map.remove(&hwnd_thread) {
-            for backend in BACKENDS.map.iter_mut() {
-                let target_thread =
-                    unsafe { GetWindowThreadProcessId(HWND(backend.hwnd as _), None) };
-                if hwnd_thread == target_thread {
-                    return;
-                }
-            }
-
-            unsafe {
-                _ = UnhookWindowsHookEx(HHOOK(hhook as _));
-            }
-        }
     }
 
     pub fn cleanup_renderers() {
