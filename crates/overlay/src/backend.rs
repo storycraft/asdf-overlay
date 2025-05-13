@@ -24,7 +24,7 @@ use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA,
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA, ShowCursor,
         WH_GETMESSAGE, WNDPROC,
     },
 };
@@ -176,6 +176,9 @@ impl WindowBackend {
             });
         }
         self.capturing_input = input_capture;
+
+        // show cursor while capturing input
+        unsafe { ShowCursor(input_capture) };
     }
 
     fn update_key_state(&mut self, key: Key, value: bool) {

@@ -40,7 +40,7 @@ fn filter_input(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<
             return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
         }
 
-        // show arrow cursor in client area
+        // set arrow cursor in client area
         msg::WM_SETCURSOR => {
             let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
 
