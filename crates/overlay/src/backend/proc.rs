@@ -4,11 +4,14 @@ use crate::{
     backend::{BACKENDS, Backends},
     util::get_client_size,
 };
-use asdf_overlay_common::event::{
-    ClientEvent, WindowEvent,
-    input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
+use asdf_overlay_common::{
+    event::{
+        ClientEvent, WindowEvent,
+        input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
+    },
+    key::Key,
 };
-use core::{mem, num::NonZeroU8};
+use core::mem;
 use scopeguard::defer;
 use tracing::trace;
 use windows::Win32::{
@@ -16,9 +19,7 @@ use windows::Win32::{
     System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{
-            self, TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY,
-        },
+        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
             HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WHEEL_DELTA, WM_CLOSE,
@@ -143,13 +144,13 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(msg.wParam, msg.lParam)) {
+            if let Some(key) = to_key(msg.lParam) {
                 backend.update_key_state(key, true);
             }
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(msg.wParam, msg.lParam)) {
+            if let Some(key) = to_key(msg.lParam) {
                 backend.update_key_state(key, false);
             }
         }
@@ -199,13 +200,12 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
 
     macro_rules! emit_keyboard_input {
         ($state:expr $(,)?) => {{
-            Overlay::emit_event(input(
-                hwnd,
-                InputEvent::Keyboard(KeyboardInput {
-                    key: get_distinguished_keycode(wparam, lparam),
-                    state: $state,
-                }),
-            ));
+            if let Some(key) = to_key(lparam) {
+                Overlay::emit_event(input(
+                    hwnd,
+                    InputEvent::Keyboard(KeyboardInput { key, state: $state }),
+                ));
+            }
         }};
     }
 
@@ -343,24 +343,8 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
     unsafe { CallNextHookEx(None, ncode, wparam, lparam) }
 }
 
-// get distinguished key code
-fn get_distinguished_keycode(wparam: WPARAM, lparam: LPARAM) -> u8 {
-    let code = wparam.0 as u16;
-    let flags = lparam.0 as u32;
-
-    match VIRTUAL_KEY(code) {
-        KeyboardAndMouse::VK_SHIFT if flags & 0x01000000 != 0 => {
-            KeyboardAndMouse::VK_RSHIFT.0 as u8
-        }
-        KeyboardAndMouse::VK_CONTROL if flags & 0x01000000 != 0 => {
-            KeyboardAndMouse::VK_RCONTROL.0 as u8
-        }
-        KeyboardAndMouse::VK_MENU if flags & 0x01000000 != 0 => KeyboardAndMouse::VK_RMENU.0 as u8,
-
-        KeyboardAndMouse::VK_SHIFT => KeyboardAndMouse::VK_LSHIFT.0 as u8,
-        KeyboardAndMouse::VK_CONTROL => KeyboardAndMouse::VK_LCONTROL.0 as u8,
-        KeyboardAndMouse::VK_MENU => KeyboardAndMouse::VK_LMENU.0 as u8,
-
-        VIRTUAL_KEY(code) => code as u8,
-    }
+#[inline]
+fn to_key(lparam: LPARAM) -> Option<Key> {
+    let [_, _, code, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
+    Key::new(code, flags & 0x01 == 0x01)
 }

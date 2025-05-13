@@ -1,4 +1,3 @@
-use core::{ffi::c_void, ptr};
 use std::sync::Once;
 
 use asdf_overlay_common::{
@@ -93,22 +92,16 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
             Request::GetSize(get_size) => {
                 client.reply(
                     id,
-                    Backends::with_backend(
-                        HWND(ptr::null_mut::<c_void>().with_addr(get_size.hwnd as usize)),
-                        |backend| backend.size,
-                    ),
+                    Backends::with_backend(HWND(get_size.hwnd as _), |backend| backend.size),
                 )?;
             }
 
             Request::SetInputCaptureKeybind(cmd) => {
                 client.reply(
                     id,
-                    Backends::with_backend(
-                        HWND(ptr::null_mut::<c_void>().with_addr(cmd.hwnd as usize)),
-                        |backend| {
-                            backend.set_input_capture_keybind(cmd.keybind);
-                        },
-                    )
+                    Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
+                        backend.set_input_capture_keybind(cmd.keybind);
+                    })
                     .is_some(),
                 )?;
             }

@@ -1,10 +1,10 @@
-use core::num::NonZeroU32;
 use std::env::{self, current_exe};
 
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
     common::{
         event::{ClientEvent, WindowEvent},
+        key::Key,
         request::SetInputCaptureKeybind,
     },
     inject,
@@ -46,8 +46,8 @@ async fn main() -> anyhow::Result<()> {
 
     conn.set_input_capture_keybind(SetInputCaptureKeybind {
         hwnd,
-        // LeftShift = 0xA0, A = 0x41
-        keybind: NonZeroU32::new(0x0000A041),
+        // LeftShift = 0x2A, A = 0x1E
+        keybind: [Key::new(0x2A, false), Key::new(0x1E, false), None, None],
     })
     .await?;
 
