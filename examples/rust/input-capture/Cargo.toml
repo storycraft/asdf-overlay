@@ -1,0 +1,19 @@
+[package]
+name = "input-capture"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors = ["storycraft <storycraft@pancake.sh>"]
+
+[dependencies]
+asdf-overlay-client = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+anyhow = "1.0.97"
+dll-syringe = { workspace = true, features = [
+    "into-x86-from-x64",
+    "syringe",
+    "rpc-payload",
+] }
+rand = "0.9.0"
+

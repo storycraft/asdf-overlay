@@ -30,7 +30,8 @@ ash = "0.38.0"
 dll-syringe = { workspace = true, features = ["payload-utils"] }
 array-util = "1.0.2"
 windows-link = "0.1.1"
-
+bytemuck = "1.22.0"
+bitvec = "1"
 
 [dependencies.tracing]
 version = "0.1"
@@ -43,6 +44,7 @@ features = [
     "Win32_Foundation",
     "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Controls",
     "Win32_System_Console",
     "Win32_System_LibraryLoader",
     "Win32_Graphics_Gdi",
@@ -56,6 +58,7 @@ features = [
     "Win32_Graphics_Direct3D_Fxc",
     "Win32_Security",
     "Win32_System_Diagnostics_Debug",
+    "Win32_UI_Input_KeyboardAndMouse",
 ]
 
 [build-dependencies]

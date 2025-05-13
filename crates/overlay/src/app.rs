@@ -100,6 +100,19 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 )?;
             }
 
+            Request::SetInputCaptureKeybind(cmd) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(
+                        HWND(ptr::null_mut::<c_void>().with_addr(cmd.hwnd as usize)),
+                        |backend| {
+                            backend.set_input_capture_keybind(cmd.keybind);
+                        },
+                    )
+                    .is_some(),
+                )?;
+            }
+
             Request::UpdateSharedHandle(shared) => {
                 for mut backend in Backends::iter_mut() {
                     backend.pending_handle = Some(shared.clone());
