@@ -26,7 +26,7 @@ pub enum CursorEvent {
     Move,
     Scroll {
         axis: ScrollAxis,
-        delta: f32,
+        delta: i16,
     },
 }
 

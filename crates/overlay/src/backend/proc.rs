@@ -25,8 +25,8 @@ use windows::Win32::{
         Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WHEEL_DELTA, WM_CLOSE,
-            WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED, XBUTTON1,
+            HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL,
+            WM_QUIT, WM_WINDOWPOSCHANGED, XBUTTON1,
         },
     },
 };
@@ -211,10 +211,7 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
     macro_rules! emit_keyboard_input {
         ($state:expr $(,)?) => {{
             if let Some(key) = to_key(wparam, lparam) {
-                Overlay::emit_event(keyboard_input(
-                    hwnd,
-                    KeyboardInput { key, state: $state },
-                ));
+                Overlay::emit_event(keyboard_input(hwnd, KeyboardInput { key, state: $state }));
             }
         }};
     }
@@ -276,8 +273,6 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            let delta = delta as f32 / WHEEL_DELTA as f32;
-
             Overlay::emit_event(cursor_input(
                 hwnd,
                 lparam,
@@ -292,8 +287,6 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
 
         msg::WM_MOUSEHWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            let delta = delta as f32 / WHEEL_DELTA as f32;
-
             Overlay::emit_event(cursor_input(
                 hwnd,
                 lparam,
