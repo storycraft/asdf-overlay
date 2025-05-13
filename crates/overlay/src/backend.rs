@@ -1,13 +1,14 @@
 pub mod cx;
 pub mod opengl;
+mod proc;
 pub mod renderers;
-mod wndproc;
 
 use core::{
     mem,
     num::{NonZeroU8, NonZeroU32},
 };
 
+use anyhow::bail;
 use asdf_overlay_common::{
     event::{ClientEvent, WindowEvent},
     request::UpdateSharedHandle,
@@ -19,22 +20,27 @@ use dashmap::{
     mapref::multiple::{RefMulti, RefMutMulti},
 };
 use once_cell::sync::Lazy;
+use proc::{call_wnd_proc_hook, hooked_wnd_proc};
 use renderers::Renderer;
 use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
+    UI::WindowsAndMessaging::{
+        GWLP_WNDPROC, GetWindowThreadProcessId, HHOOK, SetWindowLongPtrA, SetWindowsHookExA,
+        UnhookWindowsHookEx, WH_GETMESSAGE, WNDPROC,
+    },
 };
-use wndproc::hooked_wnd_proc;
 
 use crate::{app::Overlay, util::get_client_size};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: DashMap::default(),
+    thread_hook_map: DashMap::default(),
 });
 
 pub struct Backends {
     map: DashMap<u32, WindowBackend, FxBuildHasher>,
+    thread_hook_map: DashMap<u32, usize>,
 }
 
 impl Backends {
@@ -56,7 +62,24 @@ impl Backends {
         hwnd: HWND,
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
-        let mut backend = BACKENDS.map.entry(hwnd.0 as u32).or_try_insert_with(|| {
+        let key = hwnd.0 as u32;
+
+        let mut backend = if let Some(backend) = BACKENDS.map.get_mut(&key) {
+            backend
+        } else {
+            let hwnd_thread = unsafe { GetWindowThreadProcessId(hwnd, None) };
+            if hwnd_thread == 0 {
+                bail!("GetWindowThreadProcessId failed");
+            }
+
+            BACKENDS
+                .thread_hook_map
+                .entry(hwnd_thread)
+                .or_try_insert_with(|| unsafe {
+                    SetWindowsHookExA(WH_GETMESSAGE, Some(call_wnd_proc_hook), None, hwnd_thread)
+                        .map(|res| res.0 as usize)
+                })?;
+
             let original_proc: WNDPROC = unsafe {
                 mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
                     hwnd,
@@ -68,12 +91,12 @@ impl Backends {
             let size = get_client_size(hwnd)?;
 
             Overlay::emit_event(ClientEvent::Window {
-                hwnd: hwnd.0 as u32,
+                hwnd: key,
                 event: WindowEvent::Added,
             });
 
-            Ok::<_, anyhow::Error>(WindowBackend {
-                hwnd: hwnd.0 as _,
+            BACKENDS.map.entry(key).insert(WindowBackend {
+                hwnd: key,
                 original_proc,
 
                 input_capture_keybind: None,
@@ -85,9 +108,38 @@ impl Backends {
                 renderer: Renderer::new(),
                 cx: DrawContext::new(),
             })
-        })?;
+        };
 
         Ok(f(&mut backend))
+    }
+
+    fn remove_backend(hwnd: HWND) {
+        let key = hwnd.0 as u32;
+        BACKENDS.map.remove(&key);
+
+        Overlay::emit_event(ClientEvent::Window {
+            hwnd: key,
+            event: WindowEvent::Destroyed,
+        });
+
+        let hwnd_thread = unsafe { GetWindowThreadProcessId(hwnd, None) };
+        if hwnd_thread == 0 {
+            return;
+        }
+
+        if let Some((_, hhook)) = BACKENDS.thread_hook_map.remove(&hwnd_thread) {
+            for backend in BACKENDS.map.iter_mut() {
+                let target_thread =
+                    unsafe { GetWindowThreadProcessId(HWND(backend.hwnd as _), None) };
+                if hwnd_thread == target_thread {
+                    return;
+                }
+            }
+
+            unsafe {
+                _ = UnhookWindowsHookEx(HHOOK(hhook as _));
+            }
+        }
     }
 
     pub fn cleanup_renderers() {
