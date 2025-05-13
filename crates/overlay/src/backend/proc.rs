@@ -25,8 +25,9 @@ use windows::Win32::{
         Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL,
-            WM_QUIT, WM_WINDOWPOSCHANGED, XBUTTON1,
+            HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
+            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED,
+            XBUTTON1,
         },
     },
 };
@@ -37,6 +38,21 @@ fn filter_input(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<
         // handle hit test
         msg::WM_NCHITTEST => {
             return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
+        }
+
+        // show arrow cursor in client area
+        msg::WM_SETCURSOR => {
+            let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+
+            if area == 1 {
+                unsafe {
+                    SetCursor(LoadCursorW(None, IDC_ARROW).ok());
+                }
+
+                return Some(LRESULT(1));
+            } else {
+                return None;
+            }
         }
 
         // ignore cursor inputs
