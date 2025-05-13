@@ -4,13 +4,26 @@ import { arch } from 'node:process';
 import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
+import { CursorInput, KeyboardInput } from './input.js';
 
 export * from './util.js';
 
 export type PercentLength = {
   ty: 'percent' | 'length',
   value: number,
-}
+};
+
+export type Key = {
+  /**
+   * Keyboard scan code
+   */
+  code: number,
+
+  /**
+   * Extended scan code flag
+   */
+  extended: boolean,
+};
 
 const addon = loadAddon();
 
@@ -46,7 +59,12 @@ const idSym: unique symbol = Symbol("id");
 export type OverlayEventEmitter = EventEmitter<{
   'added': [hwnd: number],
   'resized': [hwnd: number, width: number, height: number],
+  'cursor_input': [hwnd: number, input: CursorInput],
+  'keyboard_input': [hwnd: number, input: KeyboardInput],
+  'input_capture_start': [hwnd: number],
+  'input_capture_end': [hwnd: number],
   'destroyed': [hwnd: number],
+  'error': [err: unknown],
   'disconnected': [],
 }>;
 
@@ -59,38 +77,18 @@ export class Overlay {
 
     void (async () => {
       // wait until next tick so no events are lost
-      await new Promise(process.nextTick);
+      await new Promise<void>(resolve => process.nextTick(resolve));
 
       try {
-        for (; ;) {
-          const next = await addon.overlayNextEvent(id);
-
-          switch (next.kind) {
-            case 'window': {
-              const inner = next.event;
-              switch (inner.kind) {
-                case 'added': {
-                  this.event.emit('added', next.hwnd);
-                  break;
-                }
-
-                case 'resized': {
-                  this.event.emit('resized', next.hwnd, inner.width, inner.height);
-                  break;
-                }
-
-                case 'destroyed': {
-                  this.event.emit('destroyed', next.hwnd);
-                  break;
-                }
-              }
-
-              break;
-            }
-          }
+        while (await addon.overlayCallNextEvent(id, this.event, this.event.emit)) { }
+      } catch (err) {
+        if (this.event.listenerCount('error') != 0) {
+          this.event.emit('error', err);
+        } else {
+          throw err;
         }
-      } catch (e) {
-        this.event.emit('disconnected');
+      } finally {
+        this.destroy();
       }
     })();
   }
@@ -127,6 +125,13 @@ export class Overlay {
     left: PercentLength,
   ) {
     await addon.overlaySetMargin(this[idSym], top, right, bottom, left);
+  }
+
+  async setInputCaptureKeybind(
+    hwnd: number,
+    keybind: [Key?, Key?, Key?, Key?],
+  ) {
+    await addon.overlaySetInputCaptureKeybind(this[idSym], hwnd, keybind);
   }
 
   /**
@@ -168,6 +173,7 @@ export class Overlay {
    */
   destroy() {
     addon.overlayDestroy(this[idSym]);
+    this.event.emit('disconnected');
   }
 
   /**
