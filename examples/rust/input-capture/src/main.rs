@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     conn.set_input_capture_keybind(SetInputCaptureKeybind {
         hwnd,
-        // Shift = 0x10, A = 0x41
+        // Left Shift = 0x10 (without extended flag), A = 0x41
         keybind: [Key::new(0x10, false), Key::new(0x41, false), None, None],
     })
     .await?;
