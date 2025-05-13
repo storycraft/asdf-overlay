@@ -3,7 +3,10 @@ use core::num::NonZeroU8;
 use asdf_overlay_client::common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
+        input::{
+            CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
+            ScrollAxis,
+        },
     },
     key::Key,
 };
@@ -90,21 +93,22 @@ fn serialize_cursor_input<'a>(
 ) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
-    match input {
-        CursorInput::Enter => {
+    let x = cx.number(input.x);
+    obj.set(cx, "x", x)?;
+
+    let y = cx.number(input.y);
+    obj.set(cx, "y", y)?;
+
+    match input.event {
+        CursorEvent::Enter => {
             let kind = cx.string("Enter");
             obj.set(cx, "kind", kind)?;
         }
-        CursorInput::Leave => {
+        CursorEvent::Leave => {
             let kind = cx.string("Leave");
             obj.set(cx, "kind", kind)?;
         }
-        CursorInput::Action {
-            state,
-            action,
-            x,
-            y,
-        } => {
+        CursorEvent::Action { state, action } => {
             let kind = cx.string("Action");
             obj.set(cx, "kind", kind)?;
 
@@ -119,24 +123,12 @@ fn serialize_cursor_input<'a>(
                 CursorAction::Forward => cx.string("Forward"),
             };
             obj.set(cx, "action", action)?;
-
-            let x = cx.number(x);
-            obj.set(cx, "x", x)?;
-
-            let y = cx.number(y);
-            obj.set(cx, "y", y)?;
         }
-        CursorInput::Move { x, y } => {
+        CursorEvent::Move => {
             let kind = cx.string("Move");
             obj.set(cx, "kind", kind)?;
-
-            let x = cx.number(x);
-            obj.set(cx, "x", x)?;
-
-            let y = cx.number(y);
-            obj.set(cx, "y", y)?;
         }
-        CursorInput::Scroll { axis, delta } => {
+        CursorEvent::Scroll { axis, delta } => {
             let kind = cx.string("Scroll");
             obj.set(cx, "kind", kind)?;
 

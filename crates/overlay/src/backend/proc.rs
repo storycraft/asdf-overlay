@@ -7,7 +7,10 @@ use crate::{
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
+        input::{
+            CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
+            ScrollAxis,
+        },
     },
     key::Key,
 };
@@ -175,25 +178,32 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
 #[inline]
 fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
     #[inline(always)]
-    fn input(hwnd: u32, input: InputEvent) -> ClientEvent {
+    fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
+        let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+
         ClientEvent::Window {
             hwnd,
-            event: WindowEvent::Input(input),
+            event: WindowEvent::Input(InputEvent::Cursor(CursorInput { event, x, y })),
+        }
+    }
+
+    #[inline(always)]
+    fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
+        ClientEvent::Window {
+            hwnd,
+            event: WindowEvent::Input(InputEvent::Keyboard(input)),
         }
     }
 
     macro_rules! emit_cursor_input {
         ($action:expr, $state:expr $(,)?) => {{
-            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Action {
+                lparam,
+                CursorEvent::Action {
                     state: $state,
                     action: $action,
-                    x,
-                    y,
-                }),
+                },
             ));
         }};
     }
@@ -201,9 +211,9 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
     macro_rules! emit_keyboard_input {
         ($state:expr $(,)?) => {{
             if let Some(key) = to_key(wparam, lparam) {
-                Overlay::emit_event(input(
+                Overlay::emit_event(keyboard_input(
                     hwnd,
-                    InputEvent::Keyboard(KeyboardInput { key, state: $state }),
+                    KeyboardInput { key, state: $state },
                 ));
             }
         }};
@@ -241,11 +251,11 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }
 
         Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Enter)));
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Enter));
             return true;
         }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Leave)));
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Leave));
             return true;
         }
 
@@ -260,9 +270,7 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
                 })
             };
 
-            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Move { x, y })));
-
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Move));
             return true;
         }
 
@@ -270,12 +278,13 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             let delta = delta as f32 / WHEEL_DELTA as f32;
 
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Scroll {
+                lparam,
+                CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
                     delta,
-                }),
+                },
             ));
 
             return true;
@@ -285,12 +294,13 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             let delta = delta as f32 / WHEEL_DELTA as f32;
 
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Scroll {
+                lparam,
+                CursorEvent::Scroll {
                     axis: ScrollAxis::X,
                     delta,
-                }),
+                },
             ));
 
             return true;

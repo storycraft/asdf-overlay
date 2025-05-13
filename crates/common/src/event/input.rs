@@ -9,19 +9,21 @@ pub enum InputEvent {
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub enum CursorInput {
+pub struct CursorInput {
+    pub event: CursorEvent,
+    pub x: i16,
+    pub y: i16,
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub enum CursorEvent {
     Enter,
     Leave,
     Action {
         state: InputState,
         action: CursorAction,
-        x: i16,
-        y: i16,
     },
-    Move {
-        x: i16,
-        y: i16,
-    },
+    Move,
     Scroll {
         axis: ScrollAxis,
         delta: f32,

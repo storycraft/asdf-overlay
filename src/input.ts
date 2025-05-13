@@ -1,6 +1,9 @@
 import { Key } from './index.js';
 
 export type CursorInput = {
+  x: number,
+  y: number,
+} & ({
   kind: 'Enter'
 } | {
   kind: 'Leave'
@@ -9,13 +12,8 @@ export type CursorInput = {
 
   state: InputState,
   action: CursorAction,
-  x: number,
-  y: number,
 } | {
   kind: 'Move',
-
-  x: number,
-  y: number,
 } | {
   kind: 'Scroll',
 
@@ -25,7 +23,7 @@ export type CursorInput = {
    * Scroll tick delta
    */
   delta: number,
-};
+});
 
 export type KeyboardInput = {
   key: Key,
