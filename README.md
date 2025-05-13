@@ -51,9 +51,9 @@ Examples are located in `examples` directory.
 ### Node
 Run
 ```bash
-pnpm build && pnpm --filter electron-overlay start <process_name>
+pnpm build && pnpm --filter ingame-browser start <process_name>
 ```
-Electron window overlay will be added on target process
+Pressing `Left Shift + A` will show browser ingame and capture input to browser window, pressing again will close.
 
 ### Rust
 1. Run

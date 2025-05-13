@@ -1,5 +1,5 @@
 {
-  "name": "electron-overlay",
+  "name": "ingame-browser",
   "version": "0.1.0",
   "private": true,
   "license": "MIT OR Apache-2.0",
@@ -14,11 +14,12 @@
     "url": "git+https://github.com/storycraft/asdf-overlay.git"
   },
   "scripts": {
-    "start": "electron ./main"
+    "start": "electron ./app"
   },
   "dependencies": {
     "asdf-overlay-node": "workspace:*",
-    "electron": "^35.1.5",
-    "find-process": "^1.4.10"
+    "electron": "^36.2.0",
+    "find-process": "^1.4.10",
+    "keyboard-key": "^1.1.0"
   }
 }
