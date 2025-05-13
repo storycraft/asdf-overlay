@@ -324,6 +324,8 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
             return true;
         }
 
+        msg::WM_INPUT => return true,
+
         _ => {}
     }
 
