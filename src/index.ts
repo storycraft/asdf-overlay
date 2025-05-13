@@ -15,12 +15,12 @@ export type PercentLength = {
 
 export type Key = {
   /**
-   * Keyboard scan code
+   * Windows virtual key code
    */
   code: number,
 
   /**
-   * Extended scan code flag
+   * Extended flag
    */
   extended: boolean,
 };

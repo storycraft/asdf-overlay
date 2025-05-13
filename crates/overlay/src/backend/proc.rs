@@ -144,13 +144,13 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = to_key(msg.lParam) {
+            if let Some(key) = to_key(msg.wParam, msg.lParam) {
                 backend.update_key_state(key, true);
             }
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = to_key(msg.lParam) {
+            if let Some(key) = to_key(msg.wParam, msg.lParam) {
                 backend.update_key_state(key, false);
             }
         }
@@ -200,7 +200,7 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
 
     macro_rules! emit_keyboard_input {
         ($state:expr $(,)?) => {{
-            if let Some(key) = to_key(lparam) {
+            if let Some(key) = to_key(wparam, lparam) {
                 Overlay::emit_event(input(
                     hwnd,
                     InputEvent::Keyboard(KeyboardInput { key, state: $state }),
@@ -344,7 +344,7 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
 }
 
 #[inline]
-fn to_key(lparam: LPARAM) -> Option<Key> {
-    let [_, _, code, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
-    Key::new(code, flags & 0x01 == 0x01)
+fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
+    let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
+    Key::new(wparam.0 as _, flags & 0x01 == 0x01)
 }
