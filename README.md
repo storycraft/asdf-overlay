@@ -53,7 +53,7 @@ Run
 ```bash
 pnpm build && pnpm --filter ingame-browser start <process_name>
 ```
-Pressing `Left Shift + A` will show browser ingame and capture input to browser window, pressing again will close.
+Pressing `Left Shift + A` will show ingame browser overlay and input will be redirected to browser window. Pressing again will close it.
 
 ### Rust
 1. Run
