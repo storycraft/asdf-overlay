@@ -121,7 +121,7 @@ impl Backends {
         });
     }
 
-    pub fn cleanup_renderers() {
+    pub fn cleanup_backends() {
         for mut backend in BACKENDS.map.iter_mut() {
             mem::take(&mut backend.cx);
             mem::take(&mut backend.renderer);
@@ -178,6 +178,7 @@ impl WindowBackend {
         self.capturing_input = input_capture;
 
         // show cursor while capturing input
+        // TODO: ensure ShowCursor is run on target window thread
         unsafe { ShowCursor(input_capture) };
     }
 
