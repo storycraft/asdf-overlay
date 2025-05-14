@@ -1,7 +1,6 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
-use parking_lot::Mutex;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
@@ -24,12 +23,6 @@ use super::HOOK;
 pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
 
-static READER: Mutex<Option<SharedHandleReader>> = Mutex::new(None);
-
-pub fn cleanup() {
-    READER.lock().take();
-}
-
 #[tracing::instrument]
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     trace!("EndScene called");
@@ -39,12 +32,14 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
     unsafe { device.GetCreationParameters(&mut params) }.unwrap();
 
-    let mut reader = READER.lock();
-    let reader = reader.get_or_insert_with(|| SharedHandleReader::new().unwrap());
-
-    Backends::with_backend(params.hFocusWindow, |backend| {
+    Backends::with_or_init_backend(params.hFocusWindow, |backend| {
+        let reader = backend
+            .cx
+            .fallback_reader
+            .get_or_insert_with(|| SharedHandleReader::new().unwrap());
         let screen = backend.size;
 
+        trace!("using dx9 renderer");
         let renderer = backend
             .renderer
             .dx9

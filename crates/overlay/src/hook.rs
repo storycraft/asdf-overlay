@@ -24,11 +24,6 @@ pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tracing::instrument]
-pub fn cleanup() {
-    dx::cleanup();
-}
-
 struct DetourHook<F> {
     func: F,
 }
