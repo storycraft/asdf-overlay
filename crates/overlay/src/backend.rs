@@ -24,7 +24,8 @@ use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW, ShowCursor, GWLP_WNDPROC, WH_GETMESSAGE, WNDPROC
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW, ShowCursor,
+        WH_GETMESSAGE, WNDPROC,
     },
 };
 
