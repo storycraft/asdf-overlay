@@ -306,15 +306,23 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
 fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.update_shtex(UpdateSharedHandle { handle: None })
-                .await?;
+    with_rt(&mut cx, async move {
+        MANAGER
+            .with(id, async move |overlay| {
+                overlay.surface.lock().await.clear();
+                overlay
+                    .ipc
+                    .lock()
+                    .await
+                    .update_shtex(UpdateSharedHandle { handle: None })
+                    .await?;
 
-            Ok(())
-        }),
-    )
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
+
+        Ok(())
+    })
 }
 
 fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
