@@ -88,8 +88,3 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[tracing::instrument]
-pub fn cleanup() {
-    dx9::cleanup();
-}

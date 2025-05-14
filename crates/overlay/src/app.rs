@@ -134,7 +134,6 @@ pub async fn app(addr: &str) {
         let client = setup_ipc_client(addr).await?;
         defer!({
             debug!("cleanup start");
-            hook::cleanup();
             Backends::cleanup_renderers();
             Overlay::with(|overlay| {
                 overlay.emitter.take();
