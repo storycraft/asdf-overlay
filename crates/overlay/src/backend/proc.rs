@@ -30,8 +30,7 @@ use windows::Win32::{
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
             HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
-            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED,
-            XBUTTON1,
+            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
         },
     },
 };
@@ -120,18 +119,30 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     });
 
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
-    if msg == WM_WINDOWPOSCHANGED {
-        let new_size = get_client_size(hwnd).unwrap();
-        if backend.size != new_size {
-            backend.size = new_size;
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: backend.hwnd,
-                event: WindowEvent::Resized {
-                    width: backend.size.0,
-                    height: backend.size.1,
-                },
-            });
+
+    match msg {
+        msg::WM_WINDOWPOSCHANGED => {
+            let new_size = get_client_size(hwnd).unwrap();
+            if backend.size != new_size {
+                backend.size = new_size;
+                Overlay::emit_event(ClientEvent::Window {
+                    hwnd: backend.hwnd,
+                    event: WindowEvent::Resized {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
+                });
+            }
         }
+
+        // reset key states on deactivate
+        msg::WM_ACTIVATEAPP => {
+            if wparam.0 == 0 {
+                backend.reset_key_states();
+            }
+        }
+
+        _ => {}
     }
 
     if backend.capturing_input() {
@@ -318,10 +329,6 @@ fn process_input_capture(
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             emit_key_input!(InputState::Released);
-        }
-
-        msg::WM_KILLFOCUS => {
-            backend.reset_key_states();
         }
 
         msg::WM_CHAR => {
