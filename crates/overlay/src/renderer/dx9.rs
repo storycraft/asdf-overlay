@@ -169,7 +169,12 @@ impl Dx9Renderer {
 
             device.SetFVF(Vertex::FVF)?;
             device.SetTexture(0, texture)?;
-            device.DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices.as_ptr().cast(), mem::size_of::<Vertex>() as _)?;
+            device.DrawPrimitiveUP(
+                D3DPT_TRIANGLESTRIP,
+                2,
+                vertices.as_ptr().cast(),
+                mem::size_of::<Vertex>() as _,
+            )?;
 
             Ok(())
         }
