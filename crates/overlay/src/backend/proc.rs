@@ -1,7 +1,7 @@
 use super::WindowBackend;
 use crate::{
     app::Overlay,
-    backend::{BACKENDS, Backends},
+    backend::{BACKENDS, Backends, CursorState},
     util::get_client_size,
 };
 use asdf_overlay_common::{
@@ -25,7 +25,7 @@ use windows::Win32::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
             Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
-            KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+            KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
@@ -211,25 +211,50 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
             );
         }
 
-        Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Enter))
-        }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Leave))
+            backend.cursor_state = CursorState::Outside;
+            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Leave));
         }
 
         msg::WM_MOUSEMOVE => {
-            // track for leave and hover event
-            _ = unsafe {
-                TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                    cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                    dwFlags: TME_HOVER | TME_LEAVE,
-                    hwndTrack: HWND(backend.hwnd as _),
-                    dwHoverTime: HOVER_DEFAULT,
-                })
-            };
+            let [x, y] = bytemuck::cast::<_, [i16; 2]>(msg.lParam.0 as u32);
 
-            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Move));
+            match backend.cursor_state {
+                CursorState::Inside(ref mut old_x, ref mut old_y) => {
+                    *old_x = x;
+                    *old_y = y;
+                }
+                CursorState::Outside => {
+                    backend.cursor_state = CursorState::Inside(x, y);
+                    Overlay::emit_event(ClientEvent::Window {
+                        hwnd: backend.hwnd,
+                        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                            event: CursorEvent::Enter,
+                            x,
+                            y,
+                        })),
+                    });
+
+                    // track for leave event
+                    _ = unsafe {
+                        TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                            cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                            dwFlags: TME_LEAVE,
+                            hwndTrack: HWND(backend.hwnd as _),
+                            dwHoverTime: HOVER_DEFAULT,
+                        })
+                    };
+                }
+            }
+
+            Overlay::emit_event(ClientEvent::Window {
+                hwnd: backend.hwnd,
+                event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                    event: CursorEvent::Move,
+                    x,
+                    y,
+                })),
+            });
         }
 
         msg::WM_MOUSEWHEEL => {

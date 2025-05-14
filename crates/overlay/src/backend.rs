@@ -7,7 +7,10 @@ use core::mem;
 
 use anyhow::bail;
 use asdf_overlay_common::{
-    event::{ClientEvent, WindowEvent},
+    event::{
+        ClientEvent, WindowEvent,
+        input::{CursorEvent, CursorInput, InputEvent},
+    },
     key::Key,
     request::UpdateSharedHandle,
 };
@@ -100,6 +103,7 @@ impl Backends {
                 input_capture_keybind: [None; 4],
                 capturing_input: false,
                 key_states: BitArray::ZERO,
+                cursor_state: CursorState::Outside,
 
                 pending_handle: None,
                 size,
@@ -139,6 +143,7 @@ pub struct WindowBackend {
     input_capture_keybind: [Option<Key>; 4],
     capturing_input: bool,
     key_states: BitArr!(for 512),
+    cursor_state: CursorState,
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
@@ -170,6 +175,19 @@ impl WindowBackend {
                 event: WindowEvent::InputCaptureStart,
             });
         } else {
+            if let CursorState::Inside(x, y) = self.cursor_state {
+                self.cursor_state = CursorState::Outside;
+
+                Overlay::emit_event(ClientEvent::Window {
+                    hwnd: self.hwnd,
+                    event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                        event: CursorEvent::Leave,
+                        x,
+                        y,
+                    })),
+                });
+            }
+
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: self.hwnd,
                 event: WindowEvent::InputCaptureEnd,
@@ -216,4 +234,10 @@ impl WindowBackend {
     fn reset_key_states(&mut self) {
         self.key_states = BitArray::ZERO;
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CursorState {
+    Inside(i16, i16),
+    Outside,
 }
