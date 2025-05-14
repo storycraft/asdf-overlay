@@ -25,8 +25,8 @@ pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     unsafe { GetClientRect(win, &mut rect)? };
 
     Ok((
-        (rect.right - rect.left) as u32,
-        (rect.bottom - rect.top) as u32,
+        rect.right as u32,
+        rect.bottom as u32,
     ))
 }
 
