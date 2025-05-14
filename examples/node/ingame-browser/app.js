@@ -79,25 +79,28 @@ async function createOverlayWindow(pid) {
   });
 
   overlay.event.on('keyboard_input', (_, input) => {
-    const keyCode = keyboardKey.getKey(input.key.code);
+    if (input.kind === 'Key') {
+      const keyCode = keyboardKey.getKey(input.key.code);
 
-    if (!keyCode) {
-      return;
-    }
+      if (!keyCode) {
+        return;
+      }
 
-    if (input.state === 'Pressed') {
-      mainWindow.webContents.sendInputEvent({
-        type: 'keyDown',
-        keyCode: keyboardKey.getKey(input.key.code),
-      });
-      mainWindow.webContents.sendInputEvent({
-        type: 'char',
-        keyCode: keyboardKey.getKey(input.key.code),
-      });
+      if (input.state === 'Pressed') {
+        mainWindow.webContents.sendInputEvent({
+          type: 'keyDown',
+          keyCode: keyboardKey.getKey(input.key.code),
+        });
+      } else {
+        mainWindow.webContents.sendInputEvent({
+          type: 'KeyUp',
+          keyCode: keyboardKey.getKey(input.key.code),
+        });
+      }
     } else {
       mainWindow.webContents.sendInputEvent({
-        type: 'KeyUp',
-        keyCode: keyboardKey.getKey(input.key.code),
+        type: 'char',
+        keyCode: input.ch,
       });
     }
   });

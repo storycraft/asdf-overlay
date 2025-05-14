@@ -32,6 +32,7 @@ array-util = "1.0.2"
 windows-link = "0.1.1"
 bytemuck = "1.22.0"
 bitvec = "1"
+utf16string = "0.2.0"
 
 [dependencies.tracing]
 version = "0.1"
@@ -59,6 +60,7 @@ features = [
     "Win32_Security",
     "Win32_System_Diagnostics_Debug",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Ime",
 ]
 
 [build-dependencies]

@@ -26,12 +26,16 @@ export type CursorInput = {
 });
 
 export type KeyboardInput = {
+  kind: 'Key',
   key: Key,
 
   /**
    * Key input state
    */
   state: InputState,
+} | {
+  kind: 'Char',
+  ch: string,
 };
 
 export type InputState = 'Pressed' | 'Released';

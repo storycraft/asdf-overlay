@@ -17,17 +17,20 @@ use asdf_overlay_common::{
 use core::mem;
 use scopeguard::defer;
 use tracing::trace;
+use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        Input::{
+            Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
+            KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
             HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
-            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED,
-            XBUTTON1,
+            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
         },
     },
 };
@@ -92,20 +95,6 @@ fn filter_input(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<
         // ignore raw input
         msg::WM_INPUT => {}
 
-        // ignore ime messages
-        msg::WM_IME_CHAR
-        | msg::WM_IME_COMPOSITION
-        | msg::WM_IME_COMPOSITIONFULL
-        | msg::WM_IME_CONTROL
-        | msg::WM_IME_ENDCOMPOSITION
-        | msg::WM_IME_KEYDOWN
-        | msg::WM_IME_KEYUP
-        | msg::WM_IME_NOTIFY
-        | msg::WM_IME_REQUEST
-        | msg::WM_IME_SELECT
-        | msg::WM_IME_SETCONTEXT
-        | msg::WM_IME_STARTCOMPOSITION => {}
-
         _ => return None,
     }
 
@@ -130,18 +119,30 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     });
 
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
-    if msg == WM_WINDOWPOSCHANGED {
-        let new_size = get_client_size(hwnd).unwrap();
-        if backend.size != new_size {
-            backend.size = new_size;
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: backend.hwnd,
-                event: WindowEvent::Resized {
-                    width: backend.size.0,
-                    height: backend.size.1,
-                },
-            });
+
+    match msg {
+        msg::WM_WINDOWPOSCHANGED => {
+            let new_size = get_client_size(hwnd).unwrap();
+            if backend.size != new_size {
+                backend.size = new_size;
+                Overlay::emit_event(ClientEvent::Window {
+                    hwnd: backend.hwnd,
+                    event: WindowEvent::Resized {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
+                });
+            }
         }
+
+        // reset key states on deactivate
+        msg::WM_ACTIVATEAPP => {
+            if wparam.0 == 0 {
+                backend.reset_key_states();
+            }
+        }
+
+        _ => {}
     }
 
     if backend.capturing_input() {
@@ -178,7 +179,7 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
     }
 
     if backend.capturing_input()
-        && process_input_capture(backend.hwnd, msg.message, msg.wParam, msg.lParam)
+        && process_input_capture(backend, msg.message, msg.wParam, msg.lParam)
     {
         *msg = MSG {
             hwnd: msg.hwnd,
@@ -192,7 +193,12 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
 }
 
 #[inline]
-fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
+fn process_input_capture(
+    backend: &mut WindowBackend,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> bool {
     #[inline(always)]
     fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
         let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
@@ -214,7 +220,7 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
     macro_rules! emit_cursor_input {
         ($action:expr, $state:expr $(,)?) => {{
             Overlay::emit_event(cursor_input(
-                hwnd,
+                backend.hwnd,
                 lparam,
                 CursorEvent::Action {
                     state: $state,
@@ -224,10 +230,13 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }};
     }
 
-    macro_rules! emit_keyboard_input {
+    macro_rules! emit_key_input {
         ($state:expr $(,)?) => {{
             if let Some(key) = to_key(wparam, lparam) {
-                Overlay::emit_event(keyboard_input(hwnd, KeyboardInput { key, state: $state }));
+                Overlay::emit_event(keyboard_input(
+                    backend.hwnd,
+                    KeyboardInput::Key { key, state: $state },
+                ));
             }
         }};
     }
@@ -264,11 +273,11 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }
 
         Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Enter));
+            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Enter));
             return true;
         }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Leave));
+            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Leave));
             return true;
         }
 
@@ -278,19 +287,19 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
                 TrackMouseEvent(&mut TRACKMOUSEEVENT {
                     cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
                     dwFlags: TME_HOVER | TME_LEAVE,
-                    hwndTrack: HWND(hwnd as _),
+                    hwndTrack: HWND(backend.hwnd as _),
                     dwHoverTime: HOVER_DEFAULT,
                 })
             };
 
-            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Move));
+            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Move));
             return true;
         }
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             Overlay::emit_event(cursor_input(
-                hwnd,
+                backend.hwnd,
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
@@ -304,7 +313,7 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         msg::WM_MOUSEHWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             Overlay::emit_event(cursor_input(
-                hwnd,
+                backend.hwnd,
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::X,
@@ -316,12 +325,29 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }
 
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            emit_keyboard_input!(InputState::Pressed);
-            return true;
+            emit_key_input!(InputState::Pressed);
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            emit_keyboard_input!(InputState::Released);
+            emit_key_input!(InputState::Released);
+        }
+
+        msg::WM_CHAR => {
+            if let Some(ch) = char::from_u32(wparam.0 as _) {
+                Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+            }
+
             return true;
+        }
+        msg::WM_IME_COMPOSITION => {
+            if lparam.0 as u32 == GCS_RESULTSTR.0 {
+                if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
+                    for ch in str.chars() {
+                        Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                    }
+                }
+
+                return true;
+            }
         }
 
         msg::WM_INPUT => return true,
@@ -368,4 +394,30 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
 fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
     let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
     Key::new(wparam.0 as _, flags & 0x01 == 0x01)
+}
+
+#[inline]
+fn get_ime_string(hwnd: HWND) -> Option<WString<LittleEndian>> {
+    let himc = unsafe { ImmGetContext(hwnd) };
+    defer!(unsafe {
+        _ = ImmReleaseContext(hwnd, himc);
+    });
+
+    let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
+    if byte_size >= 0 {
+        let mut buf = vec![0_u8; byte_size as usize];
+
+        unsafe {
+            ImmGetCompositionStringW(
+                himc,
+                GCS_RESULTSTR,
+                Some(buf.as_mut_ptr().cast()),
+                buf.len() as _,
+            )
+        };
+
+        WString::from_utf16le(buf).ok()
+    } else {
+        None
+    }
 }

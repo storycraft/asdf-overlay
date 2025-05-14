@@ -31,9 +31,9 @@ pub enum CursorEvent {
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub struct KeyboardInput {
-    pub key: Key,
-    pub state: InputState,
+pub enum KeyboardInput {
+    Key { key: Key, state: InputState },
+    Char(char),
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
