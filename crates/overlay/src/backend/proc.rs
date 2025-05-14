@@ -17,7 +17,7 @@ use asdf_overlay_common::{
 use core::mem;
 use scopeguard::defer;
 use tracing::trace;
-use utf16string::WString;
+use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::Threading::GetCurrentThreadId,
@@ -340,31 +340,9 @@ fn process_input_capture(
         }
         msg::WM_IME_COMPOSITION => {
             if lparam.0 as u32 == GCS_RESULTSTR.0 {
-                let himc = unsafe { ImmGetContext(HWND(backend.hwnd as _)) };
-                defer!(unsafe {
-                    _ = ImmReleaseContext(HWND(backend.hwnd as _), himc);
-                });
-
-                let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
-                if byte_size >= 0 {
-                    let mut buf = vec![0_u8; byte_size as usize];
-
-                    unsafe {
-                        ImmGetCompositionStringW(
-                            himc,
-                            GCS_RESULTSTR,
-                            Some(buf.as_mut_ptr().cast()),
-                            buf.len() as _,
-                        )
-                    };
-
-                    if let Ok(str) = WString::from_utf16le(buf) {
-                        for ch in str.chars() {
-                            Overlay::emit_event(keyboard_input(
-                                backend.hwnd,
-                                KeyboardInput::Char(ch),
-                            ));
-                        }
+                if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
+                    for ch in str.chars() {
+                        Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                     }
                 }
 
@@ -416,4 +394,30 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
 fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
     let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
     Key::new(wparam.0 as _, flags & 0x01 == 0x01)
+}
+
+#[inline]
+fn get_ime_string(hwnd: HWND) -> Option<WString<LittleEndian>> {
+    let himc = unsafe { ImmGetContext(hwnd) };
+    defer!(unsafe {
+        _ = ImmReleaseContext(hwnd, himc);
+    });
+
+    let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
+    if byte_size >= 0 {
+        let mut buf = vec![0_u8; byte_size as usize];
+
+        unsafe {
+            ImmGetCompositionStringW(
+                himc,
+                GCS_RESULTSTR,
+                Some(buf.as_mut_ptr().cast()),
+                buf.len() as _,
+            )
+        };
+
+        WString::from_utf16le(buf).ok()
+    } else {
+        None
+    }
 }
