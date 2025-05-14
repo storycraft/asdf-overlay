@@ -107,6 +107,7 @@ async function createOverlayWindow(pid) {
 
   overlay.event.on('input_capture_start', () => {
     mainWindow.show();
+    mainWindow.focusOnWebView();
     // do full repaint
     mainWindow.webContents.invalidate();
 
@@ -115,6 +116,7 @@ async function createOverlayWindow(pid) {
   });
 
   overlay.event.on('input_capture_end', () => {
+    mainWindow.blurWebView();
     mainWindow.hide();
     overlay.clearSurface();
   });
