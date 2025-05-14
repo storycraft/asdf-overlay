@@ -24,8 +24,7 @@ use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA, ShowCursor,
-        WH_GETMESSAGE, WNDPROC,
+        GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW, ShowCursor, GWLP_WNDPROC, WH_GETMESSAGE, WNDPROC
     },
 };
 
@@ -74,7 +73,7 @@ impl Backends {
                 .thread_hook_map
                 .entry(hwnd_thread)
                 .or_try_insert_with(|| unsafe {
-                    SetWindowsHookExA(WH_GETMESSAGE, Some(call_wnd_proc_hook), None, hwnd_thread)
+                    SetWindowsHookExW(WH_GETMESSAGE, Some(call_wnd_proc_hook), None, hwnd_thread)
                         .map(|res| res.0 as usize)
                 })?;
 
