@@ -4,11 +4,17 @@ use crate::{
     backend::{BACKENDS, Backends},
     util::get_client_size,
 };
-use asdf_overlay_common::event::{
-    ClientEvent, WindowEvent,
-    input::{CursorAction, CursorInput, InputEvent, InputState, KeyboardInput, ScrollAxis},
+use asdf_overlay_common::{
+    event::{
+        ClientEvent, WindowEvent,
+        input::{
+            CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
+            ScrollAxis,
+        },
+    },
+    key::Key,
 };
-use core::{mem, num::NonZeroU8};
+use core::mem;
 use scopeguard::defer;
 use tracing::trace;
 use windows::Win32::{
@@ -16,13 +22,12 @@ use windows::Win32::{
     System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{
-            self, TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VIRTUAL_KEY,
-        },
+        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HC_ACTION, HHOOK, MSG, PM_REMOVE, UnhookWindowsHookEx, WHEEL_DELTA, WM_CLOSE,
-            WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED, XBUTTON1,
+            HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
+            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, WM_WINDOWPOSCHANGED,
+            XBUTTON1,
         },
     },
 };
@@ -33,6 +38,21 @@ fn filter_input(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<
         // handle hit test
         msg::WM_NCHITTEST => {
             return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
+        }
+
+        // set arrow cursor in client area
+        msg::WM_SETCURSOR => {
+            let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+
+            if area == 1 {
+                unsafe {
+                    SetCursor(LoadCursorW(None, IDC_ARROW).ok());
+                }
+
+                return Some(LRESULT(1));
+            } else {
+                return None;
+            }
         }
 
         // ignore cursor inputs
@@ -143,13 +163,13 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(msg.wParam, msg.lParam)) {
+            if let Some(key) = to_key(msg.wParam, msg.lParam) {
                 backend.update_key_state(key, true);
             }
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = NonZeroU8::new(get_distinguished_keycode(msg.wParam, msg.lParam)) {
+            if let Some(key) = to_key(msg.wParam, msg.lParam) {
                 backend.update_key_state(key, false);
             }
         }
@@ -174,38 +194,41 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
 #[inline]
 fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
     #[inline(always)]
-    fn input(hwnd: u32, input: InputEvent) -> ClientEvent {
+    fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
+        let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+
         ClientEvent::Window {
             hwnd,
-            event: WindowEvent::Input(input),
+            event: WindowEvent::Input(InputEvent::Cursor(CursorInput { event, x, y })),
+        }
+    }
+
+    #[inline(always)]
+    fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
+        ClientEvent::Window {
+            hwnd,
+            event: WindowEvent::Input(InputEvent::Keyboard(input)),
         }
     }
 
     macro_rules! emit_cursor_input {
         ($action:expr, $state:expr $(,)?) => {{
-            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Action {
+                lparam,
+                CursorEvent::Action {
                     state: $state,
                     action: $action,
-                    x,
-                    y,
-                }),
+                },
             ));
         }};
     }
 
     macro_rules! emit_keyboard_input {
         ($state:expr $(,)?) => {{
-            Overlay::emit_event(input(
-                hwnd,
-                InputEvent::Keyboard(KeyboardInput {
-                    key: get_distinguished_keycode(wparam, lparam),
-                    state: $state,
-                }),
-            ));
+            if let Some(key) = to_key(wparam, lparam) {
+                Overlay::emit_event(keyboard_input(hwnd, KeyboardInput { key, state: $state }));
+            }
         }};
     }
 
@@ -241,11 +264,11 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }
 
         Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Enter)));
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Enter));
             return true;
         }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Leave)));
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Leave));
             return true;
         }
 
@@ -260,22 +283,19 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
                 })
             };
 
-            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-            Overlay::emit_event(input(hwnd, InputEvent::Cursor(CursorInput::Move { x, y })));
-
+            Overlay::emit_event(cursor_input(hwnd, lparam, CursorEvent::Move));
             return true;
         }
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            let delta = delta as f32 / WHEEL_DELTA as f32;
-
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Scroll {
+                lparam,
+                CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
                     delta,
-                }),
+                },
             ));
 
             return true;
@@ -283,14 +303,13 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
 
         msg::WM_MOUSEHWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            let delta = delta as f32 / WHEEL_DELTA as f32;
-
-            Overlay::emit_event(input(
+            Overlay::emit_event(cursor_input(
                 hwnd,
-                InputEvent::Cursor(CursorInput::Scroll {
+                lparam,
+                CursorEvent::Scroll {
                     axis: ScrollAxis::X,
                     delta,
-                }),
+                },
             ));
 
             return true;
@@ -304,6 +323,8 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
             emit_keyboard_input!(InputState::Released);
             return true;
         }
+
+        msg::WM_INPUT => return true,
 
         _ => {}
     }
@@ -343,24 +364,8 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
     unsafe { CallNextHookEx(None, ncode, wparam, lparam) }
 }
 
-// get distinguished key code
-fn get_distinguished_keycode(wparam: WPARAM, lparam: LPARAM) -> u8 {
-    let code = wparam.0 as u16;
-    let flags = lparam.0 as u32;
-
-    match VIRTUAL_KEY(code) {
-        KeyboardAndMouse::VK_SHIFT if flags & 0x01000000 != 0 => {
-            KeyboardAndMouse::VK_RSHIFT.0 as u8
-        }
-        KeyboardAndMouse::VK_CONTROL if flags & 0x01000000 != 0 => {
-            KeyboardAndMouse::VK_RCONTROL.0 as u8
-        }
-        KeyboardAndMouse::VK_MENU if flags & 0x01000000 != 0 => KeyboardAndMouse::VK_RMENU.0 as u8,
-
-        KeyboardAndMouse::VK_SHIFT => KeyboardAndMouse::VK_LSHIFT.0 as u8,
-        KeyboardAndMouse::VK_CONTROL => KeyboardAndMouse::VK_LCONTROL.0 as u8,
-        KeyboardAndMouse::VK_MENU => KeyboardAndMouse::VK_LMENU.0 as u8,
-
-        VIRTUAL_KEY(code) => code as u8,
-    }
+#[inline]
+fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
+    let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
+    Key::new(wparam.0 as _, flags & 0x01 == 0x01)
 }

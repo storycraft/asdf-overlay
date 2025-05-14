@@ -3,14 +3,12 @@ pub mod opengl;
 mod proc;
 pub mod renderers;
 
-use core::{
-    mem,
-    num::{NonZeroU8, NonZeroU32},
-};
+use core::mem;
 
 use anyhow::bail;
 use asdf_overlay_common::{
     event::{ClientEvent, WindowEvent},
+    key::Key,
     request::UpdateSharedHandle,
 };
 use bitvec::{BitArr, array::BitArray};
@@ -26,7 +24,7 @@ use rustc_hash::FxBuildHasher;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA,
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExA, ShowCursor,
         WH_GETMESSAGE, WNDPROC,
     },
 };
@@ -99,7 +97,7 @@ impl Backends {
                 hwnd: key,
                 original_proc,
 
-                input_capture_keybind: None,
+                input_capture_keybind: [None; 4],
                 capturing_input: false,
                 key_states: BitArray::ZERO,
 
@@ -123,12 +121,12 @@ impl Backends {
         });
     }
 
-    pub fn cleanup_renderers() {
+    pub fn cleanup_backends() {
         for mut backend in BACKENDS.map.iter_mut() {
             mem::take(&mut backend.cx);
             mem::take(&mut backend.renderer);
             backend.pending_handle.take();
-            backend.input_capture_keybind = None;
+            backend.input_capture_keybind = [None; 4];
             backend.capturing_input = false;
         }
     }
@@ -138,9 +136,9 @@ pub struct WindowBackend {
     hwnd: u32,
     original_proc: WNDPROC,
 
-    input_capture_keybind: Option<NonZeroU32>,
+    input_capture_keybind: [Option<Key>; 4],
     capturing_input: bool,
-    key_states: BitArr!(for 256),
+    key_states: BitArr!(for 512),
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
@@ -149,10 +147,9 @@ pub struct WindowBackend {
 }
 
 impl WindowBackend {
-    pub fn set_input_capture_keybind(&mut self, keybind: Option<NonZeroU32>) {
+    pub fn set_input_capture_keybind(&mut self, keybind: [Option<Key>; 4]) {
         self.input_capture_keybind = keybind;
-
-        if keybind.is_none() {
+        if !keybind.iter().any(|item| item.is_some()) {
             self.set_input_capture(false);
         }
     }
@@ -179,29 +176,40 @@ impl WindowBackend {
             });
         }
         self.capturing_input = input_capture;
+
+        // show cursor while capturing input
+        // TODO: ensure ShowCursor is run on target window thread
+        unsafe { ShowCursor(input_capture) };
     }
 
-    fn update_key_state(&mut self, key: NonZeroU8, value: bool) {
-        self.key_states.set(key.get() as _, value);
-        if self.input_capture_keybind.is_some() {
-            let keybind = bytemuck::cast::<_, [u8; 4]>(self.input_capture_keybind);
-
-            if !value || !keybind.contains(&key.get()) {
-                return;
+    fn update_key_state(&mut self, key: Key, value: bool) {
+        #[inline]
+        fn index(key: Key) -> usize {
+            if key.extended {
+                256 + key.code.get() as usize
+            } else {
+                key.code.get() as usize
             }
-
-            for key in keybind {
-                if key == 0 {
-                    continue;
-                }
-
-                if !self.key_states[key as usize] {
-                    return;
-                }
-            }
-
-            // toggle input capture
-            self.set_input_capture(!self.capturing_input);
         }
+
+        self.key_states.set(index(key), value);
+
+        if !value || !self.input_capture_keybind.contains(&Some(key)) {
+            return;
+        }
+
+        for keybind_key in self.input_capture_keybind {
+            match keybind_key {
+                Some(keybind_key) => {
+                    if !self.key_states[index(keybind_key)] {
+                        return;
+                    }
+                }
+                None => continue,
+            }
+        }
+
+        // toggle input capture
+        self.set_input_capture(!self.capturing_input);
     }
 }

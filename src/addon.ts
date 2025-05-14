@@ -1,41 +1,34 @@
-import { PercentLength } from './index.js';
+import { Key, OverlayEventEmitter, PercentLength } from './index.js';
 
 export type Addon = {
-    attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
+  attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
 
-    overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
-    overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,
-    overlaySetMargin(
-        id: number,
-        top: PercentLength,
-        right: PercentLength,
-        bottom: PercentLength,
-        left: PercentLength
-    ): Promise<void>,
-    
-    overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
-
-    overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
-    overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
-    overlayClearSurface(id: number): Promise<void>,
-
-    overlayNextEvent(id: number): Promise<Event>,
-
-    overlayDestroy(id: number): void,
-};
-
-export type Event = {
-    kind: 'window',
+  overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetMargin(
+    id: number,
+    top: PercentLength,
+    right: PercentLength,
+    bottom: PercentLength,
+    left: PercentLength,
+  ): Promise<void>,
+  overlaySetInputCaptureKeybind(
+    id: number,
     hwnd: number,
-    event: WindowEvent,
-};
+    keybind: [Key?, Key?, Key?, Key?],
+  ): Promise<void>,
 
-type WindowEvent = {
-    kind: 'added',
-} | {
-    kind: 'resized',
-    width: number,
-    height: number,
-} | {
-    kind: 'destroyed',
+  overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
+
+  overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
+  overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
+  overlayClearSurface(id: number): Promise<void>,
+
+  overlayCallNextEvent(
+    id: number,
+    emitter: OverlayEventEmitter,
+    emit: OverlayEventEmitter['emit'],
+  ): Promise<boolean>,
+
+  overlayDestroy(id: number): void,
 };

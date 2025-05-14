@@ -1,4 +1,4 @@
-mod event;
+mod serialize;
 mod util;
 mod wrapper;
 
@@ -13,7 +13,10 @@ use asdf_overlay_client::{
     common::{
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        request::{GetSize, SetAnchor, SetMargin, SetPosition, UpdateSharedHandle},
+        key::Key,
+        request::{
+            GetSize, SetAnchor, SetInputCaptureKeybind, SetMargin, SetPosition, UpdateSharedHandle,
+        },
     },
     inject,
     process::OwnedProcess,
@@ -21,11 +24,11 @@ use asdf_overlay_client::{
 };
 use bytemuck::pod_read_unaligned;
 use dashmap::DashMap;
-use event::serialize_event;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
+use serialize::{deserialize_key, emit_event};
 use tokio::runtime::Runtime;
 use util::{get_process_arch, try_with_ipc, with_rt};
 use windows::Win32::{
@@ -206,6 +209,15 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     )
 }
 
+fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+
+    match MANAGER.destroy(id) {
+        Ok(_) => Ok(JsUndefined::new(&mut cx)),
+        Err(err) => cx.throw_error(format!("{err:?}")),
+    }
+}
+
 fn overlay_get_size(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
@@ -305,8 +317,10 @@ fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
     )
 }
 
-fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let emitter = cx.argument::<JsObject>(1)?.root(&mut cx);
+    let emit = cx.argument::<JsFunction>(2)?.root(&mut cx);
 
     let rt = runtime(&mut cx)?;
     let channel = cx.channel();
@@ -314,23 +328,24 @@ fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
         let res = async move {
-            let event: ClientEvent = MANAGER
+            let event: Option<ClientEvent> = MANAGER
                 .with(id, async move |overlay| {
-                    overlay
-                        .event
-                        .lock()
-                        .await
-                        .recv()
-                        .await
-                        .context("event stream closed")
+                    overlay.event.lock().await.recv().await
                 })
-                .await??;
+                .await?;
             Ok::<_, anyhow::Error>(event)
         }
         .await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(event) => Ok(serialize_event(&mut cx, event)?),
+            Ok(Some(event)) => {
+                let emitter = emitter.into_inner(&mut cx);
+                let emit = emit.into_inner(&mut cx);
+                emit_event(&mut cx, event, emitter, emit)?;
+
+                Ok(cx.boolean(true))
+            }
+            Ok(None) => Ok(cx.boolean(false)),
             Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
@@ -338,13 +353,35 @@ fn overlay_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+fn overlay_set_input_capture_keybind(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let keybind = cx.argument::<JsArray>(2)?;
+    let keybind = deserialize_keybind(&mut cx, keybind)?;
 
-    match MANAGER.destroy(id) {
-        Ok(_) => Ok(JsUndefined::new(&mut cx)),
-        Err(err) => cx.throw_error(format!("{err:?}")),
-    }
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_input_capture_keybind(SetInputCaptureKeybind { hwnd, keybind })
+                .await?;
+
+            Ok(())
+        }),
+    )
+}
+
+fn deserialize_keybind<'a>(
+    cx: &mut impl Context<'a>,
+    array: Handle<'a, JsArray>,
+) -> NeonResult<[Option<Key>; 4]> {
+    let mut de = |index: u32| {
+        array
+            .get_opt::<JsObject, _, _>(cx, index)?
+            .map(|obj| deserialize_key(cx, obj))
+            .transpose()
+    };
+
+    Ok([de(0)?, de(1)?, de(2)?, de(3)?])
 }
 
 #[global_allocator]
@@ -357,6 +394,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetPosition", overlay_set_position)?;
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
+    cx.export_function(
+        "overlaySetInputCaptureKeybind",
+        overlay_set_input_capture_keybind,
+    )?;
 
     cx.export_function("overlayGetSize", overlay_get_size)?;
 
@@ -364,7 +405,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;
     cx.export_function("overlayClearSurface", overlay_clear_surface)?;
 
-    cx.export_function("overlayNextEvent", overlay_next_event)?;
+    cx.export_function("overlayCallNextEvent", overlay_call_next_event)?;
 
     cx.export_function("overlayDestroy", overlay_destroy)?;
     Ok(())

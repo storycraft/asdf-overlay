@@ -1,11 +1,8 @@
-use core::{
-    fmt::Debug,
-    num::{NonZeroU32, NonZeroUsize},
-};
+use core::{fmt::Debug, num::NonZeroUsize};
 
 use bincode::{Decode, Encode};
 
-use crate::size::PercentLength;
+use crate::{key::Key, size::PercentLength};
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum Request {
@@ -62,8 +59,8 @@ pub struct GetSize {
 pub struct SetInputCaptureKeybind {
     pub hwnd: u32,
 
-    // key code each byte, up to 4 keys
-    pub keybind: Option<NonZeroU32>,
+    // keyboard scan code each slot, up to 4 keys
+    pub keybind: [Option<Key>; 4],
 }
 
 #[derive(Debug, Encode, Decode, Clone, PartialEq)]

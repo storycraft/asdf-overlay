@@ -1,5 +1,7 @@
 use bincode::{Decode, Encode};
 
+use crate::key::Key;
+
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum InputEvent {
     Cursor(CursorInput),
@@ -7,28 +9,30 @@ pub enum InputEvent {
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
-pub enum CursorInput {
+pub struct CursorInput {
+    pub event: CursorEvent,
+    pub x: i16,
+    pub y: i16,
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub enum CursorEvent {
     Enter,
     Leave,
     Action {
         state: InputState,
         action: CursorAction,
-        x: i16,
-        y: i16,
     },
-    Move {
-        x: i16,
-        y: i16,
-    },
+    Move,
     Scroll {
         axis: ScrollAxis,
-        delta: f32,
+        delta: i16,
     },
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub struct KeyboardInput {
-    pub key: u8,
+    pub key: Key,
     pub state: InputState,
 }
 
