@@ -29,13 +29,10 @@ impl Vertex {
     }
 }
 
-type VertexArray = [Vertex; 4];
-
 pub struct Dx9Renderer {
     size: (u32, u32),
     texture_size: (u32, u32),
 
-    vertex_buffer: IDirect3DVertexBuffer9,
     texture: Option<IDirect3DTexture9>,
     state_block: IDirect3DStateBlock9,
 }
@@ -44,23 +41,11 @@ impl Dx9Renderer {
     #[tracing::instrument]
     pub fn new(device: &IDirect3DDevice9) -> anyhow::Result<Self> {
         unsafe {
-            let mut vertex_buffer = None;
-            device.CreateVertexBuffer(
-                mem::size_of::<VertexArray>() as _,
-                (D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC) as _,
-                Vertex::FVF,
-                D3DPOOL_DEFAULT,
-                &mut vertex_buffer,
-                ptr::null_mut(),
-            )?;
-            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
-
             let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
             Ok(Self {
                 texture_size: (2, 2),
                 size: (0, 0),
 
-                vertex_buffer,
                 texture: None,
                 state_block,
             })
@@ -174,22 +159,6 @@ impl Dx9Renderer {
                 _ = state_block.Apply();
             });
 
-            {
-                let vertex_buffer = &self.vertex_buffer;
-                let mut ptr = ptr::null_mut();
-                vertex_buffer.Lock(
-                    0,
-                    mem::size_of::<VertexArray>() as _,
-                    &mut ptr,
-                    D3DLOCK_DISCARD as _,
-                )?;
-                defer!({
-                    _ = vertex_buffer.Unlock();
-                });
-
-                ptr.cast::<VertexArray>().write(vertices);
-            }
-
             // disable srgb gamma correction enabled in some games
             device.SetRenderState(D3DRS_SRGBWRITEENABLE, 0)?;
             device.SetRenderState(D3DRS_ALPHABLENDENABLE, 1)?;
@@ -198,10 +167,9 @@ impl Dx9Renderer {
             device.SetTextureStageState(0, D3DTSS_COLOROP, D3DTSS_COLORARG1.0 as _)?;
             device.SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE)?;
 
-            device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as _)?;
             device.SetFVF(Vertex::FVF)?;
             device.SetTexture(0, texture)?;
-            device.DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2)?;
+            device.DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices.as_ptr().cast(), mem::size_of::<Vertex>() as _)?;
 
             Ok(())
         }
