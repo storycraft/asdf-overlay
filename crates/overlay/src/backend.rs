@@ -125,6 +125,7 @@ impl Backends {
 
     pub fn cleanup_renderers() {
         for mut backend in BACKENDS.map.iter_mut() {
+            mem::take(&mut backend.cx);
             mem::take(&mut backend.renderer);
             backend.pending_handle.take();
             backend.input_capture_keybind = None;
