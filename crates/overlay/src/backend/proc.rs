@@ -30,76 +30,10 @@ use windows::Win32::{
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
             HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
-            UnhookWindowsHookEx, WM_CLOSE, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
+            UnhookWindowsHookEx, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
         },
     },
 };
-
-#[inline]
-fn filter_input(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
-    match msg {
-        // handle hit test
-        msg::WM_NCHITTEST => {
-            return Some(unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) });
-        }
-
-        // set arrow cursor in client area
-        msg::WM_SETCURSOR => {
-            let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-
-            if area == 1 {
-                unsafe {
-                    SetCursor(LoadCursorW(None, IDC_ARROW).ok());
-                }
-
-                return Some(LRESULT(1));
-            } else {
-                return None;
-            }
-        }
-
-        // ignore cursor inputs
-        msg::WM_LBUTTONDBLCLK
-        | msg::WM_LBUTTONDOWN
-        | msg::WM_LBUTTONUP
-        | msg::WM_MBUTTONDBLCLK
-        | msg::WM_MBUTTONDOWN
-        | msg::WM_MBUTTONUP
-        | msg::WM_MOUSEACTIVATE
-        | Controls::WM_MOUSEHOVER
-        | msg::WM_MOUSEHWHEEL
-        | Controls::WM_MOUSELEAVE
-        | msg::WM_MOUSEMOVE
-        | msg::WM_MOUSEWHEEL
-        | msg::WM_RBUTTONDBLCLK
-        | msg::WM_RBUTTONDOWN
-        | msg::WM_RBUTTONUP => {}
-
-        // ignore cursor inputs but special xbutton inputs should return 1 if handled
-        msg::WM_XBUTTONDBLCLK | msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return Some(LRESULT(1)),
-
-        // ignore keyboard inputs
-        msg::WM_APPCOMMAND
-        | msg::WM_CHAR
-        | msg::WM_DEADCHAR
-        | msg::WM_HOTKEY
-        | msg::WM_KEYDOWN
-        | msg::WM_KEYUP
-        | msg::WM_KILLFOCUS
-        | msg::WM_SETFOCUS
-        | msg::WM_SYSDEADCHAR
-        | msg::WM_SYSKEYDOWN
-        | msg::WM_SYSKEYUP
-        | msg::WM_UNICHAR => {}
-
-        // ignore raw input
-        msg::WM_INPUT => {}
-
-        _ => return None,
-    }
-
-    Some(LRESULT(0))
-}
 
 #[tracing::instrument]
 pub(super) unsafe extern "system" fn hooked_wnd_proc(
@@ -121,6 +55,13 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
 
     match msg {
+        // reset key states on deactivate
+        msg::WM_ACTIVATEAPP => {
+            if wparam.0 == 0 {
+                backend.reset_key_states();
+            }
+        }
+
         msg::WM_WINDOWPOSCHANGED => {
             let new_size = get_client_size(hwnd).unwrap();
             if backend.size != new_size {
@@ -135,23 +76,49 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
             }
         }
 
-        // reset key states on deactivate
-        msg::WM_ACTIVATEAPP => {
-            if wparam.0 == 0 {
-                backend.reset_key_states();
-            }
-        }
-
         _ => {}
     }
 
     if backend.capturing_input() {
-        if msg == WM_CLOSE {
+        match msg {
+            // set arrow cursor in client area
+            msg::WM_SETCURSOR
+                if {
+                    let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+                    area == 1
+                } =>
+            unsafe {
+                SetCursor(LoadCursorW(None, IDC_ARROW).ok());
+                return LRESULT(1);
+            },
+
             // stop input capture when user request to
-            backend.set_input_capture(false);
-            return LRESULT(0);
-        } else if let Some(res) = filter_input(hwnd, msg, wparam, lparam) {
-            return res;
+            msg::WM_CLOSE => {
+                backend.set_input_capture(false);
+                return LRESULT(0);
+            }
+
+            // ignore client cursor inputs
+            msg::WM_LBUTTONDBLCLK
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MOUSEMOVE
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP => return LRESULT(1),
+
+            // ignore x button client cursor inputs
+            msg::WM_XBUTTONDBLCLK | msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return LRESULT(1),
+
+            // handle system key input
+            msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+                return unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) };
+            }
+
+            _ => {}
         }
     }
 
@@ -178,61 +145,33 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
         _ => {}
     }
 
-    if backend.capturing_input()
-        && process_input_capture(backend, msg.message, msg.wParam, msg.lParam)
-    {
-        *msg = MSG {
-            hwnd: msg.hwnd,
-            message: WM_NULL,
-            wParam: WPARAM(0),
-            lParam: LPARAM(0),
-            time: msg.time,
-            pt: msg.pt,
-        };
+    if backend.capturing_input() {
+        process_input_capture(backend, msg);
     }
 }
 
 #[inline]
-fn process_input_capture(
-    backend: &mut WindowBackend,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> bool {
-    #[inline(always)]
-    fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
-        let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-
-        ClientEvent::Window {
-            hwnd,
-            event: WindowEvent::Input(InputEvent::Cursor(CursorInput { event, x, y })),
-        }
-    }
-
-    #[inline(always)]
-    fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
-        ClientEvent::Window {
-            hwnd,
-            event: WindowEvent::Input(InputEvent::Keyboard(input)),
-        }
-    }
-
+fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
+    // emit cursor input and redirect to window hwnd
     macro_rules! emit_cursor_input {
         ($action:expr, $state:expr $(,)?) => {{
             Overlay::emit_event(cursor_input(
                 backend.hwnd,
-                lparam,
+                msg.lParam,
                 CursorEvent::Action {
                     state: $state,
                     action: $action,
                 },
             ));
+
+            redirect_msg_to(HWND(backend.hwnd as _), msg);
+            return;
         }};
     }
 
     macro_rules! emit_key_input {
         ($state:expr $(,)?) => {{
-            if let Some(key) = to_key(wparam, lparam) {
+            if let Some(key) = to_key(msg.wParam, msg.lParam) {
                 Overlay::emit_event(keyboard_input(
                     backend.hwnd,
                     KeyboardInput::Key { key, state: $state },
@@ -241,12 +180,12 @@ fn process_input_capture(
         }};
     }
 
-    match msg {
+    match msg.message {
         msg::WM_LBUTTONDOWN => emit_cursor_input!(CursorAction::Left, InputState::Pressed),
         msg::WM_MBUTTONDOWN => emit_cursor_input!(CursorAction::Middle, InputState::Pressed),
         msg::WM_RBUTTONDOWN => emit_cursor_input!(CursorAction::Right, InputState::Pressed),
         msg::WM_XBUTTONDOWN => {
-            let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+            let [_, button] = bytemuck::cast::<_, [u16; 2]>(msg.lParam.0 as u32);
             emit_cursor_input!(
                 if button == XBUTTON1 {
                     CursorAction::Back
@@ -261,7 +200,7 @@ fn process_input_capture(
         msg::WM_MBUTTONUP => emit_cursor_input!(CursorAction::Middle, InputState::Released),
         msg::WM_RBUTTONUP => emit_cursor_input!(CursorAction::Right, InputState::Released),
         msg::WM_XBUTTONUP => {
-            let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+            let [_, button] = bytemuck::cast::<_, [u16; 2]>(msg.lParam.0 as u32);
             emit_cursor_input!(
                 if button == XBUTTON1 {
                     CursorAction::Back
@@ -273,12 +212,10 @@ fn process_input_capture(
         }
 
         Controls::WM_MOUSEHOVER => {
-            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Enter));
-            return true;
+            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Enter))
         }
         Controls::WM_MOUSELEAVE => {
-            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Leave));
-            return true;
+            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Leave))
         }
 
         msg::WM_MOUSEMOVE => {
@@ -292,70 +229,85 @@ fn process_input_capture(
                 })
             };
 
-            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Move));
-            return true;
+            Overlay::emit_event(cursor_input(backend.hwnd, msg.lParam, CursorEvent::Move));
         }
 
         msg::WM_MOUSEWHEEL => {
-            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(msg.wParam.0 as u32);
             Overlay::emit_event(cursor_input(
                 backend.hwnd,
-                lparam,
+                msg.lParam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
                     delta,
                 },
             ));
-
-            return true;
         }
 
         msg::WM_MOUSEHWHEEL => {
-            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let [_, delta] = bytemuck::cast::<_, [i16; 2]>(msg.wParam.0 as u32);
             Overlay::emit_event(cursor_input(
                 backend.hwnd,
-                lparam,
+                msg.lParam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::X,
                     delta,
                 },
             ));
-
-            return true;
         }
+
+        // ignore remaining cursor inputs
+        msg::WM_LBUTTONDBLCLK
+        | msg::WM_MBUTTONDBLCLK
+        | msg::WM_RBUTTONDBLCLK
+        | msg::WM_XBUTTONDBLCLK => {}
 
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             emit_key_input!(InputState::Pressed);
+            redirect_msg_to(HWND(backend.hwnd as _), msg);
+            return;
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             emit_key_input!(InputState::Released);
+            redirect_msg_to(HWND(backend.hwnd as _), msg);
+            return;
         }
 
         msg::WM_CHAR => {
-            if let Some(ch) = char::from_u32(wparam.0 as _) {
+            if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
                 Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
             }
-
-            return true;
         }
-        msg::WM_IME_COMPOSITION => {
-            if lparam.0 as u32 == GCS_RESULTSTR.0 {
-                if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
-                    for ch in str.chars() {
-                        Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
-                    }
+        msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
+            if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
+                for ch in str.chars() {
+                    Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                 }
-
-                return true;
             }
         }
 
-        msg::WM_INPUT => return true,
+        // ignore remaining keyboard inputs
+        msg::WM_APPCOMMAND
+        | msg::WM_DEADCHAR
+        | msg::WM_HOTKEY
+        | msg::WM_SYSDEADCHAR
+        | msg::WM_UNICHAR => {}
 
-        _ => {}
+        // ignore raw input
+        msg::WM_INPUT => {}
+
+        _ => return,
     }
 
-    false
+    // nullify handled message by default
+    *msg = MSG {
+        hwnd: HWND::default(),
+        message: WM_NULL,
+        wParam: WPARAM(0),
+        lParam: LPARAM(0),
+        time: msg.time,
+        pt: msg.pt,
+    };
 }
 
 #[tracing::instrument]
@@ -388,6 +340,31 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
     }
 
     unsafe { CallNextHookEx(None, ncode, wparam, lparam) }
+}
+
+#[inline(always)]
+fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
+    let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+
+    ClientEvent::Window {
+        hwnd,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput { event, x, y })),
+    }
+}
+
+#[inline(always)]
+fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
+    ClientEvent::Window {
+        hwnd,
+        event: WindowEvent::Input(InputEvent::Keyboard(input)),
+    }
+}
+
+#[inline]
+fn redirect_msg_to(hwnd: HWND, msg: &mut MSG) {
+    if msg.hwnd != hwnd {
+        msg.hwnd = hwnd;
+    }
 }
 
 #[inline]
