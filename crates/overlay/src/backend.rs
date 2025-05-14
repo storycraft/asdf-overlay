@@ -212,4 +212,8 @@ impl WindowBackend {
         // toggle input capture
         self.set_input_capture(!self.capturing_input);
     }
+
+    fn reset_key_states(&mut self) {
+        self.key_states = BitArray::ZERO;
+    }
 }
