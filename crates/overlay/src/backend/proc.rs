@@ -22,7 +22,10 @@ use windows::Win32::{
     System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        Input::{
+            Ime::GCS_RESULTSTR,
+            KeyboardAndMouse::{TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+        },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
             HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
@@ -224,10 +227,13 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }};
     }
 
-    macro_rules! emit_keyboard_input {
+    macro_rules! emit_key_input {
         ($state:expr $(,)?) => {{
             if let Some(key) = to_key(wparam, lparam) {
-                Overlay::emit_event(keyboard_input(hwnd, KeyboardInput { key, state: $state }));
+                Overlay::emit_event(keyboard_input(
+                    hwnd,
+                    KeyboardInput::Key { key, state: $state },
+                ));
             }
         }};
     }
@@ -316,12 +322,27 @@ fn process_input_capture(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) ->
         }
 
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            emit_keyboard_input!(InputState::Pressed);
-            return true;
+            emit_key_input!(InputState::Pressed);
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            emit_keyboard_input!(InputState::Released);
+            emit_key_input!(InputState::Released);
+        }
+
+        msg::WM_CHAR => {
+            if let Some(ch) = char::from_u32(wparam.0 as _) {
+                Overlay::emit_event(keyboard_input(hwnd, KeyboardInput::Char(ch)));
+            }
+
             return true;
+        }
+        msg::WM_IME_COMPOSITION => {
+            if lparam.0 as u32 == GCS_RESULTSTR.0 {
+                if let Some(ch) = char::from_u32(wparam.0 as _) {
+                    Overlay::emit_event(keyboard_input(hwnd, KeyboardInput::Char(ch)));
+                }
+
+                return true;
+            }
         }
 
         msg::WM_INPUT => return true,

@@ -78,11 +78,26 @@ fn serialize_keyboard_input<'a>(
 ) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
-    let key = serialize_key(cx, input.key)?;
-    obj.set(cx, "key", key)?;
+    match input {
+        KeyboardInput::Key { key, state } => {
+            let kind = cx.string("Key");
+            obj.set(cx, "kind", kind)?;
 
-    let state = serialize_input_state(cx, input.state);
-    obj.set(cx, "state", state)?;
+            let key = serialize_key(cx, key)?;
+            obj.set(cx, "key", key)?;
+
+            let state = serialize_input_state(cx, state);
+            obj.set(cx, "state", state)?;
+        }
+        KeyboardInput::Char(ch) => {
+            let kind = cx.string("Char");
+            obj.set(cx, "kind", kind)?;
+
+            let mut buf = [0_u8; 4];
+            let ch = cx.string(ch.encode_utf8(&mut buf));
+            obj.set(cx, "ch", ch)?;
+        }
+    }
 
     Ok(obj)
 }
