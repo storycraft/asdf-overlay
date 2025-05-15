@@ -3,7 +3,10 @@ use core::mem::ManuallyDrop;
 use scopeguard::defer;
 use windows::Win32::Graphics::{
     Gdi::HDC,
-    OpenGL::{HGLRC, wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglMakeCurrent},
+    OpenGL::{
+        HGLRC, wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetCurrentDC,
+        wglMakeCurrent,
+    },
 };
 
 pub struct WglContextWrapped<T: ?Sized> {
@@ -47,10 +50,11 @@ impl WglContext {
     }
 
     pub fn with<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        let last_hdc = unsafe { wglGetCurrentDC() };
         let original_cx = unsafe { wglGetCurrentContext() };
         let hdc = self.hdc;
 
-        unsafe { wglMakeCurrent(hdc, self.hglrc).unwrap() };
+        unsafe { wglMakeCurrent(last_hdc, self.hglrc).unwrap() };
         defer!(unsafe { wglMakeCurrent(hdc, original_cx).unwrap() });
         f()
     }
