@@ -76,14 +76,15 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
-    _ = Overlay::with(|overlay| {
+    let last_hglrc = unsafe { wglGetCurrentContext() };
+
+    let enabled = Overlay::with(|overlay| {
         let hwnd = unsafe { WindowFromDC(hdc) };
         if hwnd.is_invalid() {
             error!("invalid HWND");
             return;
         }
 
-        let last_hglrc = unsafe { wglGetCurrentContext() };
         if last_hglrc.is_invalid() {
             error!("invalid HGLRC");
             return;
@@ -147,6 +148,14 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
         trace!("opengl render: {:?}", _res);
     })
     .is_some();
+
+    if !enabled {
+        if let Some((_, (mut cx, renderer))) = MAP.remove(&(last_hglrc.0 as _)) {
+            cx.with(|| {
+                drop(renderer);
+            });
+        }
+    }
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
