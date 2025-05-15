@@ -127,11 +127,7 @@ impl Backends {
 
     pub fn cleanup_backends() {
         for mut backend in BACKENDS.map.iter_mut() {
-            mem::take(&mut backend.cx);
-            mem::take(&mut backend.renderer);
-            backend.pending_handle.take();
-            backend.input_capture_keybind = [None; 4];
-            backend.capturing_input = false;
+            backend.cleanup();
         }
     }
 }
@@ -162,6 +158,14 @@ impl WindowBackend {
     #[inline]
     pub fn capturing_input(&self) -> bool {
         self.capturing_input
+    }
+
+    fn cleanup(&mut self) {
+        mem::take(&mut self.cx);
+        mem::take(&mut self.renderer);
+        self.pending_handle.take();
+        self.input_capture_keybind = [None; 4];
+        self.capturing_input = false;
     }
 
     fn set_input_capture(&mut self, input_capture: bool) {

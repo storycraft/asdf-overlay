@@ -24,10 +24,7 @@ pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     let mut rect = RECT::default();
     unsafe { GetClientRect(win, &mut rect)? };
 
-    Ok((
-        rect.right as u32,
-        rect.bottom as u32,
-    ))
+    Ok((rect.right as u32, rect.bottom as u32))
 }
 
 pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
