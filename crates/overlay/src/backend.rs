@@ -24,6 +24,7 @@ use once_cell::sync::Lazy;
 use proc::{call_wnd_proc_hook, hooked_wnd_proc};
 use renderers::Renderer;
 use rustc_hash::FxBuildHasher;
+use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
@@ -160,7 +161,9 @@ impl WindowBackend {
         self.capturing_input
     }
 
+    #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
+        trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
         mem::take(&mut self.cx);
         mem::take(&mut self.renderer);
         self.pending_handle.take();
