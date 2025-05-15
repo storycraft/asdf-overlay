@@ -2,8 +2,8 @@ use core::{ffi::c_void, hash::Hash};
 
 use anyhow::Context;
 use dashmap::DashMap;
+use nohash_hasher::BuildNoHashHasher;
 use once_cell::sync::Lazy;
-use rustc_hash::FxBuildHasher;
 use tracing::{debug, trace};
 use windows::{
     Win32::Graphics::{
@@ -20,8 +20,8 @@ use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
-static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, FxBuildHasher>> =
-    Lazy::new(|| DashMap::with_hasher(FxBuildHasher));
+static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, BuildNoHashHasher<usize>>> =
+    Lazy::new(|| DashMap::default());
 
 #[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {

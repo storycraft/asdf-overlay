@@ -20,10 +20,10 @@ use dashmap::{
     DashMap,
     mapref::multiple::{RefMulti, RefMutMulti},
 };
+use nohash_hasher::BuildNoHashHasher;
 use once_cell::sync::Lazy;
 use proc::{call_wnd_proc_hook, hooked_wnd_proc};
 use renderers::Renderer;
-use rustc_hash::FxBuildHasher;
 use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
@@ -41,8 +41,8 @@ static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
 });
 
 pub struct Backends {
-    map: DashMap<u32, WindowBackend, FxBuildHasher>,
-    thread_hook_map: DashMap<u32, usize>,
+    map: DashMap<u32, WindowBackend, BuildNoHashHasher<u32>>,
+    thread_hook_map: DashMap<u32, usize, BuildNoHashHasher<u32>>,
 }
 
 impl Backends {
