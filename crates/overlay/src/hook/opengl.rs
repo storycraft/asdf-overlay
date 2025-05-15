@@ -54,46 +54,44 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
     let hwnd = unsafe { WindowFromDC(hdc) };
-    if !hwnd.is_invalid() {
-        Backends::with_or_init_backend(hwnd, |backend| {
-            if backend.renderer.dx11.is_some() {
-                if backend.renderer.opengl.is_some() {
-                    debug!("Skipping opengl overlay due to dx11 layer");
-                    backend.renderer.opengl = None;
-                }
-
-                return;
+    Backends::with_or_init_backend(hwnd, |backend| {
+        if backend.renderer.dx11.is_some() {
+            if backend.renderer.opengl.is_some() {
+                debug!("Skipping opengl overlay due to dx11 layer");
+                backend.renderer.opengl = None;
             }
 
-            trace!("using opengl renderer");
-            let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
-                debug!("setting up opengl");
-                setup_gl().unwrap();
+            return;
+        }
 
-                debug!("initializing opengl renderer");
-                WglContextWrapped::new_with(
-                    WglContext::new(hdc).expect("failed to create GlContext"),
-                    || OpenglRenderer::new().expect("renderer creation failed"),
-                )
+        trace!("using opengl renderer");
+        let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
+            debug!("setting up opengl");
+            setup_gl().unwrap();
+
+            debug!("initializing opengl renderer");
+            WglContextWrapped::new_with(
+                WglContext::new(hdc).expect("failed to create GlContext"),
+                || OpenglRenderer::new().expect("renderer creation failed"),
+            )
+        });
+
+        wrapped.with(|renderer| {
+            let screen = backend.size;
+            if let Some(shared) = backend.pending_handle.take() {
+                renderer.update_texture(shared);
+            }
+
+            let size = renderer.size();
+            let position = Overlay::with(|overlay| {
+                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
             });
 
-            wrapped.with(|renderer| {
-                let screen = backend.size;
-                if let Some(shared) = backend.pending_handle.take() {
-                    renderer.update_texture(shared);
-                }
-
-                let size = renderer.size();
-                let position = Overlay::with(|overlay| {
-                    overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-                });
-
-                let _res = renderer.draw(position, screen);
-                trace!("opengl render: {:?}", _res);
-            });
-        })
-        .expect("Backends::with_backend failed");
-    }
+            let _res = renderer.draw(position, screen);
+            trace!("opengl render: {:?}", _res);
+        });
+    })
+    .expect("Backends::with_backend failed");
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
