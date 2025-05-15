@@ -20,7 +20,7 @@ use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
-static QUEUE_MAP: Lazy<IntDashMap<usize, ID3D12CommandQueue>> = Lazy::new(|| IntDashMap::default());
+static QUEUE_MAP: Lazy<IntDashMap<usize, ID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
