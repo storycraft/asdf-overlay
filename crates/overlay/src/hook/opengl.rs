@@ -4,16 +4,15 @@ use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use cx::WglContext;
+use cx::WglContextWrapped;
 use once_cell::sync::{Lazy, OnceCell};
-use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::HMODULE,
         Graphics::{
             Gdi::{HDC, WindowFromDC},
-            OpenGL::{HGLRC, wglGetCurrentContext, wglGetProcAddress, wglMakeCurrent},
+            OpenGL::{HGLRC, wglGetCurrentContext, wglGetProcAddress},
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
     },
@@ -33,8 +32,9 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
-// HGLRC -> (WglContext, OpenglRenderer)
-static MAP: Lazy<IntDashMap<u32, (WglContext, OpenglRenderer)>> = Lazy::new(IntDashMap::default);
+// HGLRC -> WglContextWrapped<OpenglRenderer>
+static MAP: Lazy<IntDashMap<u32, WglContextWrapped<OpenglRenderer>>> =
+    Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
@@ -62,11 +62,7 @@ pub fn hook() -> anyhow::Result<()> {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    if let Some((_, (mut cx, renderer))) = MAP.remove(&(hglrc.0 as u32)) {
-        cx.with(move || {
-            drop(renderer);
-        });
-    }
+    MAP.remove(&(hglrc.0 as u32));
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
@@ -99,62 +95,47 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
         //     return;
         // }
 
-        let Ok(mut entry) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
-            let mut cx = WglContext::new(hdc).context("failed to create WglContext")?;
-            let renderer = cx
-                .with(|| {
-                    debug!("setting up opengl");
-                    setup_gl().unwrap();
+        let Ok(mut wrapped) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
+            WglContextWrapped::new_with(hdc, || {
+                debug!("setting up opengl");
+                setup_gl().unwrap();
 
-                    debug!("initializing opengl renderer");
+                debug!("initializing opengl renderer");
 
-                    OpenglRenderer::new()
-                })
-                .context("failed to create OpenglRenderer")?;
-
-            Ok::<_, anyhow::Error>((cx, renderer))
+                OpenglRenderer::new().context("failed to create OpenglRenderer")
+            })
+            .context("failed to create WglContextWrapped")
         }) else {
             error!("renderer setup failed");
             return;
         };
 
         trace!("using opengl renderer");
-        defer!(unsafe {
-            _ = wglMakeCurrent(hdc, last_hglrc);
+        wrapped.with(|renderer| {
+            let screen = match Backends::with_or_init_backend(hwnd, |backend| {
+                if let Some(shared) = backend.pending_handle.take() {
+                    renderer.update_texture(shared);
+                }
+
+                backend.size
+            }) {
+                Ok(screen) => screen,
+                Err(_err) => {
+                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+                    return;
+                }
+            };
+
+            let size = renderer.size();
+            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+            let _res = renderer.draw(position, screen);
+            trace!("opengl render: {:?}", _res);
         });
-        if unsafe { wglMakeCurrent(hdc, entry.0.hglrc()) }.is_err() {
-            error!("wglMakeCurrent failed");
-            return;
-        }
-
-        let screen = match Backends::with_or_init_backend(hwnd, |backend| {
-            if let Some(shared) = backend.pending_handle.take() {
-                entry.1.update_texture(shared);
-            }
-
-            backend.size
-        }) {
-            Ok(screen) => screen,
-            Err(_err) => {
-                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-                return;
-            }
-        };
-
-        let size = entry.1.size();
-        let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
-
-        let _res = entry.1.draw(position, screen);
-        trace!("opengl render: {:?}", _res);
     })
     .is_some();
 
     if !enabled {
-        if let Some((_, (mut cx, renderer))) = MAP.remove(&(last_hglrc.0 as _)) {
-            cx.with(|| {
-                drop(renderer);
-            });
-        }
+        MAP.remove(&(last_hglrc.0 as _));
     }
 
     let hook = HOOK.get().unwrap();

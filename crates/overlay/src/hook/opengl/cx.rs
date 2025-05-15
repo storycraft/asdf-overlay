@@ -1,3 +1,5 @@
+use core::mem::ManuallyDrop;
+
 use anyhow::Ok;
 use scopeguard::defer;
 use windows::Win32::Graphics::{
@@ -8,7 +10,36 @@ use windows::Win32::Graphics::{
     },
 };
 
-pub struct WglContext {
+pub struct WglContextWrapped<T: ?Sized> {
+    cx: WglContext,
+    inner: ManuallyDrop<T>,
+}
+
+impl<T: ?Sized> WglContextWrapped<T> {
+    pub fn new_with(hdc: HDC, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<Self>
+    where
+        T: Sized,
+    {
+        let mut cx = WglContext::new(hdc)?;
+        let inner = ManuallyDrop::new(cx.with(f)?);
+        Ok(Self { cx, inner })
+    }
+
+    #[inline]
+    pub fn with<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
+        self.cx.with(|| f(&mut self.inner))
+    }
+}
+
+impl<T: ?Sized> Drop for WglContextWrapped<T> {
+    fn drop(&mut self) {
+        self.cx.with(|| unsafe {
+            ManuallyDrop::drop(&mut self.inner);
+        });
+    }
+}
+
+struct WglContext {
     hdc: HDC,
     hglrc: HGLRC,
 }
@@ -18,10 +49,6 @@ impl WglContext {
         let hglrc = unsafe { wglCreateContext(hdc)? };
 
         Ok(Self { hdc, hglrc })
-    }
-
-    pub fn hglrc(&mut self) -> HGLRC {
-        self.hglrc
     }
 
     pub fn with<R>(&mut self, f: impl FnOnce() -> R) -> R {
