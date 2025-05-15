@@ -1,8 +1,6 @@
-use core::{ffi::c_void, hash::Hash};
+use core::ffi::c_void;
 
 use anyhow::Context;
-use dashmap::DashMap;
-use nohash_hasher::BuildNoHashHasher;
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 use windows::{
@@ -16,16 +14,17 @@ use windows::{
     core::Interface,
 };
 
+use crate::types::IntDashMap;
+
 use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
-static QUEUE_MAP: Lazy<DashMap<DeviceKey, ID3D12CommandQueue, BuildNoHashHasher<usize>>> =
-    Lazy::new(|| DashMap::default());
+static QUEUE_MAP: Lazy<IntDashMap<usize, ID3D12CommandQueue>> = Lazy::new(|| IntDashMap::default());
 
 #[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
-    Some(QUEUE_MAP.remove(&DeviceKey::of(device))?.1)
+    Some(QUEUE_MAP.remove(&(device.as_raw() as _))?.1)
 }
 
 #[tracing::instrument]
@@ -53,7 +52,7 @@ pub unsafe extern "system" fn hooked_execute_command_lists(
                 "found DIRECT command queue {:?} for device {:?}",
                 queue, device
             );
-            QUEUE_MAP.insert(DeviceKey::of(&device), queue.clone());
+            QUEUE_MAP.insert(device.as_raw() as _, queue.clone());
         }
 
         let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
@@ -78,15 +77,5 @@ pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn>
         debug!("ID3D12CommandQueue::ExecuteCommandLists found: {:p}", addr);
 
         Ok(addr)
-    }
-}
-
-#[derive(Hash, PartialEq, Eq)]
-#[repr(transparent)]
-struct DeviceKey(usize);
-
-impl DeviceKey {
-    pub fn of(device: &ID3D12Device) -> Self {
-        DeviceKey(device.as_raw() as _)
     }
 }

@@ -17,6 +17,7 @@ mod reader;
 mod renderer;
 mod texture;
 mod util;
+mod types;
 
 #[cfg(debug_assertions)]
 mod dbg;
