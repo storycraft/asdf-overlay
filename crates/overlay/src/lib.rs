@@ -16,6 +16,7 @@ mod hook;
 mod reader;
 mod renderer;
 mod texture;
+mod types;
 mod util;
 
 #[cfg(debug_assertions)]

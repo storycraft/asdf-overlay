@@ -1,20 +1,28 @@
 use std::sync::Once;
 
+use anyhow::bail;
 use asdf_overlay_common::{
     event::{ClientEvent, WindowEvent},
     ipc::client::{IpcClientConn, IpcClientEventEmitter},
     request::{Request, SetAnchor, SetMargin, SetPosition},
     size::PercentLength,
 };
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::Win32::Foundation::HWND;
 
 use crate::{backend::Backends, hook, util::with_dummy_hwnd};
 
+static CURRENT: RwLock<OverlayState> = RwLock::new(OverlayState::Disabled);
+
+enum OverlayState {
+    Disabled,
+    Enabled(Overlay),
+}
+
 pub struct Overlay {
-    emitter: Option<IpcClientEventEmitter>,
+    emitter: IpcClientEventEmitter,
     position: SetPosition,
     anchor: SetAnchor,
     margin: SetMargin,
@@ -38,34 +46,30 @@ impl Overlay {
         (x, y)
     }
 
+    #[inline]
     pub fn emit_event(event: ClientEvent) {
-        if let Some(ref mut emitter) = CURRENT.lock().emitter {
-            _ = emitter.emit(event);
+        _ = Overlay::with(|overlay| {
+            _ = overlay.emitter.emit(event);
+        });
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn with<R>(f: impl FnOnce(&Self) -> R) -> Option<R> {
+        match *CURRENT.read() {
+            OverlayState::Disabled => None,
+            OverlayState::Enabled(ref this) => Some(f(this)),
         }
     }
 
-    pub fn with<R>(f: impl FnOnce(&mut Self) -> R) -> R {
-        f(&mut CURRENT.lock())
+    #[inline]
+    pub fn with_mut<R>(f: impl FnOnce(&mut Self) -> R) -> Option<R> {
+        match *CURRENT.write() {
+            OverlayState::Disabled => None,
+            OverlayState::Enabled(ref mut this) => Some(f(this)),
+        }
     }
 }
-
-static CURRENT: Mutex<Overlay> = Mutex::new(Overlay {
-    emitter: None,
-    position: SetPosition {
-        x: PercentLength::ZERO,
-        y: PercentLength::ZERO,
-    },
-    anchor: SetAnchor {
-        x: PercentLength::ZERO,
-        y: PercentLength::ZERO,
-    },
-    margin: SetMargin {
-        top: PercentLength::ZERO,
-        right: PercentLength::ZERO,
-        bottom: PercentLength::ZERO,
-        left: PercentLength::ZERO,
-    },
-});
 
 #[tracing::instrument(skip(client))]
 async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
@@ -75,17 +79,17 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
 
         match req {
             Request::SetPosition(position) => {
-                Overlay::with(|overlay| overlay.position = position);
+                Overlay::with_mut(|overlay| overlay.position = position);
                 client.reply(id, ())?;
             }
 
             Request::SetAnchor(anchor) => {
-                Overlay::with(|overlay| overlay.anchor = anchor);
+                Overlay::with_mut(|overlay| overlay.anchor = anchor);
                 client.reply(id, ())?;
             }
 
             Request::SetMargin(margin) => {
-                Overlay::with(|overlay| overlay.margin = margin);
+                Overlay::with_mut(|overlay| overlay.margin = margin);
                 client.reply(id, ())?;
             }
 
@@ -124,13 +128,50 @@ pub async fn app(addr: &str) {
             debug!("exiting");
         });
 
-        let client = setup_ipc_client(addr).await?;
+        debug!("connecting ipc");
+        let client = IpcClientConn::connect(addr).await?;
+        debug!("ipc client connected");
+
+        {
+            let mut state = CURRENT.write();
+            if let OverlayState::Enabled(_) = *state {
+                bail!("overlay is already running");
+            }
+
+            debug!("sending initial data");
+            let emitter = client.create_emitter();
+            // send existing windows
+            for backend in Backends::iter() {
+                _ = emitter.emit(ClientEvent::Window {
+                    hwnd: *backend.key() as _,
+                    event: WindowEvent::Added,
+                });
+            }
+            debug!("initial data sent");
+
+            *state = OverlayState::Enabled(Overlay {
+                emitter,
+                position: SetPosition {
+                    x: PercentLength::ZERO,
+                    y: PercentLength::ZERO,
+                },
+                anchor: SetAnchor {
+                    x: PercentLength::ZERO,
+                    y: PercentLength::ZERO,
+                },
+                margin: SetMargin {
+                    top: PercentLength::ZERO,
+                    right: PercentLength::ZERO,
+                    bottom: PercentLength::ZERO,
+                    left: PercentLength::ZERO,
+                },
+            });
+        }
+
         defer!({
             debug!("cleanup start");
             Backends::cleanup_backends();
-            Overlay::with(|overlay| {
-                overlay.emitter.take();
-            });
+            *CURRENT.write() = OverlayState::Disabled;
         });
 
         _ = run_client(client).await;
@@ -141,29 +182,6 @@ pub async fn app(addr: &str) {
     if let Err(err) = inner(addr).await {
         error!("{:?}", err);
     }
-}
-
-async fn setup_ipc_client(addr: &str) -> anyhow::Result<IpcClientConn> {
-    debug!("connecting ipc");
-    let client = IpcClientConn::connect(addr).await?;
-    debug!("ipc client connected");
-
-    debug!("sending initial data");
-    let emitter = client.create_emitter();
-    // send existing windows
-    for backend in Backends::iter() {
-        _ = emitter.emit(ClientEvent::Window {
-            hwnd: *backend.key() as _,
-            event: WindowEvent::Added,
-        });
-    }
-
-    Overlay::with(|overlay| {
-        overlay.emitter = Some(emitter);
-    });
-    debug!("initial data sent");
-
-    Ok(client)
 }
 
 fn setup_once() {

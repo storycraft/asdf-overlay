@@ -1,9 +1,12 @@
 use core::mem::ManuallyDrop;
 
+use anyhow::Ok;
 use scopeguard::defer;
 use windows::Win32::Graphics::{
     Gdi::HDC,
-    OpenGL::{HGLRC, wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglMakeCurrent},
+    OpenGL::{
+        wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetCurrentDC, wglMakeCurrent, wglShareLists, HGLRC
+    },
 };
 
 pub struct WglContextWrapped<T: ?Sized> {
@@ -12,12 +15,13 @@ pub struct WglContextWrapped<T: ?Sized> {
 }
 
 impl<T: ?Sized> WglContextWrapped<T> {
-    pub fn new_with(mut cx: WglContext, f: impl FnOnce() -> T) -> Self
+    pub fn new_with(hdc: HDC, hglrc: HGLRC, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<Self>
     where
         T: Sized,
     {
-        let inner = ManuallyDrop::new(cx.with(f));
-        Self { cx, inner }
+        let mut cx = WglContext::new(hdc, hglrc)?;
+        let inner = ManuallyDrop::new(cx.with(f)?);
+        Ok(Self { cx, inner })
     }
 
     #[inline]
@@ -34,24 +38,27 @@ impl<T: ?Sized> Drop for WglContextWrapped<T> {
     }
 }
 
-pub struct WglContext {
+struct WglContext {
     hdc: HDC,
     hglrc: HGLRC,
 }
 
 impl WglContext {
-    pub fn new(hdc: HDC) -> anyhow::Result<Self> {
+    pub fn new(hdc: HDC, original: HGLRC) -> anyhow::Result<Self> {
         let hglrc = unsafe { wglCreateContext(hdc)? };
+        unsafe {
+            _ = wglShareLists(original, hglrc);
+        }
 
         Ok(Self { hdc, hglrc })
     }
 
     pub fn with<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        let last_hdc = unsafe { wglGetCurrentDC() };
         let original_cx = unsafe { wglGetCurrentContext() };
-        let hdc = self.hdc;
 
-        unsafe { wglMakeCurrent(hdc, self.hglrc).unwrap() };
-        defer!(unsafe { wglMakeCurrent(hdc, original_cx).unwrap() });
+        unsafe { wglMakeCurrent(self.hdc, self.hglrc).unwrap() };
+        defer!(unsafe { wglMakeCurrent(last_hdc, original_cx).unwrap() });
         f()
     }
 }
