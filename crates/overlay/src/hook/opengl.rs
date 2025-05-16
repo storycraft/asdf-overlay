@@ -86,51 +86,46 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
             return;
         }
 
-        // if backend.renderer.dx11.is_some() {
-        //     if backend.renderer.opengl.is_some() {
-        //         debug!("Skipping opengl overlay due to dx11 layer");
-        //         backend.renderer.opengl = None;
-        //     }
+        let res = Backends::with_or_init_backend(hwnd, |backend| {
+            if backend.renderer.dx11.is_some() {
+                MAP.remove(&(last_hglrc.0 as u32));
+                return;
+            }
 
-        //     return;
-        // }
+            trace!("using opengl renderer");
+            let Ok(mut wrapped) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
+                WglContextWrapped::new_with(hdc, last_hglrc, || {
+                    debug!("setting up opengl");
+                    setup_gl().unwrap();
 
-        let Ok(mut wrapped) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
-            WglContextWrapped::new_with(hdc, last_hglrc, || {
-                debug!("setting up opengl");
-                setup_gl().unwrap();
+                    debug!("initializing opengl renderer");
 
-                debug!("initializing opengl renderer");
-
-                OpenglRenderer::new().context("failed to create OpenglRenderer")
-            })
-            .context("failed to create WglContextWrapped")
-        }) else {
-            error!("renderer setup failed");
-            return;
-        };
-
-        trace!("using opengl renderer");
-        wrapped.with(|renderer| {
-            let screen = match Backends::with_or_init_backend(hwnd, |backend| {
+                    OpenglRenderer::new().context("failed to create OpenglRenderer")
+                })
+                .context("failed to create WglContextWrapped")
+            }) else {
+                error!("renderer setup failed");
+                return;
+            };
+            wrapped.with(|renderer| {
+                let screen = backend.size;
                 if let Some(shared) = backend.pending_handle.take() {
                     renderer.update_texture(shared);
                 }
 
-                backend.size
-            }) {
-                Ok(screen) => screen,
-                Err(_err) => {
-                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-                    return;
-                }
-            };
-
-            let size = renderer.size();
-            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
-            let _res = renderer.draw(position, screen);
-            trace!("opengl render: {:?}", _res);
+                let size = renderer.size();
+                let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+                let _res = renderer.draw(position, screen);
+                trace!("opengl render: {:?}", _res);
+            });
         });
+
+        match res {
+            Ok(screen) => screen,
+            Err(_err) => {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+            }
+        }
     })
     .is_some();
 
