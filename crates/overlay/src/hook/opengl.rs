@@ -93,7 +93,8 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
             }
 
             trace!("using opengl renderer");
-            let Ok(mut wrapped) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
+
+            let mut wrapped = match MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
                 WglContextWrapped::new_with(hdc, last_hglrc, || {
                     debug!("setting up opengl");
                     setup_gl().unwrap();
@@ -103,10 +104,14 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
                     OpenglRenderer::new().context("failed to create OpenglRenderer")
                 })
                 .context("failed to create WglContextWrapped")
-            }) else {
-                error!("renderer setup failed");
-                return;
+            }) {
+                Ok(wrapped) => wrapped,
+                Err(err) => {
+                    error!("renderer setup failed. err: {:?}", err);
+                    return;
+                }
             };
+
             wrapped.with(|renderer| {
                 let screen = backend.size;
                 if let Some(shared) = backend.pending_handle.take() {
