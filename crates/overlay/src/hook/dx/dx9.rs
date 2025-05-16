@@ -1,7 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::HWND,
@@ -27,15 +27,20 @@ pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAME
 pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     trace!("EndScene called");
 
-    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+    _ = Overlay::with(|overlay| {
+        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
 
-    let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
 
-    let mut params = D3DPRESENT_PARAMETERS::default();
-    unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+        let mut params = D3DPRESENT_PARAMETERS::default();
+        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
 
-    if !params.hDeviceWindow.is_invalid() {
-        Backends::with_or_init_backend(params.hDeviceWindow, |backend| {
+        if params.hDeviceWindow.is_invalid() {
+            error!("invalid hDeviceWindow");
+            return;
+        }
+
+        let res = Backends::with_or_init_backend(params.hDeviceWindow, |backend| {
             let reader = backend
                 .cx
                 .fallback_reader
@@ -52,9 +57,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             }
 
             let size = renderer.size();
-            let position = Overlay::with(|overlay| {
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-            });
+            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
 
             _ = reader.with_mapped(|size, mapped| {
                 renderer.update_texture(device, size, mapped)?;
@@ -63,9 +66,12 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             });
 
             _ = renderer.draw(device, position, screen);
-        })
-        .expect("Backends::with_or_init_backend failed");
-    }
+        });
+
+        if let Err(_err) = res {
+            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+        }
+    });
 
     let end_scene = HOOK.end_scene.get().unwrap();
     unsafe { end_scene.original_fn()(this) }

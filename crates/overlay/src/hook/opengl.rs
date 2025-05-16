@@ -1,15 +1,18 @@
+mod cx;
+
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use once_cell::sync::OnceCell;
-use tracing::{debug, trace};
+use cx::WglContextWrapped;
+use once_cell::sync::{Lazy, OnceCell};
+use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::HMODULE,
         Graphics::{
             Gdi::{HDC, WindowFromDC},
-            OpenGL::wglGetProcAddress,
+            OpenGL::{HGLRC, wglGetCurrentContext, wglGetProcAddress},
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
     },
@@ -17,89 +20,133 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
-    backend::{
-        Backends,
-        opengl::{WglContext, WglContextWrapped},
-    },
-    renderer::opengl::OpenglRenderer,
-    wgl,
+    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, types::IntDashMap, wgl,
 };
 
 use super::DetourHook;
 
 struct Hook {
+    wgl_delete_context: DetourHook<WglDeleteContextFn>,
     wgl_swap_buffers: DetourHook<WglSwapBuffersFn>,
 }
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
+
+// HGLRC -> WglContextWrapped<OpenglRenderer>
+static MAP: Lazy<IntDashMap<u32, WglContextWrapped<OpenglRenderer>>> =
+    Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook() -> anyhow::Result<()> {
     let addrs = get_wgl_addrs().expect("cannot get wgl fn addrs");
 
     HOOK.get_or_try_init(|| unsafe {
+        debug!("hooking WglDeleteContext");
+        let wgl_delete_context =
+            DetourHook::attach(addrs.delete_context, hooked_wgl_delete_context as _)?;
+
         debug!("hooking WglSwapBuffers");
         let wgl_swap_buffers =
             DetourHook::attach(addrs.swap_buffers, hooked_wgl_swap_buffers as _)?;
 
-        Ok::<_, anyhow::Error>(Hook { wgl_swap_buffers })
+        Ok::<_, anyhow::Error>(Hook {
+            wgl_delete_context,
+            wgl_swap_buffers,
+        })
     })?;
 
     Ok(())
 }
 
 #[tracing::instrument]
+extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
+    trace!("wglDeleteContext called");
+
+    MAP.remove(&(hglrc.0 as u32));
+
+    let hook = HOOK.get().unwrap();
+    unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
+}
+
+#[tracing::instrument]
 unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
-    let hwnd = unsafe { WindowFromDC(hdc) };
-    Backends::with_or_init_backend(hwnd, |backend| {
-        if backend.renderer.dx11.is_some() {
-            if backend.renderer.opengl.is_some() {
-                debug!("Skipping opengl overlay due to dx11 layer");
-                backend.renderer.opengl = None;
-            }
+    let last_hglrc = unsafe { wglGetCurrentContext() };
 
+    let enabled = Overlay::with(|overlay| {
+        let hwnd = unsafe { WindowFromDC(hdc) };
+        if hwnd.is_invalid() {
+            error!("invalid HWND");
             return;
         }
 
-        trace!("using opengl renderer");
-        let wrapped = backend.renderer.opengl.get_or_insert_with(|| {
-            debug!("setting up opengl");
-            setup_gl().unwrap();
+        if last_hglrc.is_invalid() {
+            error!("invalid HGLRC");
+            return;
+        }
 
-            debug!("initializing opengl renderer");
-            WglContextWrapped::new_with(
-                WglContext::new(hdc).expect("failed to create GlContext"),
-                || OpenglRenderer::new().expect("renderer creation failed"),
-            )
-        });
-
-        wrapped.with(|renderer| {
-            let screen = backend.size;
-            if let Some(shared) = backend.pending_handle.take() {
-                renderer.update_texture(shared);
+        let res = Backends::with_or_init_backend(hwnd, |backend| {
+            if backend.renderer.dx11.is_some() {
+                MAP.remove(&(last_hglrc.0 as u32));
+                return;
             }
 
-            let size = renderer.size();
-            let position = Overlay::with(|overlay| {
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-            });
+            trace!("using opengl renderer");
 
-            let _res = renderer.draw(position, screen);
-            trace!("opengl render: {:?}", _res);
+            let mut wrapped = match MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
+                WglContextWrapped::new_with(hdc, last_hglrc, || {
+                    debug!("setting up opengl");
+                    setup_gl().unwrap();
+
+                    debug!("initializing opengl renderer");
+
+                    OpenglRenderer::new().context("failed to create OpenglRenderer")
+                })
+                .context("failed to create WglContextWrapped")
+            }) {
+                Ok(wrapped) => wrapped,
+                Err(err) => {
+                    error!("renderer setup failed. err: {:?}", err);
+                    return;
+                }
+            };
+
+            wrapped.with(|renderer| {
+                let screen = backend.size;
+                if let Some(shared) = backend.pending_handle.take() {
+                    renderer.update_texture(shared);
+                }
+
+                let size = renderer.size();
+                let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+                let _res = renderer.draw(position, screen);
+                trace!("opengl render: {:?}", _res);
+            });
         });
+
+        match res {
+            Ok(screen) => screen,
+            Err(_err) => {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+            }
+        }
     })
-    .expect("Backends::with_backend failed");
+    .is_some();
+
+    if !enabled {
+        MAP.remove(&(last_hglrc.0 as _));
+    }
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
 }
 
 type WglSwapBuffersFn = unsafe extern "system" fn(HDC) -> BOOL;
+type WglDeleteContextFn = unsafe extern "system" fn(HGLRC) -> BOOL;
 
 struct WglAddrs {
+    delete_context: WglDeleteContextFn,
     swap_buffers: WglSwapBuffersFn,
 }
 
@@ -109,13 +156,24 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
     let func = unsafe {
+        GetProcAddress(opengl32module, s!("wglDeleteContext"))
+            .context("wglDeleteContext not found")?
+    };
+    debug!("wglDeleteContext found: {:p}", func);
+    let delete_context =
+        unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglDeleteContextFn>(func) };
+
+    let func = unsafe {
         GetProcAddress(opengl32module, s!("wglSwapBuffers")).context("wglSwapBuffers not found")?
     };
     debug!("WglSwapBuffers found: {:p}", func);
     let swap_buffers =
         unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) };
 
-    Ok(WglAddrs { swap_buffers })
+    Ok(WglAddrs {
+        delete_context,
+        swap_buffers,
+    })
 }
 
 #[tracing::instrument]

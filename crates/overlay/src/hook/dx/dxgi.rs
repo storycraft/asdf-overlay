@@ -2,7 +2,7 @@ use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
 use scopeguard::defer;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -40,8 +40,8 @@ use super::{
     dx12::{self, get_queue_for},
 };
 
-#[tracing::instrument(skip(backend))]
-fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
+#[tracing::instrument(skip(overlay, backend))]
+fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = backend.size;
@@ -59,9 +59,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
             }
 
             let size = renderer.size();
-            let position = Overlay::with(|overlay| {
-                overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-            });
+            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
             trace!("using dx12 renderer");
             let _res = renderer.draw(&device, &swapchain, &queue, position, screen);
             trace!("dx12 render: {:?}", _res);
@@ -114,10 +112,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
         }
 
         let size = renderer.size();
-        let position = Overlay::with(|overlay| {
-            overlay.calc_overlay_position((size.0 as _, size.1 as _), screen)
-        });
-
+        let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
         let _res = renderer.draw(&device, &cx, swapchain, position, screen);
         trace!("dx11 render: {:?}", _res);
     }
@@ -143,15 +138,18 @@ pub unsafe extern "system" fn hooked_present(
 ) -> HRESULT {
     trace!("Present called");
 
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_or_init_backend(hwnd, |backend| {
-                draw_overlay(backend, swapchain);
-            })
-            .expect("Backends::with_backend failed");
+    _ = Overlay::with(|overlay| {
+        if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+            let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+            if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+                if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+                    draw_overlay(overlay, backend, swapchain);
+                }) {
+                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+                }
+            }
         }
-    }
+    });
 
     let present = HOOK.present.get().unwrap();
     unsafe { present.original_fn()(this, sync_interval, flags) }
@@ -222,15 +220,18 @@ pub unsafe extern "system" fn hooked_present1(
 ) -> HRESULT {
     trace!("Present1 called");
 
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            Backends::with_or_init_backend(hwnd, |backend| {
-                draw_overlay(backend, swapchain);
-            })
-            .expect("Backends::with_backend failed");
+    _ = Overlay::with(|overlay| {
+        if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+            let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+            if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+                if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+                    draw_overlay(overlay, backend, swapchain);
+                }) {
+                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+                }
+            }
         }
-    }
+    });
 
     let present1 = HOOK.present1.get().unwrap();
     unsafe { present1.original_fn()(this, sync_interval, flags, present_params) }

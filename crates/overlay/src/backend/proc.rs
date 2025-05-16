@@ -29,8 +29,8 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HC_ACTION, HHOOK, IDC_ARROW, LoadCursorW, MSG, PM_REMOVE, SetCursor,
-            UnhookWindowsHookEx, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
+            HHOOK, IDC_ARROW, LoadCursorW, MSG, SetCursor, UnhookWindowsHookEx, WM_NCDESTROY,
+            WM_NULL, WM_QUIT, XBUTTON1,
         },
     },
 };
@@ -343,7 +343,8 @@ pub(super) unsafe extern "system" fn call_wnd_proc_hook(
 ) -> LRESULT {
     trace!("GetMsgProc hook called");
 
-    if ncode == HC_ACTION as i32 && wparam.0 as u32 == PM_REMOVE.0 {
+    // only check message being removed from the queue
+    if wparam.0 == 1 && ncode == 0 {
         let msg = unsafe { &mut *(lparam.0 as *mut MSG) };
 
         if msg.message == WM_QUIT {

@@ -1,5 +1,4 @@
 pub mod cx;
-pub mod opengl;
 mod proc;
 pub mod renderers;
 
@@ -16,14 +15,11 @@ use asdf_overlay_common::{
 };
 use bitvec::{BitArr, array::BitArray};
 use cx::DrawContext;
-use dashmap::{
-    DashMap,
-    mapref::multiple::{RefMulti, RefMutMulti},
-};
+use dashmap::mapref::multiple::{RefMulti, RefMutMulti};
 use once_cell::sync::Lazy;
 use proc::{call_wnd_proc_hook, hooked_wnd_proc};
 use renderers::Renderer;
-use rustc_hash::FxBuildHasher;
+use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
@@ -32,16 +28,16 @@ use windows::Win32::{
     },
 };
 
-use crate::{app::Overlay, util::get_client_size};
+use crate::{app::Overlay, types::IntDashMap, util::get_client_size};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
-    map: DashMap::default(),
-    thread_hook_map: DashMap::default(),
+    map: IntDashMap::default(),
+    thread_hook_map: IntDashMap::default(),
 });
 
 pub struct Backends {
-    map: DashMap<u32, WindowBackend, FxBuildHasher>,
-    thread_hook_map: DashMap<u32, usize>,
+    map: IntDashMap<u32, WindowBackend>,
+    thread_hook_map: IntDashMap<u32, usize>,
 }
 
 impl Backends {
@@ -160,7 +156,9 @@ impl WindowBackend {
         self.capturing_input
     }
 
+    #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
+        trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
         mem::take(&mut self.cx);
         mem::take(&mut self.renderer);
         self.pending_handle.take();
