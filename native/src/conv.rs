@@ -1,14 +1,18 @@
 use core::num::NonZeroU8;
 
-use asdf_overlay_client::common::{
-    event::{
-        ClientEvent, WindowEvent,
-        input::{
-            CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
-            ScrollAxis,
+use asdf_overlay_client::{
+    common::{
+        event::{
+            ClientEvent, WindowEvent,
+            input::{
+                CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
+                ScrollAxis,
+            },
         },
+        key::Key,
+        size::PercentLength,
     },
-    key::Key,
+    ty::{CopyRect, Rect},
 };
 use neon::{
     handle::Handle,
@@ -190,4 +194,48 @@ pub fn deserialize_key<'a>(
     let extended = obj.get::<JsBoolean, _, _>(cx, "extended")?.value(cx);
 
     Ok(Key { code, extended })
+}
+
+pub fn deserialize_percent_length<'a>(
+    cx: &mut impl Context<'a>,
+    obj: &Handle<'a, JsObject>,
+) -> NeonResult<PercentLength> {
+    let ty = obj.get::<JsString, _, _>(cx, "ty")?.value(cx);
+    let value = obj.get::<JsNumber, _, _>(cx, "value")?.value(cx);
+
+    match ty.as_str() {
+        "percent" => Ok(PercentLength::Percent(value as _)),
+        "length" => Ok(PercentLength::Length(value as _)),
+
+        _ => cx.throw_error("invalid PercentLength type"),
+    }
+}
+
+pub fn deserialize_copy_rect<'a>(
+    cx: &mut impl Context<'a>,
+    obj: &Handle<'a, JsObject>,
+) -> NeonResult<CopyRect> {
+    let dst_x = obj.get::<JsNumber, _, _>(cx, "dstX")?.value(cx) as u32;
+    let dst_y = obj.get::<JsNumber, _, _>(cx, "dstY")?.value(cx) as u32;
+    let src = obj.get::<JsObject, _, _>(cx, "src")?;
+
+    Ok(CopyRect {
+        dst_x,
+        dst_y,
+        src: deserialize_rect(cx, &src)?,
+    })
+}
+
+fn deserialize_rect<'a>(cx: &mut impl Context<'a>, obj: &Handle<'a, JsObject>) -> NeonResult<Rect> {
+    let x = obj.get::<JsNumber, _, _>(cx, "x")?.value(cx) as u32;
+    let y = obj.get::<JsNumber, _, _>(cx, "y")?.value(cx) as u32;
+    let width = obj.get::<JsNumber, _, _>(cx, "width")?.value(cx) as u32;
+    let height = obj.get::<JsNumber, _, _>(cx, "height")?.value(cx) as u32;
+
+    Ok(Rect {
+        x,
+        y,
+        width,
+        height,
+    })
 }

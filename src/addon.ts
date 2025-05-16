@@ -1,4 +1,4 @@
-import { Key, OverlayEventEmitter, PercentLength } from './index.js';
+import { CopyRect, Key, OverlayEventEmitter, PercentLength, Rect } from './index.js';
 
 export type Addon = {
   attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -21,7 +21,7 @@ export type Addon = {
   overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
 
   overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
-  overlayUpdateShtex(id: number, handle: Buffer): Promise<void>,
+  overlayUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
   overlayClearSurface(id: number): Promise<void>,
 
   overlayCallNextEvent(
