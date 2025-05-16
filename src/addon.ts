@@ -1,4 +1,5 @@
-import { CopyRect, Key, OverlayEventEmitter, PercentLength, Rect } from './index.js';
+import { OverlayEventEmitter } from './index.js';
+import { CopyRect, Cursor, Key, PercentLength } from './types.js';
 
 export type Addon = {
   attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -16,6 +17,11 @@ export type Addon = {
     id: number,
     hwnd: number,
     keybind: [Key?, Key?, Key?, Key?],
+  ): Promise<void>,
+  overlaySetCaptureCursor(
+    id: number,
+    hwnd: number,
+    cursor?: Cursor,
   ): Promise<void>,
 
   overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,

@@ -18,6 +18,7 @@ mod renderer;
 mod texture;
 mod types;
 mod util;
+mod resources;
 
 #[cfg(debug_assertions)]
 mod dbg;
@@ -62,7 +63,7 @@ pub fn instance() -> HINSTANCE {
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
-pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
+pub extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
     if fdw_reason == DLL_PROCESS_ATTACH {
         _ = INSTANCE.set(dll_module.0 as _);
     }

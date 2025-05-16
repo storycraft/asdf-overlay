@@ -5,38 +5,10 @@ import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { CursorInput, KeyboardInput } from './input.js';
+import { PercentLength, CopyRect, Key, Cursor } from './types.js';
 
+export * from './types.js';
 export * from './util.js';
-
-export type PercentLength = {
-  ty: 'percent' | 'length',
-  value: number,
-};
-
-export type CopyRect = {
-  dstX: number,
-  dstY: number,
-  src: Rect,
-}
-
-export type Rect = {
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-};
-
-export type Key = {
-  /**
-   * Windows virtual key code
-   */
-  code: number,
-
-  /**
-   * Extended flag
-   */
-  extended: boolean,
-};
 
 const addon = loadAddon();
 
@@ -145,6 +117,13 @@ export class Overlay {
     keybind: [Key?, Key?, Key?, Key?],
   ) {
     await addon.overlaySetInputCaptureKeybind(this[idSym], hwnd, keybind);
+  }
+
+  async setCaptureCursor(
+    hwnd: number,
+    cursor?: Cursor,
+  ) {
+    await addon.overlaySetCaptureCursor(this[idSym], hwnd, cursor);
   }
 
   /**

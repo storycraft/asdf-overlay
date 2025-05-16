@@ -110,6 +110,16 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 )?;
             }
 
+            Request::SetCaptureCursor(cmd) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
+                        backend.capture_cursor = cmd.cursor;
+                    })
+                    .is_some(),
+                )?;
+            }
+
             Request::UpdateSharedHandle(shared) => {
                 for mut backend in Backends::iter_mut() {
                     backend.pending_handle = Some(shared.clone());

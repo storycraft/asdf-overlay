@@ -10,11 +10,13 @@ use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_client::{
     common::{
+        cursor::Cursor,
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
         key::Key,
         request::{
-            GetSize, SetAnchor, SetInputCaptureKeybind, SetMargin, SetPosition, UpdateSharedHandle,
+            GetSize, SetAnchor, SetCaptureCursor, SetInputCaptureKeybind, SetMargin, SetPosition,
+            UpdateSharedHandle,
         },
     },
     inject,
@@ -26,6 +28,7 @@ use conv::{deserialize_copy_rect, deserialize_key, deserialize_percent_length, e
 use dashmap::DashMap;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
+use num::FromPrimitive;
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
@@ -399,6 +402,37 @@ fn deserialize_keybind<'a>(
     Ok([de(0)?, de(1)?, de(2)?, de(3)?])
 }
 
+fn overlay_set_capture_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let cursor = cx
+        .argument_opt(2)
+        .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
+        .map(|v| Ok(v.downcast_or_throw::<JsNumber, _>(&mut cx)?.value(&mut cx) as u32))
+        .transpose()?;
+
+    let cursor = match cursor {
+        Some(discriminant) => {
+            let Some(cursor) = Cursor::from_u32(discriminant) else {
+                return cx.throw_error("invalid cursor value");
+            };
+            Some(cursor)
+        }
+
+        None => None,
+    };
+
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_capture_cursor(SetCaptureCursor { hwnd, cursor })
+                .await?;
+
+            Ok(())
+        }),
+    )
+}
+
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -413,6 +447,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
         "overlaySetInputCaptureKeybind",
         overlay_set_input_capture_keybind,
     )?;
+    cx.export_function("overlaySetCaptureCursor", overlay_set_capture_cursor)?;
 
     cx.export_function("overlayGetSize", overlay_get_size)?;
 

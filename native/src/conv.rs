@@ -3,14 +3,11 @@ use core::num::NonZeroU8;
 use asdf_overlay_client::{
     common::{
         event::{
-            ClientEvent, WindowEvent,
             input::{
                 CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
                 ScrollAxis,
-            },
-        },
-        key::Key,
-        size::PercentLength,
+            }, ClientEvent, WindowEvent
+        }, key::Key, size::PercentLength
     },
     ty::{CopyRect, Rect},
 };

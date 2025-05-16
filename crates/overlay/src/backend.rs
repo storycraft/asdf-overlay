@@ -6,12 +6,9 @@ use core::mem;
 
 use anyhow::bail;
 use asdf_overlay_common::{
-    event::{
-        ClientEvent, WindowEvent,
-        input::{CursorEvent, CursorInput, InputEvent},
-    },
-    key::Key,
-    request::UpdateSharedHandle,
+    cursor::Cursor, event::{
+        input::{CursorEvent, CursorInput, InputEvent}, ClientEvent, WindowEvent
+    }, key::Key, request::UpdateSharedHandle
 };
 use bitvec::{BitArr, array::BitArray};
 use cx::DrawContext;
@@ -100,6 +97,7 @@ impl Backends {
                 capturing_input: false,
                 key_states: BitArray::ZERO,
                 cursor_state: CursorState::Outside,
+                capture_cursor: None,
 
                 pending_handle: None,
                 size,
@@ -136,6 +134,7 @@ pub struct WindowBackend {
     capturing_input: bool,
     key_states: BitArr!(for 512),
     cursor_state: CursorState,
+    pub capture_cursor: Option<Cursor>,
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
@@ -200,6 +199,8 @@ impl WindowBackend {
         // show cursor while capturing input
         // TODO: ensure ShowCursor is run on target window thread
         unsafe { ShowCursor(input_capture) };
+        // reset cursor
+        self.capture_cursor = Some(Cursor::Default);
     }
 
     fn update_key_state(&mut self, key: Key, value: bool) {
