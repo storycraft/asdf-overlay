@@ -24,6 +24,8 @@ mod dbg;
 
 use app::app;
 use asdf_overlay_common::ipc::create_ipc_path;
+use once_cell::sync::OnceCell;
+use windows::Win32::{Foundation::HINSTANCE, System::SystemServices::DLL_PROCESS_ATTACH};
 use std::{process, thread};
 use tokio::runtime::Runtime;
 
@@ -51,3 +53,19 @@ dll_syringe::payload_procedure!(
         proc_impl(name)
     }
 );
+
+static INSTANCE: OnceCell<usize> = OnceCell::new();
+
+pub fn instance() -> HINSTANCE {
+    HINSTANCE(*INSTANCE.get().unwrap() as _)
+}
+
+#[unsafe(no_mangle)]
+#[allow(non_snake_case, unused_variables)]
+pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
+    if fdw_reason == DLL_PROCESS_ATTACH {
+        _ = INSTANCE.set(dll_module.0 as _);
+    }
+    
+    true
+}
