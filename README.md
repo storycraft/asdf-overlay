@@ -26,6 +26,7 @@ Blazingly fast™ Overlay library for Windows
 1. Supports multiple backends
 2. Blazingly fast™
 3. GPU accelerated shared overlay surface
+4. Input capture control via keybind
 
 ## Pre-requirement
 1. node, pnpm package manager
