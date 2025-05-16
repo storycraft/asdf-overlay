@@ -118,6 +118,9 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
                 return unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) };
             }
 
+            // ignore raw input (ignoring in hook leak handle)
+            msg::WM_INPUT => {}
+
             _ => {}
         }
     }
@@ -317,9 +320,6 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
         | msg::WM_HOTKEY
         | msg::WM_SYSDEADCHAR
         | msg::WM_UNICHAR => {}
-
-        // ignore raw input
-        msg::WM_INPUT => {}
 
         _ => return,
     }
