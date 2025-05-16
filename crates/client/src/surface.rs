@@ -1,6 +1,6 @@
 use core::{num::NonZeroUsize, ptr};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
 use windows::{
@@ -17,6 +17,8 @@ use windows::{
     },
     core::Interface,
 };
+
+use crate::ty::CopyRect;
 
 const DEFAULT_FEATURE_LEVELS: [D3D_FEATURE_LEVEL; 1] = [D3D_FEATURE_LEVEL_11_0];
 
@@ -60,16 +62,22 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
 
     pub fn update_from_nt_shared(
         &mut self,
+        width: u32,
+        height: u32,
         handle: HANDLE,
+        rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let device1 = self.device.cast::<ID3D11Device1>()?;
         let src_texture = unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(handle)? };
-        self.update_copy_from(&src_texture)
+        self.update_surface_from(width, height, &src_texture, rect)
     }
 
     pub fn update_from_shared(
         &mut self,
+        width: u32,
+        height: u32,
         handle: HANDLE,
+        rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let mut src_texture = None;
         unsafe {
@@ -78,21 +86,17 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         };
         let src_texture = src_texture.unwrap();
 
-        self.update_copy_from(&src_texture)
+        self.update_surface_from(width, height, &src_texture, rect)
     }
 
-    fn update_copy_from(
+    fn update_surface_from(
         &mut self,
+        width: u32,
+        height: u32,
         src_texture: &ID3D11Texture2D,
+        rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
-        let mut desc = D3D11_TEXTURE2D_DESC::default();
-        unsafe {
-            src_texture.GetDesc(&mut desc);
-        }
-        let size = (desc.Width, desc.Height);
-        let surface = self.texture.texture_for(size.0, size.1);
-
-        match *surface {
+        match *self.texture.texture_for(width, height) {
             Some((ref surface, ref mutex)) => {
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
@@ -100,22 +104,22 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                         _ = mutex.ReleaseSync(0);
                     });
 
-                    self.cx.CopyResource(surface, src_texture);
+                    copy_to_surface(&self.cx, width, height, surface, src_texture, rect)?;
                 }
 
                 Ok(None)
             }
 
-            None => {
+            ref mut slot @ None => {
                 let (surface, mutex) =
-                    surface.insert(create_surface_texture(&self.device, size.0, size.1, None)?);
+                    slot.insert(create_surface_texture(&self.device, width, height, None)?);
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
                     defer!({
                         _ = mutex.ReleaseSync(0);
                     });
 
-                    self.cx.CopyResource(&*surface, src_texture);
+                    copy_to_surface(&self.cx, width, height, surface, src_texture, rect)?;
                 }
 
                 Ok(Some(UpdateSharedHandle {
@@ -183,6 +187,71 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             }
         }
     }
+}
+
+fn copy_to_surface(
+    cx: &ID3D11DeviceContext,
+    width: u32,
+    height: u32,
+    surface: &ID3D11Texture2D,
+    src: &ID3D11Texture2D,
+    rect: Option<CopyRect>,
+) -> anyhow::Result<()> {
+    #[inline]
+    fn is_out(x: u32, y: u32, width: u32, height: u32) -> bool {
+        x > width || y > height
+    }
+
+    let mut src_desc = D3D11_TEXTURE2D_DESC::default();
+    unsafe {
+        src.GetDesc(&mut src_desc);
+    }
+
+    match rect {
+        Some(rect) => unsafe {
+            if is_out(rect.dst_x, rect.dst_y, width, height)
+                || is_out(
+                    rect.dst_x + rect.src.width,
+                    rect.dst_y + rect.src.height,
+                    width,
+                    height,
+                )
+                || is_out(rect.src.x, rect.src.y, src_desc.Width, src_desc.Height)
+                || is_out(
+                    rect.src.x + rect.src.width,
+                    rect.src.y + rect.src.height,
+                    src_desc.Width,
+                    src_desc.Height,
+                )
+            {
+                bail!("CopyRect is out of range");
+            }
+
+            cx.CopySubresourceRegion(
+                surface,
+                0,
+                rect.dst_x,
+                rect.dst_y,
+                0,
+                src,
+                0,
+                Some(&D3D11_BOX {
+                    left: rect.src.x,
+                    top: rect.src.y,
+                    front: 0,
+                    right: rect.src.x + rect.src.width,
+                    bottom: rect.src.y + rect.src.height,
+                    back: 1,
+                }),
+            );
+        },
+
+        _ => unsafe {
+            cx.CopyResource(surface, src);
+        },
+    }
+
+    Ok(())
 }
 
 fn create_surface_texture(

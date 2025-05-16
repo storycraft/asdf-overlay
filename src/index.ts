@@ -13,6 +13,19 @@ export type PercentLength = {
   value: number,
 };
 
+export type CopyRect = {
+  dstX: number,
+  dstY: number,
+  src: Rect,
+}
+
+export type Rect = {
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+};
+
 export type Key = {
   /**
    * Windows virtual key code
@@ -155,10 +168,13 @@ export class Overlay {
 
   /**
    * Update overlay using D3D11 shared texture.
+   * @param width width of the surface
+   * @param height height of the surface
    * @param handle NT Handle of shared D3D11 Texture
+   * @param rect Area to update
    */
-  async updateShtex(handle: Buffer) {
-    await addon.overlayUpdateShtex(this[idSym], handle);
+  async updateShtex(width: number, height: number, handle: Buffer, rect?: CopyRect) {
+    await addon.overlayUpdateShtex(this[idSym], width, height, handle, rect);
   }
 
   /**
