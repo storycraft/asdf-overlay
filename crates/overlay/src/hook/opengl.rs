@@ -96,7 +96,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
         // }
 
         let Ok(mut wrapped) = MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
-            WglContextWrapped::new_with(hdc, || {
+            WglContextWrapped::new_with(hdc, last_hglrc, || {
                 debug!("setting up opengl");
                 setup_gl().unwrap();
 

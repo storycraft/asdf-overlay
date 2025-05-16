@@ -5,8 +5,7 @@ use scopeguard::defer;
 use windows::Win32::Graphics::{
     Gdi::HDC,
     OpenGL::{
-        HGLRC, wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetCurrentDC,
-        wglMakeCurrent,
+        wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetCurrentDC, wglMakeCurrent, wglShareLists, HGLRC
     },
 };
 
@@ -16,11 +15,11 @@ pub struct WglContextWrapped<T: ?Sized> {
 }
 
 impl<T: ?Sized> WglContextWrapped<T> {
-    pub fn new_with(hdc: HDC, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<Self>
+    pub fn new_with(hdc: HDC, hglrc: HGLRC, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow::Result<Self>
     where
         T: Sized,
     {
-        let mut cx = WglContext::new(hdc)?;
+        let mut cx = WglContext::new(hdc, hglrc)?;
         let inner = ManuallyDrop::new(cx.with(f)?);
         Ok(Self { cx, inner })
     }
@@ -45,8 +44,11 @@ struct WglContext {
 }
 
 impl WglContext {
-    pub fn new(hdc: HDC) -> anyhow::Result<Self> {
+    pub fn new(hdc: HDC, original: HGLRC) -> anyhow::Result<Self> {
         let hglrc = unsafe { wglCreateContext(hdc)? };
+        unsafe {
+            _ = wglShareLists(original, hglrc);
+        }
 
         Ok(Self { hdc, hglrc })
     }
