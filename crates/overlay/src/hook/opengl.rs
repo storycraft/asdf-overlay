@@ -47,7 +47,7 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 
     HOOK.get_or_try_init(|| unsafe {
         debug!("setting up opengl");
-        setup_gl(dummy_hwnd).unwrap();
+        setup_gl(dummy_hwnd).context("opengl setup failed")?;
 
         debug!("hooking WglDeleteContext");
         let wgl_delete_context =
