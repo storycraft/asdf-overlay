@@ -18,7 +18,6 @@ async function createOverlayWindow(pid: number) {
         useSharedTexture: true,
       },
     },
-    show: false,
   });
 
   mainWindow.webContents.on('paint', async (e) => {
