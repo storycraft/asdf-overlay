@@ -38,7 +38,7 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
-// HGLRC -> WglContextWrapped<OpenglRenderer>
+// HGLRC -> OpenglRenderer
 static MAP: Lazy<IntDashMap<u32, OpenglRenderer>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
