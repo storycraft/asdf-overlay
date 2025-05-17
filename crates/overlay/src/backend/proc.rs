@@ -108,7 +108,7 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
             | msg::WM_MOUSEMOVE
             | msg::WM_RBUTTONDBLCLK
             | msg::WM_RBUTTONDOWN
-            | msg::WM_RBUTTONUP => return LRESULT(1),
+            | msg::WM_RBUTTONUP => return LRESULT(0),
 
             // ignore x button client cursor inputs
             msg::WM_XBUTTONDBLCLK | msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return LRESULT(1),
@@ -119,7 +119,7 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
             }
 
             // ignore raw input (ignoring in hook leak handle)
-            msg::WM_INPUT => {}
+            msg::WM_INPUT => return LRESULT(0),
 
             _ => {}
         }
