@@ -110,13 +110,17 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
             | msg::WM_MOUSEMOVE
             | msg::WM_RBUTTONDBLCLK
             | msg::WM_RBUTTONDOWN
-            | msg::WM_RBUTTONUP => return LRESULT(0),
+            | msg::WM_RBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP => {
+                // let default proc handle
+                return unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) };
+            }
 
-            // ignore x button client cursor inputs
-            msg::WM_XBUTTONDBLCLK | msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return LRESULT(1),
-
-            // handle system key input
+            // ignore key input
             msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+                // let default proc handle
                 return unsafe { DefWindowProcA(hwnd, msg, wparam, lparam) };
             }
 
@@ -157,8 +161,8 @@ fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
 
 #[inline]
 fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
-    // emit cursor input and redirect to window hwnd
-    macro_rules! emit_cursor_input {
+    // emit cursor input and return
+    macro_rules! emit_cursor_action {
         ($action:expr, $state:expr $(,)?) => {{
             Overlay::emit_event(cursor_input(
                 backend.hwnd,
@@ -168,8 +172,6 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
                     action: $action,
                 },
             ));
-
-            redirect_msg_to(HWND(backend.hwnd as _), msg);
             return;
         }};
     }
@@ -186,12 +188,12 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
     }
 
     match msg.message {
-        msg::WM_LBUTTONDOWN => emit_cursor_input!(CursorAction::Left, InputState::Pressed),
-        msg::WM_MBUTTONDOWN => emit_cursor_input!(CursorAction::Middle, InputState::Pressed),
-        msg::WM_RBUTTONDOWN => emit_cursor_input!(CursorAction::Right, InputState::Pressed),
+        msg::WM_LBUTTONDOWN => emit_cursor_action!(CursorAction::Left, InputState::Pressed),
+        msg::WM_MBUTTONDOWN => emit_cursor_action!(CursorAction::Middle, InputState::Pressed),
+        msg::WM_RBUTTONDOWN => emit_cursor_action!(CursorAction::Right, InputState::Pressed),
         msg::WM_XBUTTONDOWN => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(msg.lParam.0 as u32);
-            emit_cursor_input!(
+            emit_cursor_action!(
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
@@ -201,12 +203,12 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
             );
         }
 
-        msg::WM_LBUTTONUP => emit_cursor_input!(CursorAction::Left, InputState::Released),
-        msg::WM_MBUTTONUP => emit_cursor_input!(CursorAction::Middle, InputState::Released),
-        msg::WM_RBUTTONUP => emit_cursor_input!(CursorAction::Right, InputState::Released),
+        msg::WM_LBUTTONUP => emit_cursor_action!(CursorAction::Left, InputState::Released),
+        msg::WM_MBUTTONUP => emit_cursor_action!(CursorAction::Middle, InputState::Released),
+        msg::WM_RBUTTONUP => emit_cursor_action!(CursorAction::Right, InputState::Released),
         msg::WM_XBUTTONUP => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(msg.lParam.0 as u32);
-            emit_cursor_input!(
+            emit_cursor_action!(
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
@@ -260,6 +262,7 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
                     y,
                 })),
             });
+            return;
         }
 
         msg::WM_MOUSEWHEEL => {
@@ -285,12 +288,6 @@ fn process_input_capture(backend: &mut WindowBackend, msg: &mut MSG) {
                 },
             ));
         }
-
-        // ignore remaining cursor inputs
-        msg::WM_LBUTTONDBLCLK
-        | msg::WM_MBUTTONDBLCLK
-        | msg::WM_RBUTTONDBLCLK
-        | msg::WM_XBUTTONDBLCLK => {}
 
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             emit_key_input!(InputState::Pressed);
