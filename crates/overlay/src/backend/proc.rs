@@ -1,3 +1,5 @@
+mod cursor;
+
 use super::WindowBackend;
 use crate::{
     app::Overlay,
@@ -15,6 +17,7 @@ use asdf_overlay_common::{
     key::Key,
 };
 use core::mem;
+use cursor::load_cursor;
 use scopeguard::defer;
 use tracing::trace;
 use utf16string::{LittleEndian, WString};
@@ -29,8 +32,7 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HHOOK, IDC_ARROW, LoadCursorW, MSG, SetCursor, UnhookWindowsHookEx, WM_NCDESTROY,
-            WM_NULL, WM_QUIT, XBUTTON1,
+            HHOOK, MSG, SetCursor, UnhookWindowsHookEx, WM_NCDESTROY, WM_NULL, WM_QUIT, XBUTTON1,
         },
     },
 };
@@ -88,7 +90,7 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
                     area == 1
                 } =>
             unsafe {
-                SetCursor(LoadCursorW(None, IDC_ARROW).ok());
+                SetCursor(backend.capture_cursor.and_then(load_cursor));
                 return LRESULT(1);
             },
 
