@@ -179,6 +179,8 @@ fn process_wndproc_capture(
             ));
         }
 
+        msg::WM_LBUTTONDBLCLK | msg::WM_MBUTTONDBLCLK | msg::WM_RBUTTONDBLCLK => {}
+
         // ignore key input
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             // let default proc handle
