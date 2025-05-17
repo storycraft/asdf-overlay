@@ -76,12 +76,8 @@ impl OpenglRenderer {
 
             let dx_cx = dx_cx.unwrap();
 
-            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-            gl::Enable(gl::BLEND);
-
             let mut vertex_buffer = 0;
             gl::GenBuffers(1, &mut vertex_buffer);
-
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer);
             gl::BufferData(
                 gl::ARRAY_BUFFER,
@@ -93,7 +89,6 @@ impl OpenglRenderer {
             let mut vao = 0;
             gl::GenVertexArrays(1, &mut vao);
             gl::BindVertexArray(vao);
-
             gl::VertexAttribPointer(
                 0,
                 2,
@@ -133,8 +128,6 @@ impl OpenglRenderer {
             gl::AttachShader(program, vert_shader);
             gl::AttachShader(program, frag_shader);
             gl::LinkProgram(program);
-
-            gl::UseProgram(program);
 
             let rect_loc = gl::GetUniformLocation(program, b"rect\0" as *const _ as _);
             let tex_loc = gl::GetUniformLocation(program, b"tex\0" as *const _ as _);
@@ -230,7 +223,23 @@ impl OpenglRenderer {
                 wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
             });
 
-            gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
+            gl::Enable(gl::BLEND);
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFuncSeparate(
+                gl::SRC_ALPHA,
+                gl::ONE_MINUS_SRC_ALPHA,
+                gl::ONE,
+                gl::ONE_MINUS_SRC_ALPHA,
+            );
+            gl::Disable(gl::CULL_FACE);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
+
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
+            gl::BindVertexArray(self.vao);
+            gl::UseProgram(self.program);
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
+            gl::ActiveTexture(gl::TEXTURE0);
 
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
