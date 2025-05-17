@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { defaultDllDir, Overlay } from 'asdf-overlay-node';
 import { key } from 'asdf-overlay-node/util';
 import find from 'find-process';
-import { toKeyboardInputEvent, toMouseEvent } from './input';
+import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
 
 async function createOverlayWindow(pid: number) {
   const overlay = await Overlay.attach(
@@ -54,6 +54,10 @@ async function createOverlayWindow(pid: number) {
     if (event) {
       mainWindow.webContents.sendInputEvent(event);
     }
+  });
+
+  mainWindow.webContents.on('cursor-changed', (_, type) => {
+    overlay.setCaptureCursor(hwnd, toCursor(type));
   });
 
   overlay.event.on('keyboard_input', (_, input) => {
