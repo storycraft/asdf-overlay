@@ -28,7 +28,7 @@ use windows::Win32::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
             Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
-            KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+            KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_F10, VK_MENU},
         },
         WindowsAndMessaging::{
             self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
@@ -184,6 +184,13 @@ fn process_wndproc_capture(
 
         // ignore key input
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+            let key = wparam.0 as u16;
+            // ignore f10, or menu key
+            // Default proc try to open non existent menu on some app and freezes window
+            if key == VK_F10.0 || key == VK_MENU.0 {
+                return Some(LRESULT(0));
+            }
+
             // let default proc handle
             return Some(unsafe { DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam) });
         }
