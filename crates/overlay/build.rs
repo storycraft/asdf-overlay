@@ -24,6 +24,8 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
 }
 
 fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
+    println!("cargo:rerun-if-changed=detours_wrapper.h");
+
     let dir = env::var("CARGO_MANIFEST_DIR")?;
 
     let tool = find_tool("x86_64-pc-windows-msvc", "msbuild").context("msbuild not found")?;
@@ -77,6 +79,7 @@ fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
 }
 
 fn create_rc() -> anyhow::Result<()> {
+    println!("cargo:rerun-if-changed=resources");
     let mut res = WindowsResource::new();
     res.append_rc_content(include_str!("./resources/cursors.rc"));
     res.compile()?;
@@ -84,8 +87,6 @@ fn create_rc() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    println!("cargo:rerun-if-changed=detours_wrapper.h");
-
     let dest = env::var("OUT_DIR")?;
 
     create_gl_bindings(&dest)?;
