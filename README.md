@@ -61,7 +61,7 @@ pnpm build && pnpm --filter ingame-browser start <process_name>
 ```
 Pressing `Left Shift + A` will show ingame browser overlay and input will be redirected to browser window. Pressing again will close it.
 
-https://github.com/user-attachments/assets/b5d42494-98d4-4e66-905e-4606e2b98ec4
+https://github.com/user-attachments/assets/d7f0db58-cb11-437f-9990-50d095c7c575
 
 ### Rust
 1. Run
@@ -70,7 +70,7 @@ cargo build && cargo run -p noise-rectangle <process_name>
 ```
 Glitching squares appear and disappear on target process
 
-https://github.com/user-attachments/assets/dcf90db9-e262-4795-914a-5efd67d9f8ea
+https://github.com/user-attachments/assets/069d1cc1-f95d-4a44-899c-7f538c0f5a69
 
 2. Run
 ```bash
