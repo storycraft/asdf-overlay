@@ -15,10 +15,10 @@ mod backend;
 mod hook;
 mod reader;
 mod renderer;
+mod resources;
 mod texture;
 mod types;
 mod util;
-mod resources;
 
 #[cfg(debug_assertions)]
 mod dbg;
@@ -26,9 +26,9 @@ mod dbg;
 use app::app;
 use asdf_overlay_common::ipc::create_ipc_path;
 use once_cell::sync::OnceCell;
-use windows::Win32::{Foundation::HINSTANCE, System::SystemServices::DLL_PROCESS_ATTACH};
 use std::{process, thread};
 use tokio::runtime::Runtime;
+use windows::Win32::{Foundation::HINSTANCE, System::SystemServices::DLL_PROCESS_ATTACH};
 
 #[inline]
 fn proc_impl(name: String) -> bool {
@@ -67,6 +67,6 @@ pub extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut (
     if fdw_reason == DLL_PROCESS_ATTACH {
         _ = INSTANCE.set(dll_module.0 as _);
     }
-    
+
     true
 }

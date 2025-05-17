@@ -6,9 +6,13 @@ use core::mem;
 
 use anyhow::bail;
 use asdf_overlay_common::{
-    cursor::Cursor, event::{
-        input::{CursorEvent, CursorInput, InputEvent}, ClientEvent, WindowEvent
-    }, key::Key, request::UpdateSharedHandle
+    cursor::Cursor,
+    event::{
+        ClientEvent, WindowEvent,
+        input::{CursorEvent, CursorInput, InputEvent},
+    },
+    key::Key,
+    request::UpdateSharedHandle,
 };
 use bitvec::{BitArr, array::BitArray};
 use cx::DrawContext;
