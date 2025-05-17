@@ -19,7 +19,7 @@ use crate::detours::{DetourAttach, DetourTransactionBegin, DetourTransactionComm
 #[tracing::instrument]
 pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     dx::hook(dummy_hwnd).context("Direct3D hook initialization failed")?;
-    opengl::hook().context("OpenGL hook initialization failed")?;
+    opengl::hook(dummy_hwnd).context("OpenGL hook initialization failed")?;
 
     Ok(())
 }
