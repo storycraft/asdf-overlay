@@ -6,3 +6,4 @@
 /asdf_overlay-aarch64.dll
 node_modules
 /lib
+/examples/node/ingame-browser/out

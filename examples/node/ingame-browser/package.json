@@ -2,6 +2,7 @@
   "name": "ingame-browser",
   "version": "0.1.0",
   "private": true,
+  "main": "./out/main/index.js",
   "license": "MIT OR Apache-2.0",
   "author": "storycraft <storycraft@pancake.sh>",
   "type": "module",
@@ -14,12 +15,15 @@
     "url": "git+https://github.com/storycraft/asdf-overlay.git"
   },
   "scripts": {
-    "start": "electron ./app"
+    "start": "electron-vite preview --",
+    "dev": "electron-vite dev --"
   },
   "dependencies": {
     "asdf-overlay-node": "workspace:*",
     "electron": "^36.2.0",
-    "find-process": "^1.4.10",
-    "keyboard-key": "^1.1.0"
+    "find-process": "^1.4.10"
+  },
+  "devDependencies": {
+    "electron-vite": "^3.1.0"
   }
 }
