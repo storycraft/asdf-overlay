@@ -179,6 +179,7 @@ fn process_wndproc_capture(
             ));
         }
 
+        // ignore remaining mouse input
         msg::WM_LBUTTONDBLCLK | msg::WM_MBUTTONDBLCLK | msg::WM_RBUTTONDBLCLK => {}
 
         // ignore key input
