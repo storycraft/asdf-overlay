@@ -5,6 +5,7 @@ pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
         ($name:ident = $expr:expr) => {
             let mut $name = 0;
             gl::GetIntegerv($expr, &mut $name);
+            let $name = $name as u32;
         };
     }
 
@@ -15,11 +16,15 @@ pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
     }
 
     unsafe {
-        // bindings
+        // bindings, mode
         get_gl_int!(last_active_texture = gl::ACTIVE_TEXTURE);
         get_gl_int!(last_program = gl::CURRENT_PROGRAM);
         get_gl_int!(last_texture = gl::TEXTURE_BINDING_2D);
         get_gl_int!(last_array_buffer = gl::ARRAY_BUFFER_BINDING);
+        get_gl_int!(last_polygon_mode = gl::POLYGON_MODE);
+        if last_polygon_mode != gl::FILL {
+            gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+        }
 
         // vao
         get_gl_int!(last_vertex_array_object = gl::VERTEX_ARRAY_BINDING);
@@ -38,19 +43,22 @@ pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
         is_gl_enabled!(last_scissor_test = gl::SCISSOR_TEST);
 
         defer!({
-            gl::ActiveTexture(last_active_texture as _);
-            gl::UseProgram(last_program as _);
-            gl::BindTexture(gl::TEXTURE_2D, last_texture as _);
-            gl::BindBuffer(gl::ARRAY_BUFFER, last_array_buffer as _);
+            gl::ActiveTexture(last_active_texture);
+            gl::UseProgram(last_program);
+            gl::BindTexture(gl::TEXTURE_2D, last_texture);
+            gl::BindBuffer(gl::ARRAY_BUFFER, last_array_buffer);
+            if last_polygon_mode != gl::FILL {
+                gl::PolygonMode(gl::FRONT_AND_BACK, last_polygon_mode);
+            }
 
-            gl::BindVertexArray(last_vertex_array_object as _);
+            gl::BindVertexArray(last_vertex_array_object);
 
-            gl::BlendEquationSeparate(last_blend_equation_rgb as _, last_blend_equation_alpha as _);
+            gl::BlendEquationSeparate(last_blend_equation_rgb, last_blend_equation_alpha);
             gl::BlendFuncSeparate(
-                last_blend_src_rgb as _,
-                last_blend_dst_rgb as _,
-                last_blend_src_alpha as _,
-                last_blend_dst_alpha as _,
+                last_blend_src_rgb,
+                last_blend_dst_rgb,
+                last_blend_src_alpha,
+                last_blend_dst_alpha,
             );
             if !last_blend {
                 gl::Disable(gl::BLEND);
