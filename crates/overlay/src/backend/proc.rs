@@ -300,7 +300,7 @@ fn process_keyboard_capture(backend: &mut WindowBackend, msg: &mut MSG) {
             return;
         }
 
-        msg::WM_CHAR => {
+        msg::WM_CHAR | msg::WM_SYSCHAR => {
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
                 Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
             }
