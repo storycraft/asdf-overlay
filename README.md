@@ -10,7 +10,12 @@
 [docs-url]: https://docs.rs/asdf-overlay-client
 
 # Asdf Overlay
-Blazingly fast™ Overlay library for Windows
+Blazingly fast™ & Easy to use Windows Overlay library
+
+Asdf Overlay provides an easy to use interface to draw on top of window framebuffer by hooking rendering backends
+
+GPU shared texture was used to avoid framebuffer copy via CPU.
+As a result, Asdf Overlay is capable of rendering overlay with any size without performance loss.
 
 ![Screenshot](assets/example.png)
 
@@ -26,7 +31,7 @@ Blazingly fast™ Overlay library for Windows
 1. Supports multiple backends
 2. Blazingly fast™
 3. GPU accelerated shared overlay surface
-4. Input capture control via keybind
+4. Input capture control
 
 ## Pre-requirement
 1. node, pnpm package manager
@@ -56,12 +61,16 @@ pnpm build && pnpm --filter ingame-browser start <process_name>
 ```
 Pressing `Left Shift + A` will show ingame browser overlay and input will be redirected to browser window. Pressing again will close it.
 
+https://github.com/user-attachments/assets/b5d42494-98d4-4e66-905e-4606e2b98ec4
+
 ### Rust
 1. Run
 ```bash
 cargo build && cargo run -p noise-rectangle <process_name>
 ```
 Glitching squares appear and disappear on target process
+
+https://github.com/user-attachments/assets/dcf90db9-e262-4795-914a-5efd67d9f8ea
 
 2. Run
 ```bash
