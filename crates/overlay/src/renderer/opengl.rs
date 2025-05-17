@@ -101,8 +101,8 @@ impl OpenglRenderer {
 
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
 
@@ -238,8 +238,8 @@ impl OpenglRenderer {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::BindVertexArray(self.vao);
             gl::UseProgram(self.program);
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
             gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
 
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
