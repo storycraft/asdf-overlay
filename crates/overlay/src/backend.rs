@@ -97,7 +97,7 @@ impl Backends {
 
                 listen_input: ListenInputFlags::empty(),
                 blocking_state: BlockingState::None,
-                blocking_cursor: None,
+                blocking_cursor: Some(Cursor::Default),
 
                 cursor_state: CursorState::Outside,
 
@@ -189,6 +189,8 @@ impl WindowBackend {
                 hwnd: self.hwnd,
                 event: WindowEvent::InputBlockingEnded,
             });
+
+            self.blocking_cursor = Some(Cursor::Default);
         }
     }
 }
