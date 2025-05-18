@@ -259,6 +259,7 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     }
 
     if backend.capturing_cursor() {
+        // We want to skip events for non client area so listen in WndProc
         process_mouse_capture(&mut backend, msg, wparam, lparam);
     }
 
