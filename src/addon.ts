@@ -21,7 +21,7 @@ export type Addon = {
     keyboard: boolean,
   ): Promise<void>,
 
-  overlaySetInputBlocking(
+  overlayBlockInput(
     id: number,
     hwnd: number,
     blocking: boolean,

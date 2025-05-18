@@ -11,7 +11,7 @@ pub enum Request {
     SetMargin(SetMargin),
     GetSize(GetSize),
     ListenInputEvent(ListenInputEvent),
-    SetInputBlocking(SetInputBlocking),
+    BlockInput(BlockInput),
     SetBlockingCursor(SetBlockingCursor),
     UpdateSharedHandle(UpdateSharedHandle),
 }
@@ -65,10 +65,10 @@ pub struct ListenInputEvent {
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
-/// Block input events from reaching window and listen all input events
-pub struct SetInputBlocking {
+/// Block inputs from reaching window
+pub struct BlockInput {
     pub hwnd: u32,
-    pub blocking: bool,
+    pub block: bool,
 }
 
 #[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]

@@ -119,11 +119,11 @@ export class Overlay {
     await addon.overlayListenInput(this[idSym], hwnd, cursor, keyboard);
   }
 
-  async setInputBlocking(
+  async blockInput(
     hwnd: number,
-    blocking: boolean,
+    block: boolean,
   ) {
-    await addon.overlaySetInputBlocking(this[idSym], hwnd, blocking);
+    await addon.overlayBlockInput(this[idSym], hwnd, block);
   }
 
   async setBlockingCursor(

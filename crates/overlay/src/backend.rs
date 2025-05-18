@@ -157,16 +157,16 @@ impl WindowBackend {
     }
 
     #[inline]
-    fn capturing_cursor(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_blocking()
+    fn listening_cursor(&self) -> bool {
+        self.listen_input.contains(ListenInputFlags::CURSOR)
     }
 
     #[inline]
     fn listening_keyboard(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_blocking()
+        self.listen_input.contains(ListenInputFlags::KEYBOARD)
     }
 
-    pub fn set_input_blocking(&mut self, blocking: bool) {
+    pub fn block_input(&mut self, blocking: bool) {
         if !self.blocking_state.change(blocking) {
             return;
         }
@@ -226,13 +226,13 @@ enum BlockingState {
 
 impl BlockingState {
     #[inline]
-    fn is_blocking(self) -> bool {
+    fn is_input_blocking(self) -> bool {
         matches!(self, Self::StartBlocking | Self::Blocking)
     }
 
     /// Change blocking state
     fn change(&mut self, blocking: bool) -> bool {
-        if self.is_blocking() == blocking {
+        if self.is_input_blocking() == blocking {
             return false;
         }
 
