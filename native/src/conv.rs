@@ -1,5 +1,3 @@
-use core::num::NonZeroU8;
-
 use asdf_overlay_client::{
     common::{
         event::{
@@ -19,7 +17,7 @@ use neon::{
     object::Object,
     prelude::Context,
     result::{JsResult, NeonResult},
-    types::{JsBoolean, JsFunction, JsNumber, JsObject, JsString},
+    types::{JsFunction, JsNumber, JsObject, JsString},
 };
 
 pub fn emit_event<'a>(
@@ -57,14 +55,9 @@ pub fn emit_event<'a>(
                         .arg(serialize_keyboard_input(cx, input)?);
                 }
             },
-            WindowEvent::InputCaptureStart => {
+            WindowEvent::InputBlockingEnded => {
                 builder
-                    .arg(cx.string("input_capture_start"))
-                    .arg(cx.number(hwnd));
-            }
-            WindowEvent::InputCaptureEnd => {
-                builder
-                    .arg(cx.string("input_capture_end"))
+                    .arg(cx.string("input_blocking_ended"))
                     .arg(cx.number(hwnd));
             }
             WindowEvent::Destroyed => {
@@ -182,18 +175,6 @@ fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObje
     obj.set(cx, "extended", extended)?;
 
     Ok(obj)
-}
-
-pub fn deserialize_key<'a>(
-    cx: &mut impl Context<'a>,
-    obj: Handle<'a, JsObject>,
-) -> NeonResult<Key> {
-    let Some(code) = NonZeroU8::new(obj.get::<JsNumber, _, _>(cx, "code")?.value(cx) as u8) else {
-        return cx.throw_range_error("code cannot be zero");
-    };
-    let extended = obj.get::<JsBoolean, _, _>(cx, "extended")?.value(cx);
-
-    Ok(Key { code, extended })
 }
 
 pub fn deserialize_percent_length<'a>(

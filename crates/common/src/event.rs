@@ -19,11 +19,8 @@ pub enum WindowEvent {
     // Captured window input
     Input(InputEvent),
 
-    // Input capture started by user
-    InputCaptureStart,
-
-    // Input capture ended by user
-    InputCaptureEnd,
+    // Input blocking ended
+    InputBlockingEnded,
 
     // Window destroyed
     Destroyed,

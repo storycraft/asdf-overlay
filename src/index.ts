@@ -46,8 +46,7 @@ export type OverlayEventEmitter = EventEmitter<{
   'resized': [hwnd: number, width: number, height: number],
   'cursor_input': [hwnd: number, input: CursorInput],
   'keyboard_input': [hwnd: number, input: KeyboardInput],
-  'input_capture_start': [hwnd: number],
-  'input_capture_end': [hwnd: number],
+  'input_blocking_ended': [hwnd: number],
   'destroyed': [hwnd: number],
   'error': [err: unknown],
   'disconnected': [],
@@ -112,18 +111,26 @@ export class Overlay {
     await addon.overlaySetMargin(this[idSym], top, right, bottom, left);
   }
 
-  async setInputCaptureKeybind(
+  async listenInput(
     hwnd: number,
-    keybind: [Key?, Key?, Key?, Key?],
+    cursor: boolean,
+    keyboard: boolean,
   ) {
-    await addon.overlaySetInputCaptureKeybind(this[idSym], hwnd, keybind);
+    await addon.overlayListenInput(this[idSym], hwnd, cursor, keyboard);
   }
 
-  async setCaptureCursor(
+  async setInputBlocking(
+    hwnd: number,
+    blocking: boolean,
+  ) {
+    await addon.overlaySetInputBlocking(this[idSym], hwnd, blocking);
+  }
+
+  async setBlockingCursor(
     hwnd: number,
     cursor?: Cursor,
   ) {
-    await addon.overlaySetCaptureCursor(this[idSym], hwnd, cursor);
+    await addon.overlaySetBlockingCursor(this[idSym], hwnd, cursor);
   }
 
   /**

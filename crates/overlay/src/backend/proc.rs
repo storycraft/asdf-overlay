@@ -38,12 +38,70 @@ use windows::Win32::{
 };
 
 #[inline]
-fn process_wndproc_capture(
+fn block_proc_input(
     backend: &mut WindowBackend,
     msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> Option<LRESULT> {
+    match msg {
+        // set cursor in client area
+        msg::WM_SETCURSOR
+            if {
+                let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+                area == 1
+            } =>
+        unsafe {
+            SetCursor(backend.blocking_cursor.and_then(load_cursor));
+            return Some(LRESULT(1));
+        },
+
+        // stop input capture when user request to
+        msg::WM_CLOSE => {
+            backend.set_input_blocking(false);
+        }
+
+        // ignore mouse inputs
+        msg::WM_LBUTTONDOWN
+        | msg::WM_LBUTTONUP
+        | msg::WM_MBUTTONDOWN
+        | msg::WM_MBUTTONUP
+        | msg::WM_RBUTTONDOWN
+        | msg::WM_RBUTTONUP
+        | Controls::WM_MOUSELEAVE
+        | msg::WM_MOUSEMOVE
+        | msg::WM_MOUSEWHEEL
+        | msg::WM_MOUSEHWHEEL
+        | msg::WM_LBUTTONDBLCLK
+        | msg::WM_MBUTTONDBLCLK
+        | msg::WM_RBUTTONDBLCLK => {}
+
+        msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return Some(LRESULT(1)),
+
+        // ignore key input
+        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+            let key = wparam.0 as u16;
+            // ignore f10, or menu key
+            // Default proc try to open non existent menu on some app and freezes window
+            if key == VK_F10.0 || key == VK_MENU.0 {
+                return Some(LRESULT(0));
+            }
+
+            // let default proc handle
+            return Some(unsafe { DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam) });
+        }
+
+        // ignore raw input (ignoring in hook leak handle)
+        msg::WM_INPUT => {}
+
+        _ => return None,
+    }
+
+    Some(LRESULT(0))
+}
+
+#[inline]
+fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, lparam: LPARAM) {
     // emit cursor action
     macro_rules! emit_cursor_action {
         ($action:expr, $state:expr $(,)?) => {{
@@ -59,22 +117,6 @@ fn process_wndproc_capture(
     }
 
     match msg {
-        // set arrow cursor in client area
-        msg::WM_SETCURSOR
-            if {
-                let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-                area == 1
-            } =>
-        unsafe {
-            SetCursor(backend.capture_cursor.and_then(load_cursor));
-            return Some(LRESULT(1));
-        },
-
-        // stop input capture when user request to
-        msg::WM_CLOSE => {
-            backend.set_input_capture(false);
-        }
-
         msg::WM_LBUTTONDOWN => emit_cursor_action!(CursorAction::Left, InputState::Pressed),
         msg::WM_MBUTTONDOWN => emit_cursor_action!(CursorAction::Middle, InputState::Pressed),
         msg::WM_RBUTTONDOWN => emit_cursor_action!(CursorAction::Right, InputState::Pressed),
@@ -88,8 +130,6 @@ fn process_wndproc_capture(
                 },
                 InputState::Pressed
             );
-
-            return Some(LRESULT(1));
         }
 
         msg::WM_LBUTTONUP => emit_cursor_action!(CursorAction::Left, InputState::Released),
@@ -105,8 +145,6 @@ fn process_wndproc_capture(
                 },
                 InputState::Pressed
             );
-
-            return Some(LRESULT(1));
         }
 
         Controls::WM_MOUSELEAVE => {
@@ -179,29 +217,8 @@ fn process_wndproc_capture(
             ));
         }
 
-        // ignore remaining mouse input
-        msg::WM_LBUTTONDBLCLK | msg::WM_MBUTTONDBLCLK | msg::WM_RBUTTONDBLCLK => {}
-
-        // ignore key input
-        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            let key = wparam.0 as u16;
-            // ignore f10, or menu key
-            // Default proc try to open non existent menu on some app and freezes window
-            if key == VK_F10.0 || key == VK_MENU.0 {
-                return Some(LRESULT(0));
-            }
-
-            // let default proc handle
-            return Some(unsafe { DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam) });
-        }
-
-        // ignore raw input (ignoring in hook leak handle)
-        msg::WM_INPUT => {}
-
-        _ => return None,
+        _ => {}
     }
-
-    Some(LRESULT(0))
 }
 
 #[tracing::instrument]
@@ -224,13 +241,6 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
 
     match msg {
-        // reset key states on deactivate
-        msg::WM_ACTIVATEAPP => {
-            if wparam.0 == 0 {
-                backend.reset_key_states();
-            }
-        }
-
         msg::WM_WINDOWPOSCHANGED => {
             let new_size = get_client_size(hwnd).unwrap();
             if backend.size != new_size {
@@ -248,8 +258,12 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
         _ => {}
     }
 
-    if backend.capturing_input() {
-        if let Some(ret) = process_wndproc_capture(&mut backend, msg, wparam, lparam) {
+    if backend.capturing_cursor() {
+        process_mouse_capture(&mut backend, msg, wparam, lparam);
+    }
+
+    if backend.blocking_input() {
+        if let Some(ret) = block_proc_input(&mut backend, msg, wparam, lparam) {
             return ret;
         }
     }
@@ -261,29 +275,13 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 
 #[inline]
 fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
-    match msg.message {
-        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = to_key(msg.wParam, msg.lParam) {
-                backend.update_key_state(key, true);
-            }
-        }
-
-        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = to_key(msg.wParam, msg.lParam) {
-                backend.update_key_state(key, false);
-            }
-        }
-
-        _ => {}
-    }
-
-    if backend.capturing_input() {
-        process_keyboard_capture(backend, msg);
+    if backend.listening_keyboard() {
+        process_keyboard_listen(backend, msg);
     }
 }
 
 #[inline]
-fn process_keyboard_capture(backend: &mut WindowBackend, msg: &mut MSG) {
+fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
     macro_rules! emit_key_input {
         ($state:expr $(,)?) => {{
             if let Some(key) = to_key(msg.wParam, msg.lParam) {
@@ -298,12 +296,16 @@ fn process_keyboard_capture(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             emit_key_input!(InputState::Pressed);
-            redirect_msg_to(HWND(backend.hwnd as _), msg);
+            if backend.blocking_input() {
+                redirect_msg_to(HWND(backend.hwnd as _), msg);
+            }
             return;
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             emit_key_input!(InputState::Released);
-            redirect_msg_to(HWND(backend.hwnd as _), msg);
+            if backend.blocking_input() {
+                redirect_msg_to(HWND(backend.hwnd as _), msg);
+            }
             return;
         }
 
@@ -330,15 +332,17 @@ fn process_keyboard_capture(backend: &mut WindowBackend, msg: &mut MSG) {
         _ => return,
     }
 
-    // nullify handled message by default
-    *msg = MSG {
-        hwnd: HWND::default(),
-        message: WM_NULL,
-        wParam: WPARAM(0),
-        lParam: LPARAM(0),
-        time: msg.time,
-        pt: msg.pt,
-    };
+    if backend.blocking_input() {
+        // nullify handled message on blocking
+        *msg = MSG {
+            hwnd: HWND::default(),
+            message: WM_NULL,
+            wParam: WPARAM(0),
+            lParam: LPARAM(0),
+            time: msg.time,
+            pt: msg.pt,
+        };
+    }
 }
 
 #[tracing::instrument]

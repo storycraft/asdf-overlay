@@ -13,10 +13,9 @@ use asdf_overlay_client::{
         cursor::Cursor,
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        key::Key,
         request::{
-            GetSize, SetAnchor, SetCaptureCursor, SetInputCaptureKeybind, SetMargin, SetPosition,
-            UpdateSharedHandle,
+            GetSize, ListenInputEvent, SetAnchor, SetBlockingCursor, SetInputBlocking, SetMargin,
+            SetPosition, UpdateSharedHandle,
         },
     },
     inject,
@@ -24,7 +23,7 @@ use asdf_overlay_client::{
     surface::OverlaySurface,
 };
 use bytemuck::pod_read_unaligned;
-use conv::{deserialize_copy_rect, deserialize_key, deserialize_percent_length, emit_event};
+use conv::{deserialize_copy_rect, deserialize_percent_length, emit_event};
 use dashmap::DashMap;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
@@ -371,16 +370,36 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-fn overlay_set_input_capture_keybind(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-    let keybind = cx.argument::<JsArray>(2)?;
-    let keybind = deserialize_keybind(&mut cx, keybind)?;
+    let cursor = cx.argument::<JsBoolean>(2)?.value(&mut cx);
+    let keyboard = cx.argument::<JsBoolean>(3)?.value(&mut cx);
 
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.set_input_capture_keybind(SetInputCaptureKeybind { hwnd, keybind })
+            conn.listen_input(ListenInputEvent {
+                hwnd,
+                cursor,
+                keyboard,
+            })
+            .await?;
+
+            Ok(())
+        }),
+    )
+}
+
+fn overlay_set_input_blocking(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let blocking = cx.argument::<JsBoolean>(2)?.value(&mut cx);
+
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.set_input_blocking(SetInputBlocking { hwnd, blocking })
                 .await?;
 
             Ok(())
@@ -388,21 +407,7 @@ fn overlay_set_input_capture_keybind(mut cx: FunctionContext) -> JsResult<JsProm
     )
 }
 
-fn deserialize_keybind<'a>(
-    cx: &mut impl Context<'a>,
-    array: Handle<'a, JsArray>,
-) -> NeonResult<[Option<Key>; 4]> {
-    let mut de = |index: u32| {
-        array
-            .get_opt::<JsObject, _, _>(cx, index)?
-            .map(|obj| deserialize_key(cx, obj))
-            .transpose()
-    };
-
-    Ok([de(0)?, de(1)?, de(2)?, de(3)?])
-}
-
-fn overlay_set_capture_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx
@@ -425,7 +430,7 @@ fn overlay_set_capture_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.set_capture_cursor(SetCaptureCursor { hwnd, cursor })
+            conn.set_blocking_cursor(SetBlockingCursor { hwnd, cursor })
                 .await?;
 
             Ok(())
@@ -443,11 +448,9 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetPosition", overlay_set_position)?;
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
-    cx.export_function(
-        "overlaySetInputCaptureKeybind",
-        overlay_set_input_capture_keybind,
-    )?;
-    cx.export_function("overlaySetCaptureCursor", overlay_set_capture_cursor)?;
+    cx.export_function("overlayListenInput", overlay_listen_input)?;
+    cx.export_function("overlaySetInputBlocking", overlay_set_input_blocking)?;
+    cx.export_function("overlaySetBlockingCursor", overlay_set_blocking_cursor)?;
 
     cx.export_function("overlayGetSize", overlay_get_size)?;
 

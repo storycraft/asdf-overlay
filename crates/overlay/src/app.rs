@@ -12,7 +12,11 @@ use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::Win32::Foundation::HWND;
 
-use crate::{backend::Backends, hook, util::with_dummy_hwnd};
+use crate::{
+    backend::{Backends, ListenInputFlags},
+    hook,
+    util::with_dummy_hwnd,
+};
 
 static CURRENT: RwLock<OverlayState> = RwLock::new(OverlayState::Disabled);
 
@@ -100,21 +104,35 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 )?;
             }
 
-            Request::SetInputCaptureKeybind(cmd) => {
+            Request::ListenInputEvent(cmd) => {
                 client.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
-                        backend.set_input_capture_keybind(cmd.keybind);
+                        let mut flags = ListenInputFlags::empty();
+                        flags.set(ListenInputFlags::CURSOR, cmd.cursor);
+                        flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+
+                        backend.listen_input = flags;
                     })
                     .is_some(),
                 )?;
             }
 
-            Request::SetCaptureCursor(cmd) => {
+            Request::SetInputBlocking(cmd) => {
                 client.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
-                        backend.capture_cursor = cmd.cursor;
+                        backend.set_input_blocking(cmd.blocking);
+                    })
+                    .is_some(),
+                )?;
+            }
+
+            Request::SetBlockingCursor(cmd) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
+                        backend.blocking_cursor = cmd.cursor;
                     })
                     .is_some(),
                 )?;

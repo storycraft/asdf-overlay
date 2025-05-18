@@ -11,10 +11,8 @@ use asdf_overlay_common::{
         ClientEvent, WindowEvent,
         input::{CursorEvent, CursorInput, InputEvent},
     },
-    key::Key,
     request::UpdateSharedHandle,
 };
-use bitvec::{BitArr, array::BitArray};
 use cx::DrawContext;
 use dashmap::mapref::multiple::{RefMulti, RefMutMulti};
 use once_cell::sync::Lazy;
@@ -97,11 +95,11 @@ impl Backends {
                 hwnd: key,
                 original_proc,
 
-                input_capture_keybind: [None; 4],
-                capturing_input: false,
-                key_states: BitArray::ZERO,
+                listen_input: ListenInputFlags::empty(),
+                blocking_input: false,
+                blocking_cursor: None,
+
                 cursor_state: CursorState::Outside,
-                capture_cursor: None,
 
                 pending_handle: None,
                 size,
@@ -134,11 +132,11 @@ pub struct WindowBackend {
     hwnd: u32,
     original_proc: WNDPROC,
 
-    input_capture_keybind: [Option<Key>; 4],
-    capturing_input: bool,
-    key_states: BitArr!(for 512),
+    pub listen_input: ListenInputFlags,
+    blocking_input: bool,
+    pub blocking_cursor: Option<Cursor>,
+
     cursor_state: CursorState,
-    pub capture_cursor: Option<Cursor>,
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
@@ -147,39 +145,36 @@ pub struct WindowBackend {
 }
 
 impl WindowBackend {
-    pub fn set_input_capture_keybind(&mut self, keybind: [Option<Key>; 4]) {
-        self.input_capture_keybind = keybind;
-        if !keybind.iter().any(|item| item.is_some()) {
-            self.set_input_capture(false);
-        }
-    }
-
-    #[inline]
-    pub fn capturing_input(&self) -> bool {
-        self.capturing_input
-    }
-
     #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
         trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
         mem::take(&mut self.cx);
         mem::take(&mut self.renderer);
         self.pending_handle.take();
-        self.input_capture_keybind = [None; 4];
-        self.capturing_input = false;
+        self.listen_input = ListenInputFlags::empty();
     }
 
-    fn set_input_capture(&mut self, input_capture: bool) {
-        if self.capturing_input == input_capture {
+    #[inline]
+    fn blocking_input(&self) -> bool {
+        self.blocking_input
+    } 
+
+    #[inline]
+    fn capturing_cursor(&self) -> bool {
+        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_input
+    }
+
+    #[inline]
+    fn listening_keyboard(&self) -> bool {
+        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_input
+    }
+
+    pub fn set_input_blocking(&mut self, blocking_input: bool) {
+        if self.blocking_input == blocking_input {
             return;
         }
 
-        if input_capture {
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: self.hwnd,
-                event: WindowEvent::InputCaptureStart,
-            });
-        } else {
+        if !blocking_input {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
@@ -195,56 +190,29 @@ impl WindowBackend {
 
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: self.hwnd,
-                event: WindowEvent::InputCaptureEnd,
+                event: WindowEvent::InputBlockingEnded,
             });
         }
-        self.capturing_input = input_capture;
+        self.blocking_input = blocking_input;
 
-        // show cursor while capturing input
+        // show cursor while blocking input
         // TODO: ensure ShowCursor is run on target window thread
-        unsafe { ShowCursor(input_capture) };
+        unsafe { ShowCursor(blocking_input) };
         // reset cursor
-        self.capture_cursor = Some(Cursor::Default);
-    }
-
-    fn update_key_state(&mut self, key: Key, value: bool) {
-        #[inline]
-        fn index(key: Key) -> usize {
-            if key.extended {
-                256 + key.code.get() as usize
-            } else {
-                key.code.get() as usize
-            }
-        }
-
-        self.key_states.set(index(key), value);
-
-        if !value || !self.input_capture_keybind.contains(&Some(key)) {
-            return;
-        }
-
-        for keybind_key in self.input_capture_keybind {
-            match keybind_key {
-                Some(keybind_key) => {
-                    if !self.key_states[index(keybind_key)] {
-                        return;
-                    }
-                }
-                None => continue,
-            }
-        }
-
-        // toggle input capture
-        self.set_input_capture(!self.capturing_input);
-    }
-
-    fn reset_key_states(&mut self) {
-        self.key_states = BitArray::ZERO;
+        self.blocking_cursor = Some(Cursor::Default);
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum CursorState {
+enum CursorState {
     Inside(i16, i16),
     Outside,
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ListenInputFlags: u8 {
+        const CURSOR = 0b00000001;
+        const KEYBOARD = 0b00000010;
+    }
 }

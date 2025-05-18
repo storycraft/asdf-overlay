@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { defaultDllDir, Overlay } from 'asdf-overlay-node';
-import { key } from 'asdf-overlay-node/util';
+import { InputState } from 'asdf-overlay-node/input';
 import find from 'find-process';
 import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
 
@@ -48,6 +48,9 @@ async function createOverlayWindow(pid: number) {
 
   const hwnd = await new Promise<number>((resolve) => overlay.event.once('added', resolve));
 
+  // always listen keyboard events
+  await overlay.listenInput(hwnd, false, true);
+
   overlay.event.on('cursor_input', (_, input) => {
     const event = toMouseEvent(input);
     if (event) {
@@ -56,33 +59,61 @@ async function createOverlayWindow(pid: number) {
   });
 
   mainWindow.webContents.on('cursor-changed', (_, type) => {
-    overlay.setCaptureCursor(hwnd, toCursor(type));
+    overlay.setBlockingCursor(hwnd, toCursor(type));
   });
 
+  let blocking = false;
+
+  let shiftState: InputState = 'Released';
+  let aState: InputState = 'Released';
   overlay.event.on('keyboard_input', (_, input) => {
+    keybind: if (input.kind === 'Key') {
+      const key = input.key;
+      if (key.code === 0x10 && !key.extended) {
+        shiftState = input.state;
+      } else if (key.code === 0x41) {
+        aState = input.state;
+      } else {
+        break keybind;
+      }
+
+      // when Left Shift + A is pressed. show window and start blocking.
+      if (shiftState === aState && shiftState === 'Pressed') {
+        blocking = !blocking;
+
+        if (blocking) {
+          // do full repaint
+          mainWindow.webContents.invalidate();
+          mainWindow.webContents.startPainting();
+          mainWindow.focusOnWebView();
+
+          // Open the DevTools.
+          mainWindow.webContents.openDevTools();
+        }
+
+        overlay.setInputBlocking(hwnd, blocking);
+        return;
+      }
+    }
+
+    if (!blocking) {
+      return;
+    }
+
     const event = toKeyboardInputEvent(input);
     if (event) {
       mainWindow.webContents.sendInputEvent(event);
     }
   });
 
-  overlay.event.on('input_capture_start', () => {
-    // do full repaint
-    mainWindow.webContents.invalidate();
-    mainWindow.webContents.startPainting();
-    mainWindow.focusOnWebView();
-
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
-  });
-
-  overlay.event.on('input_capture_end', () => {
+  // always listen for `input_blocking_ended` because user can cancel blocking
+  overlay.event.on('input_blocking_ended', () => {
+    blocking = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
     overlay.clearSurface();
   });
 
-  await overlay.setInputCaptureKeybind(hwnd, [key(0x10), key(0x41)]);
   mainWindow.webContents.stopPainting();
   await mainWindow.loadURL('https://electronjs.org');
 }

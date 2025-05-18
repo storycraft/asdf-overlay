@@ -4,8 +4,7 @@ use anyhow::{Context, bail};
 use asdf_overlay_client::{
     common::{
         event::{ClientEvent, WindowEvent},
-        key::Key,
-        request::SetInputCaptureKeybind,
+        request::SetInputBlocking,
     },
     inject,
     process::OwnedProcess,
@@ -44,10 +43,9 @@ async fn main() -> anyhow::Result<()> {
         bail!("failed to receive main window");
     };
 
-    conn.set_input_capture_keybind(SetInputCaptureKeybind {
+    conn.set_input_blocking(SetInputBlocking {
         hwnd,
-        // Left Shift = 0x10 (without extended flag), A = 0x41
-        keybind: [Key::new(0x10, false), Key::new(0x41, false), None, None],
+        blocking: true,
     })
     .await?;
 
@@ -55,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         dbg!(&event);
 
         if let ClientEvent::Window {
-            event: WindowEvent::InputCaptureEnd,
+            event: WindowEvent::InputBlockingEnded,
             ..
         } = event
         {

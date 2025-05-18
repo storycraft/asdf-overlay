@@ -1,5 +1,5 @@
 import { OverlayEventEmitter } from './index.js';
-import { CopyRect, Cursor, Key, PercentLength } from './types.js';
+import { CopyRect, Cursor, PercentLength } from './types.js';
 
 export type Addon = {
   attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -13,12 +13,20 @@ export type Addon = {
     bottom: PercentLength,
     left: PercentLength,
   ): Promise<void>,
-  overlaySetInputCaptureKeybind(
+
+  overlayListenInput(
     id: number,
     hwnd: number,
-    keybind: [Key?, Key?, Key?, Key?],
+    cursor: boolean,
+    keyboard: boolean,
   ): Promise<void>,
-  overlaySetCaptureCursor(
+
+  overlaySetInputBlocking(
+    id: number,
+    hwnd: number,
+    blocking: boolean,
+  ): Promise<void>,
+  overlaySetBlockingCursor(
     id: number,
     hwnd: number,
     cursor?: Cursor,

@@ -76,8 +76,7 @@ https://github.com/user-attachments/assets/069d1cc1-f95d-4a44-899c-7f538c0f5a69
 ```bash
 cargo build && cargo run -p input-capture <process_name>
 ```
-Pressing `Left Shift + A` key will capture input from target process 
-until user trying to close window or pressing `Left Shift + A` again.
+It will listen and block inputs from target process until process exit
 
 ## Debugging
 Run with debug build.
