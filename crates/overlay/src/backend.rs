@@ -22,7 +22,7 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW, ShowCursor,
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW,
         WH_GETMESSAGE, WNDPROC,
     },
 };
@@ -96,7 +96,7 @@ impl Backends {
                 original_proc,
 
                 listen_input: ListenInputFlags::empty(),
-                blocking_input: false,
+                blocking_state: BlockingState::None,
                 blocking_cursor: None,
 
                 cursor_state: CursorState::Outside,
@@ -133,7 +133,7 @@ pub struct WindowBackend {
     original_proc: WNDPROC,
 
     pub listen_input: ListenInputFlags,
-    blocking_input: bool,
+    blocking_state: BlockingState,
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
@@ -152,29 +152,26 @@ impl WindowBackend {
         mem::take(&mut self.renderer);
         self.pending_handle.take();
         self.listen_input = ListenInputFlags::empty();
+        self.blocking_state.change(false);
+        self.blocking_cursor = Some(Cursor::Default);
     }
 
     #[inline]
-    fn blocking_input(&self) -> bool {
-        self.blocking_input
-    } 
-
-    #[inline]
     fn capturing_cursor(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_input
+        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_blocking()
     }
 
     #[inline]
     fn listening_keyboard(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_input
+        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_blocking()
     }
 
-    pub fn set_input_blocking(&mut self, blocking_input: bool) {
-        if self.blocking_input == blocking_input {
+    pub fn set_input_blocking(&mut self, blocking: bool) {
+        if !self.blocking_state.change(blocking) {
             return;
         }
 
-        if !blocking_input {
+        if !blocking {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
@@ -193,13 +190,6 @@ impl WindowBackend {
                 event: WindowEvent::InputBlockingEnded,
             });
         }
-        self.blocking_input = blocking_input;
-
-        // show cursor while blocking input
-        // TODO: ensure ShowCursor is run on target window thread
-        unsafe { ShowCursor(blocking_input) };
-        // reset cursor
-        self.blocking_cursor = Some(Cursor::Default);
     }
 }
 
@@ -214,5 +204,43 @@ bitflags::bitflags! {
     pub struct ListenInputFlags: u8 {
         const CURSOR = 0b00000001;
         const KEYBOARD = 0b00000010;
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BlockingState {
+    // Not Blocking
+    None,
+
+    // Start blocking, setup cursor and ime
+    StartBlocking,
+
+    // Blocking
+    Blocking,
+
+    // End blocking, cleanup
+    StopBlocking,
+}
+
+impl BlockingState {
+    #[inline]
+    fn is_blocking(self) -> bool {
+        matches!(self, Self::StartBlocking | Self::Blocking)
+    }
+
+    /// Change blocking state
+    fn change(&mut self, blocking: bool) -> bool {
+        if self.is_blocking() == blocking {
+            return false;
+        }
+
+        *self = match self {
+            BlockingState::None => BlockingState::StartBlocking,
+            BlockingState::StartBlocking => BlockingState::None,
+            BlockingState::Blocking => BlockingState::StopBlocking,
+            BlockingState::StopBlocking => BlockingState::Blocking,
+        };
+
+        true
     }
 }
