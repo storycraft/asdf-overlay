@@ -1,5 +1,3 @@
-mod util;
-
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
@@ -7,7 +5,6 @@ use anyhow::Context;
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
 use tracing::{debug, error, trace};
-use util::restore_renderer_gl_state;
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -26,7 +23,11 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay, backend::Backends, renderer::opengl::OpenglRenderer, types::IntDashMap, wgl,
+    app::Overlay,
+    backend::Backends,
+    renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
+    types::IntDashMap,
+    wgl,
 };
 
 use super::DetourHook;
@@ -101,7 +102,7 @@ unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
             }
 
             trace!("using opengl renderer");
-            restore_renderer_gl_state(|| {
+            with_renderer_gl_data(|| {
                 let mut renderer = match MAP.entry(last_hglrc.0 as u32).or_try_insert_with(|| {
                     debug!("initializing opengl renderer");
 
