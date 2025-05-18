@@ -1,6 +1,6 @@
 use scopeguard::defer;
 
-pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
+pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
     macro_rules! get_gl_int {
         ($name:ident = $expr:expr) => {
             let mut $name = 0;
@@ -16,6 +16,10 @@ pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
     }
 
     unsafe {
+        // viewport
+        let mut last_viewport = [0_i32; 4];
+        gl::GetIntegerv(gl::VIEWPORT, last_viewport.as_mut_ptr());
+
         // bindings, mode
         get_gl_int!(last_active_texture = gl::ACTIVE_TEXTURE);
         get_gl_int!(last_program = gl::CURRENT_PROGRAM);
@@ -43,7 +47,15 @@ pub fn restore_renderer_gl_state<R>(f: impl FnOnce() -> R) -> R {
         is_gl_enabled!(last_scissor_test = gl::SCISSOR_TEST);
 
         defer!({
-            gl::ActiveTexture(last_active_texture);
+            gl::Viewport(
+                last_viewport[0],
+                last_viewport[1],
+                last_viewport[2],
+                last_viewport[3],
+            );
+            if last_active_texture != gl::TEXTURE0 {
+                gl::ActiveTexture(last_active_texture);
+            }
             gl::UseProgram(last_program);
             gl::BindTexture(gl::TEXTURE_2D, last_texture);
             gl::BindBuffer(gl::ARRAY_BUFFER, last_array_buffer);

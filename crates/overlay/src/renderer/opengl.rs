@@ -1,3 +1,5 @@
+pub mod data;
+
 use anyhow::bail;
 use asdf_overlay_common::request::UpdateSharedHandle;
 use core::{ffi::c_void, mem, ptr};
@@ -218,10 +220,7 @@ impl OpenglRenderer {
 
         let dx_device_handle = self.dx_device_handle;
         unsafe {
-            wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
-            defer!({
-                wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
-            });
+            gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
 
             gl::Enable(gl::BLEND);
             gl::BlendEquation(gl::FUNC_ADD);
@@ -238,6 +237,12 @@ impl OpenglRenderer {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::BindVertexArray(self.vao);
             gl::UseProgram(self.program);
+
+            wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+            defer!({
+                wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+            });
+
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, self.texture);
 
