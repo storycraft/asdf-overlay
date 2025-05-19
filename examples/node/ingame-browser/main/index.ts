@@ -91,6 +91,7 @@ async function createOverlayWindow(pid: number) {
           mainWindow.webContents.openDevTools();
         }
 
+        // block all inputs reaching window and listen
         overlay.blockInput(hwnd, block);
         return;
       }
