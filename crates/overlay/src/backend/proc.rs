@@ -59,7 +59,7 @@ fn block_proc_input(
 
         // stop input capture when user request to
         msg::WM_CLOSE => {
-            backend.block_input(false);
+            backend.set_input_blocking(false);
         }
 
         // ignore mouse inputs
@@ -241,21 +241,25 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 
     let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
 
-    if msg == msg::WM_WINDOWPOSCHANGED {
-        let new_size = get_client_size(hwnd).unwrap();
-        if backend.size != new_size {
-            backend.size = new_size;
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: backend.hwnd,
-                event: WindowEvent::Resized {
-                    width: backend.size.0,
-                    height: backend.size.1,
-                },
-            });
+    match msg {
+        msg::WM_WINDOWPOSCHANGED => {
+            let new_size = get_client_size(hwnd).unwrap();
+            if backend.size != new_size {
+                backend.size = new_size;
+                Overlay::emit_event(ClientEvent::Window {
+                    hwnd: backend.hwnd,
+                    event: WindowEvent::Resized {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
+                });
+            }
         }
+
+        _ => {}
     }
 
-    if backend.listening_cursor() {
+    if backend.capturing_cursor() {
         // We want to skip events for non client area so listen in WndProc
         process_mouse_capture(&mut backend, msg, wparam, lparam);
     }
@@ -312,14 +316,14 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             emit_key_input!(InputState::Pressed);
-            if backend.blocking_state.is_input_blocking() {
+            if backend.blocking_state.is_blocking() {
                 redirect_msg_to(HWND(backend.hwnd as _), msg);
             }
             return;
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             emit_key_input!(InputState::Released);
-            if backend.blocking_state.is_input_blocking() {
+            if backend.blocking_state.is_blocking() {
                 redirect_msg_to(HWND(backend.hwnd as _), msg);
             }
             return;
@@ -348,7 +352,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
         _ => return,
     }
 
-    if backend.blocking_state.is_input_blocking() {
+    if backend.blocking_state.is_blocking() {
         // nullify handled message on blocking
         *msg = MSG {
             hwnd: HWND::default(),

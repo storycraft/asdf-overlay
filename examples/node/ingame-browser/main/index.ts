@@ -48,7 +48,7 @@ async function createOverlayWindow(pid: number) {
 
   const hwnd = await new Promise<number>((resolve) => overlay.event.once('added', resolve));
 
-  // listen keyboard events
+  // always listen keyboard events
   await overlay.listenInput(hwnd, false, true);
 
   overlay.event.on('cursor_input', (_, input) => {
@@ -62,7 +62,7 @@ async function createOverlayWindow(pid: number) {
     overlay.setBlockingCursor(hwnd, toCursor(type));
   });
 
-  let inputBlock = false;
+  let blocking = false;
 
   let shiftState: InputState = 'Released';
   let aState: InputState = 'Released';
@@ -79,9 +79,9 @@ async function createOverlayWindow(pid: number) {
 
       // when Left Shift + A is pressed. show window and start blocking.
       if (shiftState === aState && shiftState === 'Pressed') {
-        inputBlock = !inputBlock;
+        blocking = !blocking;
 
-        if (inputBlock) {
+        if (blocking) {
           // do full repaint
           mainWindow.webContents.invalidate();
           mainWindow.webContents.startPainting();
@@ -91,14 +91,12 @@ async function createOverlayWindow(pid: number) {
           mainWindow.webContents.openDevTools();
         }
 
-        overlay.blockInput(hwnd, inputBlock);
-        // always listen keyboard input, but enable cursor only while blocking
-        overlay.listenInput(hwnd, inputBlock, true);
+        overlay.setInputBlocking(hwnd, blocking);
         return;
       }
     }
 
-    if (!inputBlock) {
+    if (!blocking) {
       return;
     }
 
@@ -110,7 +108,7 @@ async function createOverlayWindow(pid: number) {
 
   // always listen for `input_blocking_ended` because user can cancel blocking
   overlay.event.on('input_blocking_ended', () => {
-    inputBlock = false;
+    blocking = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
     overlay.clearSurface();

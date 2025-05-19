@@ -118,11 +118,11 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 )?;
             }
 
-            Request::BlockInput(cmd) => {
+            Request::SetInputBlocking(cmd) => {
                 client.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
-                        backend.block_input(cmd.block);
+                        backend.set_input_blocking(cmd.blocking);
                     })
                     .is_some(),
                 )?;

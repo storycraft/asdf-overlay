@@ -4,7 +4,7 @@ use anyhow::{Context, bail};
 use asdf_overlay_client::{
     common::{
         event::{ClientEvent, WindowEvent},
-        request::BlockInput,
+        request::SetInputBlocking,
     },
     inject,
     process::OwnedProcess,
@@ -43,8 +43,11 @@ async fn main() -> anyhow::Result<()> {
         bail!("failed to receive main window");
     };
 
-    conn.block_input(BlockInput { hwnd, block: true })
-        .await?;
+    conn.set_input_blocking(SetInputBlocking {
+        hwnd,
+        blocking: true,
+    })
+    .await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);
