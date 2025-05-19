@@ -1,5 +1,5 @@
 pub mod cx;
-mod proc;
+pub mod proc;
 pub mod renderers;
 
 use core::mem;
@@ -16,27 +16,22 @@ use asdf_overlay_common::{
 use cx::DrawContext;
 use dashmap::mapref::multiple::{RefMulti, RefMutMulti};
 use once_cell::sync::Lazy;
-use proc::{call_wnd_proc_hook, hooked_wnd_proc};
+use proc::hooked_wnd_proc;
 use renderers::Renderer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW,
-        WH_GETMESSAGE, WNDPROC,
-    },
+    UI::WindowsAndMessaging::{GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, WNDPROC},
 };
 
 use crate::{app::Overlay, types::IntDashMap, util::get_client_size};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: IntDashMap::default(),
-    thread_hook_map: IntDashMap::default(),
 });
 
 pub struct Backends {
     map: IntDashMap<u32, WindowBackend>,
-    thread_hook_map: IntDashMap<u32, usize>,
 }
 
 impl Backends {
@@ -67,14 +62,6 @@ impl Backends {
             if hwnd_thread == 0 {
                 bail!("GetWindowThreadProcessId failed");
             }
-
-            BACKENDS
-                .thread_hook_map
-                .entry(hwnd_thread)
-                .or_try_insert_with(|| unsafe {
-                    SetWindowsHookExW(WH_GETMESSAGE, Some(call_wnd_proc_hook), None, hwnd_thread)
-                        .map(|res| res.0 as usize)
-                })?;
 
             let original_proc: WNDPROC = unsafe {
                 mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(

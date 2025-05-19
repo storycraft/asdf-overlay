@@ -23,7 +23,6 @@ use tracing::trace;
 use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    System::Threading::GetCurrentThreadId,
     UI::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
@@ -31,9 +30,8 @@ use windows::Win32::{
             KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_F10, VK_MENU},
         },
         WindowsAndMessaging::{
-            self as msg, CallNextHookEx, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            HHOOK, MSG, SetCursor, ShowCursor, UnhookWindowsHookEx, WM_NCDESTROY, WM_NULL, WM_QUIT,
-            XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor, MSG, SetCursor,
+            ShowCursor, WM_NCDESTROY, XBUTTON1,
         },
     },
 };
@@ -42,7 +40,7 @@ use windows::Win32::{
 fn block_proc_input(
     backend: &mut WindowBackend,
     msg: u32,
-    wparam: WPARAM,
+    _wparam: WPARAM,
     lparam: LPARAM,
 ) -> Option<LRESULT> {
     match msg {
@@ -78,19 +76,6 @@ fn block_proc_input(
         | msg::WM_RBUTTONDBLCLK => {}
 
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP | msg::WM_XBUTTONDBLCLK => return Some(LRESULT(1)),
-
-        // ignore key input
-        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN | msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            let key = wparam.0 as u16;
-            // ignore f10, or menu key
-            // Default proc try to open non existent menu on some app and freezes window
-            if key == VK_F10.0 || key == VK_MENU.0 {
-                return Some(LRESULT(0));
-            }
-
-            // let default proc handle
-            return Some(unsafe { DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam) });
-        }
 
         // ignore raw input (ignoring in hook leak handle)
         msg::WM_INPUT => {}
@@ -290,41 +275,41 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 }
 
 #[inline]
-fn process_call_wnd_proc_hook(backend: &mut WindowBackend, msg: &mut MSG) {
-    if backend.listening_keyboard() {
-        process_keyboard_listen(backend, msg);
-    }
-}
+fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRESULT> {
+    fn emit_key_input(
+        backend: &mut WindowBackend,
+        msg: &MSG,
+        state: InputState,
+    ) -> Option<LRESULT> {
+        if let Some(key) = to_key(msg.wParam, msg.lParam) {
+            Overlay::emit_event(keyboard_input(
+                backend.hwnd,
+                KeyboardInput::Key { key, state },
+            ));
 
-#[inline]
-fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
-    macro_rules! emit_key_input {
-        ($state:expr $(,)?) => {{
-            if let Some(key) = to_key(msg.wParam, msg.lParam) {
-                Overlay::emit_event(keyboard_input(
-                    backend.hwnd,
-                    KeyboardInput::Key { key, state: $state },
-                ));
+            let key = msg.wParam.0 as u16;
+            // ignore f10, or menu key
+            // Default proc try to open non existent menu on some app and freezes window
+            if key == VK_F10.0 || key == VK_MENU.0 {
+                return None;
             }
-        }};
+
+            Some(unsafe { DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam) })
+        } else {
+            None
+        }
     }
 
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            emit_key_input!(InputState::Pressed);
-            if backend.blocking_state.is_input_blocking() {
-                redirect_msg_to(HWND(backend.hwnd as _), msg);
-            }
-            return;
-        }
-        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            emit_key_input!(InputState::Released);
-            if backend.blocking_state.is_input_blocking() {
-                redirect_msg_to(HWND(backend.hwnd as _), msg);
-            }
-            return;
+            return emit_key_input(backend, msg, InputState::Pressed);
         }
 
+        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+            return emit_key_input(backend, msg, InputState::Released);
+        }
+
+        // unicode characters are handled in WM_IME_COMPOSITION
         msg::WM_CHAR | msg::WM_SYSCHAR => {
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
                 Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
@@ -345,53 +330,33 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
         | msg::WM_SYSDEADCHAR
         | msg::WM_UNICHAR => {}
 
-        _ => return,
+        _ => return None,
     }
 
     if backend.blocking_state.is_input_blocking() {
-        // nullify handled message on blocking
-        *msg = MSG {
-            hwnd: HWND::default(),
-            message: WM_NULL,
-            wParam: WPARAM(0),
-            lParam: LPARAM(0),
-            time: msg.time,
-            pt: msg.pt,
-        };
+        Some(LRESULT(0))
+    } else {
+        None
     }
 }
 
-#[tracing::instrument]
-pub(super) unsafe extern "system" fn call_wnd_proc_hook(
-    ncode: i32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    trace!("GetMsgProc hook called");
-
-    // only check message being removed from the queue
-    if wparam.0 == 1 && ncode == 0 {
-        let msg = unsafe { &mut *(lparam.0 as *mut MSG) };
-
-        if msg.message == WM_QUIT {
-            // remove hook
-            if let Some((_, hhook)) = BACKENDS
-                .thread_hook_map
-                .remove(&unsafe { GetCurrentThreadId() })
-            {
-                _ = unsafe { UnhookWindowsHookEx(HHOOK(hhook as _)) };
+pub(crate) fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
+    if !msg.hwnd.is_invalid() {
+        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
+        if let Some(ret) = Backends::with_backend(root_hwnd, |backend| {
+            if backend.listening_keyboard() {
+                process_keyboard_listen(backend, msg)
+            } else {
+                None
             }
-        }
-
-        if !msg.hwnd.is_invalid() {
-            let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-            _ = Backends::with_backend(root_hwnd, |backend| {
-                process_call_wnd_proc_hook(backend, msg)
-            });
+        })
+        .flatten()
+        {
+            return Some(ret);
         }
     }
 
-    unsafe { CallNextHookEx(None, ncode, wparam, lparam) }
+    None
 }
 
 #[inline(always)]
@@ -409,13 +374,6 @@ fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
     ClientEvent::Window {
         hwnd,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
-    }
-}
-
-#[inline]
-fn redirect_msg_to(hwnd: HWND, msg: &mut MSG) {
-    if msg.hwnd != hwnd {
-        msg.hwnd = hwnd;
     }
 }
 
