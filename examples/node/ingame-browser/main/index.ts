@@ -62,7 +62,7 @@ async function createOverlayWindow(pid: number) {
     overlay.setBlockingCursor(hwnd, toCursor(type));
   });
 
-  let blocking = false;
+  let block = false;
 
   let shiftState: InputState = 'Released';
   let aState: InputState = 'Released';
@@ -79,9 +79,9 @@ async function createOverlayWindow(pid: number) {
 
       // when Left Shift + A is pressed. show window and start blocking.
       if (shiftState === aState && shiftState === 'Pressed') {
-        blocking = !blocking;
+        block = !block;
 
-        if (blocking) {
+        if (block) {
           // do full repaint
           mainWindow.webContents.invalidate();
           mainWindow.webContents.startPainting();
@@ -91,12 +91,12 @@ async function createOverlayWindow(pid: number) {
           mainWindow.webContents.openDevTools();
         }
 
-        overlay.setInputBlocking(hwnd, blocking);
+        overlay.blockInput(hwnd, block);
         return;
       }
     }
 
-    if (!blocking) {
+    if (!block) {
       return;
     }
 
@@ -108,7 +108,7 @@ async function createOverlayWindow(pid: number) {
 
   // always listen for `input_blocking_ended` because user can cancel blocking
   overlay.event.on('input_blocking_ended', () => {
-    blocking = false;
+    block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
     overlay.clearSurface();
