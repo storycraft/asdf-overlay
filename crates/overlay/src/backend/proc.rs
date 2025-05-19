@@ -333,7 +333,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
         _ => return None,
     }
 
-    if backend.blocking_state.is_blocking() {
+    if backend.blocking_state.is_input_blocking() {
         Some(LRESULT(0))
     } else {
         None
