@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     let Some(ClientEvent::Window {
         hwnd,
-        event: WindowEvent::Added,
+        event: WindowEvent::Added { .. },
     }) = event.recv().await
     else {
         bail!("failed to receive main window");

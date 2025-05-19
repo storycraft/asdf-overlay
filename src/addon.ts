@@ -32,8 +32,6 @@ export type Addon = {
     cursor?: Cursor,
   ): Promise<void>,
 
-  overlayGetSize(id: number, hwnd: number): Promise<[width: number, height: number] | null>,
-
   overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
   overlayUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
   overlayClearSurface(id: number): Promise<void>,

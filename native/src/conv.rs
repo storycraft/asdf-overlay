@@ -31,8 +31,12 @@ pub fn emit_event<'a>(
 
     match event {
         ClientEvent::Window { hwnd, event } => match event {
-            WindowEvent::Added => {
-                builder.arg(cx.string("added")).arg(cx.number(hwnd));
+            WindowEvent::Added { width, height } => {
+                builder
+                    .arg(cx.string("added"))
+                    .arg(cx.number(hwnd))
+                    .arg(cx.number(width))
+                    .arg(cx.number(height));
             }
             WindowEvent::Resized { width, height } => {
                 builder

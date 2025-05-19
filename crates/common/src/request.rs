@@ -9,7 +9,6 @@ pub enum Request {
     SetPosition(SetPosition),
     SetAnchor(SetAnchor),
     SetMargin(SetMargin),
-    GetSize(GetSize),
     ListenInput(ListenInput),
     BlockInput(BlockInput),
     SetBlockingCursor(SetBlockingCursor),

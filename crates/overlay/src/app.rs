@@ -97,13 +97,6 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 client.reply(id, ())?;
             }
 
-            Request::GetSize(get_size) => {
-                client.reply(
-                    id,
-                    Backends::with_backend(HWND(get_size.hwnd as _), |backend| backend.size),
-                )?;
-            }
-
             Request::ListenInput(cmd) => {
                 client.reply(
                     id,
@@ -172,7 +165,10 @@ pub async fn app(addr: &str) {
             for backend in Backends::iter() {
                 _ = emitter.emit(ClientEvent::Window {
                     hwnd: *backend.key() as _,
-                    event: WindowEvent::Added,
+                    event: WindowEvent::Added {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
                 });
             }
             debug!("initial data sent");

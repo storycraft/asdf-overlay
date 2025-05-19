@@ -14,7 +14,7 @@ use asdf_overlay_client::{
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
         request::{
-            BlockInput, GetSize, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
+            BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
             UpdateSharedHandle,
         },
     },
@@ -218,47 +218,6 @@ fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     }
 }
 
-fn overlay_get_size(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
-
-    let (deferred, promise) = cx.promise();
-    rt.spawn(async move {
-        let res = try_with_ipc(id, async move |conn| conn.get_size(GetSize { hwnd }).await).await;
-
-        match res {
-            Ok(Some(size)) => {
-                deferred.settle_with(&channel, move |mut cx| {
-                    Ok({
-                        let arr = cx.empty_array();
-                        let width = cx.number(size.0);
-                        arr.set(&mut cx, 0, width)?;
-                        let height = cx.number(size.1);
-                        arr.set(&mut cx, 1, height)?;
-
-                        arr
-                    })
-                });
-            }
-
-            Ok(None) => {
-                deferred.settle_with(&channel, |mut cx| Ok(cx.null()));
-            }
-
-            Err(err) => {
-                deferred.settle_with(&channel, move |mut cx| {
-                    cx.throw_error::<_, Handle<'_, JsValue>>(format!("{err:?}"))
-                });
-            }
-        }
-    });
-
-    Ok(promise)
-}
-
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
@@ -450,8 +409,6 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlayListenInput", overlay_listen_input)?;
     cx.export_function("overlayBlockInput", overlay_block_input)?;
     cx.export_function("overlaySetBlockingCursor", overlay_set_blocking_cursor)?;
-
-    cx.export_function("overlayGetSize", overlay_get_size)?;
 
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
     cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;

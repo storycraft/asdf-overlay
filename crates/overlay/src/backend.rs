@@ -88,7 +88,10 @@ impl Backends {
 
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: key,
-                event: WindowEvent::Added,
+                event: WindowEvent::Added {
+                    width: size.0,
+                    height: size.1,
+                },
             });
 
             BACKENDS.map.entry(key).insert(WindowBackend {

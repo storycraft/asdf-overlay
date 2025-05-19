@@ -42,7 +42,7 @@ function loadAddon(): Addon {
 const idSym: unique symbol = Symbol("id");
 
 export type OverlayEventEmitter = EventEmitter<{
-  'added': [hwnd: number],
+  'added': [hwnd: number, width: number, height: number],
   'resized': [hwnd: number, width: number, height: number],
   'cursor_input': [hwnd: number, input: CursorInput],
   'keyboard_input': [hwnd: number, input: KeyboardInput],
@@ -131,16 +131,6 @@ export class Overlay {
     cursor?: Cursor,
   ) {
     await addon.overlaySetBlockingCursor(this[idSym], hwnd, cursor);
-  }
-
-  /**
-   * Get overlay window size
-   * @param hwnd
-   */
-  async getSize(
-    hwnd: number
-  ): Promise<[width: number, height: number] | null> {
-    return await addon.overlayGetSize(this[idSym], hwnd);
   }
 
   /**

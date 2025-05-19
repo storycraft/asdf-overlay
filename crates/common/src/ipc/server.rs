@@ -14,7 +14,7 @@ use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
     request::{
-        BlockInput, GetSize, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin,
+        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin,
         SetPosition, UpdateSharedHandle,
     },
 };
@@ -170,9 +170,6 @@ requests! {
 
     /// Set overlay margin
     set_margin(SetMargin) -> ();
-
-    /// Get overlay size
-    get_size(GetSize) -> Option<(u32, u32)>;
 
     /// Listen input events
     listen_input(ListenInput) -> bool;

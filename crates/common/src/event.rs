@@ -11,7 +11,7 @@ pub enum ClientEvent {
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum WindowEvent {
     // Window is hooked and added
-    Added,
+    Added { width: u32, height: u32 },
 
     // Window is resized
     Resized { width: u32, height: u32 },
