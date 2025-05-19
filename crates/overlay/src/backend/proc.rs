@@ -75,7 +75,7 @@ fn block_proc_input(
         | msg::WM_MBUTTONDBLCLK
         | msg::WM_RBUTTONDBLCLK => {}
 
-        msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => return Some(LRESULT(1)),
+        msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP | msg::WM_XBUTTONDBLCLK => return Some(LRESULT(1)),
 
         // ignore raw input (ignoring in hook leak handle)
         msg::WM_INPUT => {}
