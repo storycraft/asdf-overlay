@@ -14,7 +14,8 @@ use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
     request::{
-        GetSize, ListenInputEvent, Request, SetAnchor, SetBlockingCursor, SetInputBlocking, SetMargin, SetPosition, UpdateSharedHandle
+        BlockInput, GetSize, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin,
+        SetPosition, UpdateSharedHandle,
     },
 };
 
@@ -174,10 +175,10 @@ requests! {
     get_size(GetSize) -> Option<(u32, u32)>;
 
     /// Listen input events
-    listen_input(ListenInputEvent) -> bool;
+    listen_input(ListenInput) -> bool;
 
     /// Block input events from reaching window and listen all input events
-    set_input_blocking(SetInputBlocking) -> bool;
+    block_input(BlockInput) -> bool;
 
     /// Set cursor of a window being input captured
     set_blocking_cursor(SetBlockingCursor) -> bool;

@@ -14,8 +14,8 @@ use asdf_overlay_client::{
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
         request::{
-            GetSize, ListenInputEvent, SetAnchor, SetBlockingCursor, SetInputBlocking, SetMargin,
-            SetPosition, UpdateSharedHandle,
+            BlockInput, GetSize, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
+            UpdateSharedHandle,
         },
     },
     inject,
@@ -379,7 +379,7 @@ fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.listen_input(ListenInputEvent {
+            conn.listen_input(ListenInput {
                 hwnd,
                 cursor,
                 keyboard,
@@ -391,16 +391,15 @@ fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     )
 }
 
-fn overlay_set_input_blocking(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_block_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-    let blocking = cx.argument::<JsBoolean>(2)?.value(&mut cx);
+    let block = cx.argument::<JsBoolean>(2)?.value(&mut cx);
 
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.set_input_blocking(SetInputBlocking { hwnd, blocking })
-                .await?;
+            conn.block_input(BlockInput { hwnd, block }).await?;
 
             Ok(())
         }),
@@ -449,7 +448,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
     cx.export_function("overlayListenInput", overlay_listen_input)?;
-    cx.export_function("overlaySetInputBlocking", overlay_set_input_blocking)?;
+    cx.export_function("overlayBlockInput", overlay_block_input)?;
     cx.export_function("overlaySetBlockingCursor", overlay_set_blocking_cursor)?;
 
     cx.export_function("overlayGetSize", overlay_get_size)?;

@@ -157,7 +157,7 @@ impl WindowBackend {
     }
 
     #[inline]
-    fn capturing_cursor(&self) -> bool {
+    fn listening_cursor(&self) -> bool {
         self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_blocking()
     }
 
@@ -166,12 +166,12 @@ impl WindowBackend {
         self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_blocking()
     }
 
-    pub fn set_input_blocking(&mut self, blocking: bool) {
-        if !self.blocking_state.change(blocking) {
+    pub fn block_input(&mut self, block: bool) {
+        if !self.blocking_state.change(block) {
             return;
         }
 
-        if !blocking {
+        if !block {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
