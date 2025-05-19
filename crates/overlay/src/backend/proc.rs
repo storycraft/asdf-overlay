@@ -312,14 +312,14 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             emit_key_input!(InputState::Pressed);
-            if backend.blocking_state.is_blocking() {
+            if backend.blocking_state.is_input_blocking() {
                 redirect_msg_to(HWND(backend.hwnd as _), msg);
             }
             return;
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             emit_key_input!(InputState::Released);
-            if backend.blocking_state.is_blocking() {
+            if backend.blocking_state.is_input_blocking() {
                 redirect_msg_to(HWND(backend.hwnd as _), msg);
             }
             return;
@@ -348,7 +348,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &mut MSG) {
         _ => return,
     }
 
-    if backend.blocking_state.is_blocking() {
+    if backend.blocking_state.is_input_blocking() {
         // nullify handled message on blocking
         *msg = MSG {
             hwnd: HWND::default(),
