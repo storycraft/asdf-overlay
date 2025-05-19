@@ -14,8 +14,8 @@ use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
     request::{
-        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin,
-        SetPosition, UpdateSharedHandle,
+        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
+        UpdateSharedHandle,
     },
 };
 
