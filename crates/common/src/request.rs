@@ -2,16 +2,16 @@ use core::{fmt::Debug, num::NonZeroUsize};
 
 use bincode::{Decode, Encode};
 
-use crate::{cursor::Cursor, key::Key, size::PercentLength};
+use crate::{cursor::Cursor, size::PercentLength};
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum Request {
     SetPosition(SetPosition),
     SetAnchor(SetAnchor),
     SetMargin(SetMargin),
-    GetSize(GetSize),
-    SetInputCaptureKeybind(SetInputCaptureKeybind),
-    SetCaptureCursor(SetCaptureCursor),
+    ListenInput(ListenInput),
+    BlockInput(BlockInput),
+    SetBlockingCursor(SetBlockingCursor),
     UpdateSharedHandle(UpdateSharedHandle),
 }
 
@@ -49,29 +49,35 @@ impl SetMargin {
     }
 }
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
 /// Get size of overlay window
 pub struct GetSize {
     pub hwnd: u32,
 }
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-/// Set input capture keybind of a window
-pub struct SetInputCaptureKeybind {
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+/// Listen input events of a window
+pub struct ListenInput {
     pub hwnd: u32,
-
-    // keyboard scan code each slot, up to 4 keys
-    pub keybind: [Option<Key>; 4],
+    pub cursor: bool,
+    pub keyboard: bool,
 }
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
-/// Set cursor of a window being input captured
-pub struct SetCaptureCursor {
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+/// Block input events from reaching window and listen all input events
+pub struct BlockInput {
+    pub hwnd: u32,
+    pub block: bool,
+}
+
+#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+/// Set cursor while input is blocked
+pub struct SetBlockingCursor {
     pub hwnd: u32,
     pub cursor: Option<Cursor>,
 }
 
-#[derive(Debug, Encode, Decode, Clone, PartialEq)]
+#[derive(Debug, Encode, Decode, Clone, PartialEq, Eq)]
 /// Update overlay to new texture using shared dx11 texture handle
 pub struct UpdateSharedHandle {
     pub handle: Option<NonZeroUsize>,

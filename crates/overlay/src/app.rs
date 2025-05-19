@@ -12,7 +12,11 @@ use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::Win32::Foundation::HWND;
 
-use crate::{backend::Backends, hook, util::with_dummy_hwnd};
+use crate::{
+    backend::{Backends, ListenInputFlags},
+    hook,
+    util::with_dummy_hwnd,
+};
 
 static CURRENT: RwLock<OverlayState> = RwLock::new(OverlayState::Disabled);
 
@@ -93,28 +97,35 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                 client.reply(id, ())?;
             }
 
-            Request::GetSize(get_size) => {
-                client.reply(
-                    id,
-                    Backends::with_backend(HWND(get_size.hwnd as _), |backend| backend.size),
-                )?;
-            }
-
-            Request::SetInputCaptureKeybind(cmd) => {
+            Request::ListenInput(cmd) => {
                 client.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
-                        backend.set_input_capture_keybind(cmd.keybind);
+                        let mut flags = ListenInputFlags::empty();
+                        flags.set(ListenInputFlags::CURSOR, cmd.cursor);
+                        flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+
+                        backend.listen_input = flags;
                     })
                     .is_some(),
                 )?;
             }
 
-            Request::SetCaptureCursor(cmd) => {
+            Request::BlockInput(cmd) => {
                 client.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
-                        backend.capture_cursor = cmd.cursor;
+                        backend.block_input(cmd.block);
+                    })
+                    .is_some(),
+                )?;
+            }
+
+            Request::SetBlockingCursor(cmd) => {
+                client.reply(
+                    id,
+                    Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
+                        backend.blocking_cursor = cmd.cursor;
                     })
                     .is_some(),
                 )?;
@@ -154,7 +165,10 @@ pub async fn app(addr: &str) {
             for backend in Backends::iter() {
                 _ = emitter.emit(ClientEvent::Window {
                     hwnd: *backend.key() as _,
-                    event: WindowEvent::Added,
+                    event: WindowEvent::Added {
+                        width: backend.size.0,
+                        height: backend.size.1,
+                    },
                 });
             }
             debug!("initial data sent");

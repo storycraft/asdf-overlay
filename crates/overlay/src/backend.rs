@@ -11,10 +11,8 @@ use asdf_overlay_common::{
         ClientEvent, WindowEvent,
         input::{CursorEvent, CursorInput, InputEvent},
     },
-    key::Key,
     request::UpdateSharedHandle,
 };
-use bitvec::{BitArr, array::BitArray};
 use cx::DrawContext;
 use dashmap::mapref::multiple::{RefMulti, RefMutMulti};
 use once_cell::sync::Lazy;
@@ -24,7 +22,7 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
-        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW, ShowCursor,
+        GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, SetWindowsHookExW,
         WH_GETMESSAGE, WNDPROC,
     },
 };
@@ -90,18 +88,21 @@ impl Backends {
 
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: key,
-                event: WindowEvent::Added,
+                event: WindowEvent::Added {
+                    width: size.0,
+                    height: size.1,
+                },
             });
 
             BACKENDS.map.entry(key).insert(WindowBackend {
                 hwnd: key,
                 original_proc,
 
-                input_capture_keybind: [None; 4],
-                capturing_input: false,
-                key_states: BitArray::ZERO,
+                listen_input: ListenInputFlags::empty(),
+                blocking_state: BlockingState::None,
+                blocking_cursor: Some(Cursor::Default),
+
                 cursor_state: CursorState::Outside,
-                capture_cursor: None,
 
                 pending_handle: None,
                 size,
@@ -134,11 +135,11 @@ pub struct WindowBackend {
     hwnd: u32,
     original_proc: WNDPROC,
 
-    input_capture_keybind: [Option<Key>; 4],
-    capturing_input: bool,
-    key_states: BitArr!(for 512),
+    pub listen_input: ListenInputFlags,
+    blocking_state: BlockingState,
+    pub blocking_cursor: Option<Cursor>,
+
     cursor_state: CursorState,
-    pub capture_cursor: Option<Cursor>,
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
@@ -147,39 +148,33 @@ pub struct WindowBackend {
 }
 
 impl WindowBackend {
-    pub fn set_input_capture_keybind(&mut self, keybind: [Option<Key>; 4]) {
-        self.input_capture_keybind = keybind;
-        if !keybind.iter().any(|item| item.is_some()) {
-            self.set_input_capture(false);
-        }
-    }
-
-    #[inline]
-    pub fn capturing_input(&self) -> bool {
-        self.capturing_input
-    }
-
     #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
         trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
         mem::take(&mut self.cx);
         mem::take(&mut self.renderer);
         self.pending_handle.take();
-        self.input_capture_keybind = [None; 4];
-        self.capturing_input = false;
+        self.listen_input = ListenInputFlags::empty();
+        self.blocking_state.change(false);
+        self.blocking_cursor = Some(Cursor::Default);
     }
 
-    fn set_input_capture(&mut self, input_capture: bool) {
-        if self.capturing_input == input_capture {
+    #[inline]
+    fn listening_cursor(&self) -> bool {
+        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_blocking()
+    }
+
+    #[inline]
+    fn listening_keyboard(&self) -> bool {
+        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_blocking()
+    }
+
+    pub fn block_input(&mut self, block: bool) {
+        if !self.blocking_state.change(block) {
             return;
         }
 
-        if input_capture {
-            Overlay::emit_event(ClientEvent::Window {
-                hwnd: self.hwnd,
-                event: WindowEvent::InputCaptureStart,
-            });
-        } else {
+        if !block {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
@@ -195,56 +190,62 @@ impl WindowBackend {
 
             Overlay::emit_event(ClientEvent::Window {
                 hwnd: self.hwnd,
-                event: WindowEvent::InputCaptureEnd,
+                event: WindowEvent::InputBlockingEnded,
             });
+
+            self.blocking_cursor = Some(Cursor::Default);
         }
-        self.capturing_input = input_capture;
-
-        // show cursor while capturing input
-        // TODO: ensure ShowCursor is run on target window thread
-        unsafe { ShowCursor(input_capture) };
-        // reset cursor
-        self.capture_cursor = Some(Cursor::Default);
-    }
-
-    fn update_key_state(&mut self, key: Key, value: bool) {
-        #[inline]
-        fn index(key: Key) -> usize {
-            if key.extended {
-                256 + key.code.get() as usize
-            } else {
-                key.code.get() as usize
-            }
-        }
-
-        self.key_states.set(index(key), value);
-
-        if !value || !self.input_capture_keybind.contains(&Some(key)) {
-            return;
-        }
-
-        for keybind_key in self.input_capture_keybind {
-            match keybind_key {
-                Some(keybind_key) => {
-                    if !self.key_states[index(keybind_key)] {
-                        return;
-                    }
-                }
-                None => continue,
-            }
-        }
-
-        // toggle input capture
-        self.set_input_capture(!self.capturing_input);
-    }
-
-    fn reset_key_states(&mut self) {
-        self.key_states = BitArray::ZERO;
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum CursorState {
+enum CursorState {
     Inside(i16, i16),
     Outside,
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ListenInputFlags: u8 {
+        const CURSOR = 0b00000001;
+        const KEYBOARD = 0b00000010;
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BlockingState {
+    // Not Blocking
+    None,
+
+    // Start blocking, setup cursor and ime
+    StartBlocking,
+
+    // Blocking
+    Blocking,
+
+    // End blocking, cleanup
+    StopBlocking,
+}
+
+impl BlockingState {
+    #[inline]
+    fn is_blocking(self) -> bool {
+        matches!(self, Self::StartBlocking | Self::Blocking)
+    }
+
+    /// Change blocking state
+    fn change(&mut self, blocking: bool) -> bool {
+        if self.is_blocking() == blocking {
+            return false;
+        }
+
+        *self = match self {
+            BlockingState::None => BlockingState::StartBlocking,
+            BlockingState::StartBlocking => BlockingState::None,
+            BlockingState::Blocking => BlockingState::StopBlocking,
+            BlockingState::StopBlocking => BlockingState::Blocking,
+        };
+
+        true
+    }
 }

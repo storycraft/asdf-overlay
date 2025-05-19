@@ -14,8 +14,8 @@ use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
     request::{
-        GetSize, Request, SetAnchor, SetCaptureCursor, SetInputCaptureKeybind, SetMargin,
-        SetPosition, UpdateSharedHandle,
+        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
+        UpdateSharedHandle,
     },
 };
 
@@ -171,14 +171,14 @@ requests! {
     /// Set overlay margin
     set_margin(SetMargin) -> ();
 
-    /// Get overlay size
-    get_size(GetSize) -> Option<(u32, u32)>;
+    /// Listen input events
+    listen_input(ListenInput) -> bool;
 
-    /// Set input capture keybind
-    set_input_capture_keybind(SetInputCaptureKeybind) -> bool;
+    /// Block input events from reaching window and listen all input events
+    block_input(BlockInput) -> bool;
 
     /// Set cursor of a window being input captured
-    set_capture_cursor(SetCaptureCursor) -> bool;
+    set_blocking_cursor(SetBlockingCursor) -> bool;
 
     /// Update overlay surface
     update_shtex(UpdateSharedHandle) -> ();

@@ -13,9 +13,8 @@ use asdf_overlay_client::{
         cursor::Cursor,
         event::ClientEvent,
         ipc::server::{IpcServerConn, IpcServerEventStream},
-        key::Key,
         request::{
-            GetSize, SetAnchor, SetCaptureCursor, SetInputCaptureKeybind, SetMargin, SetPosition,
+            BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
             UpdateSharedHandle,
         },
     },
@@ -24,7 +23,7 @@ use asdf_overlay_client::{
     surface::OverlaySurface,
 };
 use bytemuck::pod_read_unaligned;
-use conv::{deserialize_copy_rect, deserialize_key, deserialize_percent_length, emit_event};
+use conv::{deserialize_copy_rect, deserialize_percent_length, emit_event};
 use dashmap::DashMap;
 use mimalloc::MiMalloc;
 use neon::{prelude::*, types::buffer::TypedArray};
@@ -219,47 +218,6 @@ fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     }
 }
 
-fn overlay_get_size(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-
-    let rt = runtime(&mut cx)?;
-    let channel = cx.channel();
-
-    let (deferred, promise) = cx.promise();
-    rt.spawn(async move {
-        let res = try_with_ipc(id, async move |conn| conn.get_size(GetSize { hwnd }).await).await;
-
-        match res {
-            Ok(Some(size)) => {
-                deferred.settle_with(&channel, move |mut cx| {
-                    Ok({
-                        let arr = cx.empty_array();
-                        let width = cx.number(size.0);
-                        arr.set(&mut cx, 0, width)?;
-                        let height = cx.number(size.1);
-                        arr.set(&mut cx, 1, height)?;
-
-                        arr
-                    })
-                });
-            }
-
-            Ok(None) => {
-                deferred.settle_with(&channel, |mut cx| Ok(cx.null()));
-            }
-
-            Err(err) => {
-                deferred.settle_with(&channel, move |mut cx| {
-                    cx.throw_error::<_, Handle<'_, JsValue>>(format!("{err:?}"))
-                });
-            }
-        }
-    });
-
-    Ok(promise)
-}
-
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
@@ -371,38 +329,43 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-fn overlay_set_input_capture_keybind(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
-    let keybind = cx.argument::<JsArray>(2)?;
-    let keybind = deserialize_keybind(&mut cx, keybind)?;
+    let cursor = cx.argument::<JsBoolean>(2)?.value(&mut cx);
+    let keyboard = cx.argument::<JsBoolean>(3)?.value(&mut cx);
 
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.set_input_capture_keybind(SetInputCaptureKeybind { hwnd, keybind })
-                .await?;
+            conn.listen_input(ListenInput {
+                hwnd,
+                cursor,
+                keyboard,
+            })
+            .await?;
 
             Ok(())
         }),
     )
 }
 
-fn deserialize_keybind<'a>(
-    cx: &mut impl Context<'a>,
-    array: Handle<'a, JsArray>,
-) -> NeonResult<[Option<Key>; 4]> {
-    let mut de = |index: u32| {
-        array
-            .get_opt::<JsObject, _, _>(cx, index)?
-            .map(|obj| deserialize_key(cx, obj))
-            .transpose()
-    };
+fn overlay_block_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let block = cx.argument::<JsBoolean>(2)?.value(&mut cx);
 
-    Ok([de(0)?, de(1)?, de(2)?, de(3)?])
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.block_input(BlockInput { hwnd, block }).await?;
+
+            Ok(())
+        }),
+    )
 }
 
-fn overlay_set_capture_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx
@@ -425,7 +388,7 @@ fn overlay_set_capture_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.set_capture_cursor(SetCaptureCursor { hwnd, cursor })
+            conn.set_blocking_cursor(SetBlockingCursor { hwnd, cursor })
                 .await?;
 
             Ok(())
@@ -443,13 +406,9 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetPosition", overlay_set_position)?;
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
-    cx.export_function(
-        "overlaySetInputCaptureKeybind",
-        overlay_set_input_capture_keybind,
-    )?;
-    cx.export_function("overlaySetCaptureCursor", overlay_set_capture_cursor)?;
-
-    cx.export_function("overlayGetSize", overlay_get_size)?;
+    cx.export_function("overlayListenInput", overlay_listen_input)?;
+    cx.export_function("overlayBlockInput", overlay_block_input)?;
+    cx.export_function("overlaySetBlockingCursor", overlay_set_blocking_cursor)?;
 
     cx.export_function("overlayUpdateBitmap", overlay_update_bitmap)?;
     cx.export_function("overlayUpdateShtex", overlay_update_shtex)?;
