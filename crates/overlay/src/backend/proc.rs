@@ -287,17 +287,21 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
                 KeyboardInput::Key { key, state },
             ));
 
-            let key = msg.wParam.0 as u16;
-            // ignore f10, or menu key
-            // Default proc try to open non existent menu on some app and freezes window
-            if key == VK_F10.0 || key == VK_MENU.0 {
-                return None;
-            }
+            if backend.blocking_state.is_input_blocking() {
+                let key = key.code.get() as u16;
+                // ignore f10, or menu key
+                // Default proc try to open non existent menu on some app and freezes window
+                if key == VK_F10.0 || key == VK_MENU.0 {
+                    return None;
+                }
 
-            Some(unsafe { DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam) })
-        } else {
-            None
+                return Some(unsafe {
+                    DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam)
+                });
+            }
         }
+
+        None
     }
 
     match msg.message {
