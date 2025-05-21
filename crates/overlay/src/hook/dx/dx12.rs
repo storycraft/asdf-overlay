@@ -33,7 +33,7 @@ pub fn clear() {
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_execute_command_lists(
+pub extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,
     pp_commmand_lists: *const *mut c_void,

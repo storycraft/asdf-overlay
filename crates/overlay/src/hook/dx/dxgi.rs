@@ -131,7 +131,7 @@ fn cleanup_state(swapchain: &IDXGISwapChain1, hwnd: Option<HWND>) {
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_present(
+pub(super) extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -156,7 +156,7 @@ pub unsafe extern "system" fn hooked_present(
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_create_swapchain(
+pub(super) extern "system" fn hooked_create_swapchain(
     this: *mut c_void,
     device: *mut c_void,
     desc: *const DXGI_SWAP_CHAIN_DESC,
@@ -177,7 +177,7 @@ pub unsafe extern "system" fn hooked_create_swapchain(
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_resize_buffers(
+pub(super) extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
     width: u32,
@@ -212,7 +212,7 @@ pub unsafe extern "system" fn hooked_resize_buffers(
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_present1(
+pub(super) extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,

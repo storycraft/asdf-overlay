@@ -78,7 +78,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 }
 
 #[tracing::instrument]
-unsafe extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
+extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
     let last_hglrc = unsafe { wglGetCurrentContext() };
