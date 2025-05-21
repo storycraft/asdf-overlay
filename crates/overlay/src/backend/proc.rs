@@ -208,7 +208,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 }
 
 #[tracing::instrument]
-pub(super) unsafe extern "system" fn hooked_wnd_proc(
+pub(super) extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,

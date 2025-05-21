@@ -24,7 +24,7 @@ pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
+pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     trace!("EndScene called");
 
     _ = Overlay::with(|overlay| {
@@ -78,7 +78,7 @@ pub unsafe extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
 }
 
 #[tracing::instrument]
-pub unsafe extern "system" fn hooked_reset(
+pub(super) extern "system" fn hooked_reset(
     this: *mut c_void,
     param: *mut D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
