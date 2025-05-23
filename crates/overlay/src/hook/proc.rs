@@ -1,8 +1,14 @@
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
-use windows::Win32::{Foundation::LRESULT, UI::WindowsAndMessaging::MSG};
+use windows::{
+    Win32::{
+        Foundation::LRESULT,
+        UI::WindowsAndMessaging::{GetForegroundWindow, MSG},
+    },
+    core::BOOL,
+};
 
-use crate::backend::proc::dispatch_message;
+use crate::backend::{Backends, proc::dispatch_message};
 
 use super::DetourHook;
 
@@ -10,12 +16,19 @@ use super::DetourHook;
 unsafe extern "system" {
     fn DispatchMessageA(msg: *const MSG) -> LRESULT;
     fn DispatchMessageW(msg: *const MSG) -> LRESULT;
+    fn GetKeyboardState(buf: *mut u8) -> BOOL;
 }
 
-static HOOK: OnceCell<(DetourHook<DispatchMessageFn>, DetourHook<DispatchMessageFn>)> =
-    OnceCell::new();
+struct Hook {
+    dispatch_message_a: DetourHook<DispatchMessageFn>,
+    dispatch_message_w: DetourHook<DispatchMessageFn>,
+    get_keyboard_state: DetourHook<GetKeyboardStateFn>,
+}
+
+static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type DispatchMessageFn = unsafe extern "system" fn(*const MSG) -> LRESULT;
+type GetKeyboardStateFn = unsafe extern "system" fn(*mut u8) -> BOOL;
 
 pub fn hook() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
@@ -27,10 +40,31 @@ pub fn hook() -> anyhow::Result<()> {
         let dispatch_message_w =
             DetourHook::attach(DispatchMessageW as _, hooked_dispatch_message_w as _)?;
 
-        Ok::<_, anyhow::Error>((dispatch_message_a, dispatch_message_w))
+        debug!("hooking GetKeyboardState");
+        let get_keyboard_state =
+            DetourHook::attach(GetKeyboardState as _, hooked_get_keyboard_state as _)?;
+
+        Ok::<_, anyhow::Error>(Hook {
+            dispatch_message_a,
+            dispatch_message_w,
+            get_keyboard_state,
+        })
     })?;
 
     Ok(())
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
+    let hwnd = unsafe { GetForegroundWindow() };
+    if !hwnd.is_invalid()
+        && Backends::with_backend(hwnd, |backend| backend.input_blocking()).unwrap_or(false)
+    {
+        return BOOL(1);
+    }
+
+    let hook = HOOK.get().unwrap();
+    unsafe { hook.get_keyboard_state.original_fn()(buf) }
 }
 
 #[tracing::instrument]
@@ -42,7 +76,7 @@ extern "system" fn hooked_dispatch_message_a(msg: *const MSG) -> LRESULT {
     }
 
     let hook = HOOK.get().unwrap();
-    unsafe { hook.0.original_fn()(msg) }
+    unsafe { hook.dispatch_message_a.original_fn()(msg) }
 }
 
 #[tracing::instrument]
@@ -54,5 +88,5 @@ extern "system" fn hooked_dispatch_message_w(msg: *const MSG) -> LRESULT {
     }
 
     let hook = HOOK.get().unwrap();
-    unsafe { hook.1.original_fn()(msg) }
+    unsafe { hook.dispatch_message_w.original_fn()(msg) }
 }
