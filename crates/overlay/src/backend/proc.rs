@@ -287,7 +287,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
                 KeyboardInput::Key { key, state },
             ));
 
-            if backend.blocking_state.is_input_blocking() {
+            if backend.input_blocking() {
                 let key = key.code.get() as u16;
                 // ignore f10, or menu key
                 // Default proc try to open non existent menu on some app and freezes window
@@ -337,7 +337,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
         _ => return None,
     }
 
-    if backend.blocking_state.is_input_blocking() {
+    if backend.input_blocking() {
         Some(LRESULT(0))
     } else {
         None
