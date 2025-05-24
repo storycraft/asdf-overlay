@@ -33,6 +33,12 @@ As a result, Asdf Overlay is capable of rendering overlay with any size without 
 3. GPU accelerated shared overlay surface
 4. Input capture control
 
+## Used by
+| | | |
+| :-----: | ----- | ----- |
+| <img src="https://github.com/organization/alspotron/assets/16558115/447a957e-faf2-4759-8884-5d7b04fb1fbb" height="48"> | [Alspotron](https://github.com/organization/alspotron) | Ingame lyrics overlay
+| <img src="https://avatars.githubusercontent.com/u/184138403?s=48" height="48"> | [Tosu](https://github.com/tosuapp/tosu) | Ingame overlay
+
 ## Pre-requirement
 1. node, pnpm package manager
 2. nightly rustc, cargo, msvc(x64, x86, arm64)
