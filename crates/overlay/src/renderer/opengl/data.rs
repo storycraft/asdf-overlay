@@ -47,21 +47,18 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
         is_gl_enabled!(last_scissor_test = gl::SCISSOR_TEST);
 
         defer!({
-            gl::Viewport(
-                last_viewport[0],
-                last_viewport[1],
-                last_viewport[2],
-                last_viewport[3],
-            );
+            // https://github.com/ocornut/imgui/issues/6220
+            if last_program == 0 || gl::IsProgram(last_program) != 0 {
+                gl::UseProgram(last_program);
+            }
+
+            gl::BindTexture(gl::TEXTURE_2D, last_texture);
+
             if last_active_texture != gl::TEXTURE0 {
                 gl::ActiveTexture(last_active_texture);
             }
-            gl::UseProgram(last_program);
-            gl::BindTexture(gl::TEXTURE_2D, last_texture);
+
             gl::BindBuffer(gl::ARRAY_BUFFER, last_array_buffer);
-            if last_polygon_mode != gl::FILL {
-                gl::PolygonMode(gl::FRONT_AND_BACK, last_polygon_mode);
-            }
 
             gl::BindVertexArray(last_vertex_array_object);
 
@@ -91,6 +88,17 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
             if last_scissor_test {
                 gl::Enable(gl::SCISSOR_TEST);
             }
+
+            if last_polygon_mode != gl::FILL {
+                gl::PolygonMode(gl::FRONT_AND_BACK, last_polygon_mode);
+            }
+
+            gl::Viewport(
+                last_viewport[0],
+                last_viewport[1],
+                last_viewport[2],
+                last_viewport[3],
+            );
         });
         f()
     }
