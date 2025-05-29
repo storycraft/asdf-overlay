@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::num::NonZeroU32;
 
 use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -6,7 +6,7 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 #[derive(Debug)]
 pub enum OverlayTextureState<T> {
     None,
-    Handle(NonZeroUsize),
+    Handle(NonZeroU32),
     Created(T),
 }
 
@@ -32,7 +32,7 @@ impl<T> OverlayTextureState<T> {
 
     pub fn get_or_create(
         &mut self,
-        f: impl FnOnce(NonZeroUsize) -> anyhow::Result<Option<T>>,
+        f: impl FnOnce(NonZeroU32) -> anyhow::Result<Option<T>>,
     ) -> anyhow::Result<Option<&mut T>> {
         Ok(match *self {
             Self::None => None,
