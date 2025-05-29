@@ -27,6 +27,8 @@ features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_SystemServices",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11"
 ]
