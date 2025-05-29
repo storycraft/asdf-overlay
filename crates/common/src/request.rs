@@ -1,4 +1,4 @@
-use core::{fmt::Debug, num::NonZeroUsize};
+use core::{fmt::Debug, num::NonZeroU32};
 
 use bincode::{Decode, Encode};
 
@@ -80,5 +80,5 @@ pub struct SetBlockingCursor {
 #[derive(Debug, Encode, Decode, Clone, PartialEq, Eq)]
 /// Update overlay to new texture using shared dx11 texture handle
 pub struct UpdateSharedHandle {
-    pub handle: Option<NonZeroUsize>,
+    pub handle: Option<NonZeroU32>,
 }

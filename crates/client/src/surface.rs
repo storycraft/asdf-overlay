@@ -1,4 +1,4 @@
-use core::{num::NonZeroUsize, ptr};
+use core::{num::NonZeroU32, ptr};
 
 use anyhow::{Context, bail};
 use asdf_overlay_common::request::UpdateSharedHandle;
@@ -123,8 +123,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                 }
 
                 Ok(Some(UpdateSharedHandle {
-                    handle: NonZeroUsize::new(
-                        unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as usize,
+                    handle: NonZeroU32::new(
+                        unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as u32,
                     ),
                 }))
             }
@@ -179,8 +179,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     });
 
                     Ok(Some(UpdateSharedHandle {
-                        handle: NonZeroUsize::new(
-                            texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as usize,
+                        handle: NonZeroU32::new(
+                            texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as u32,
                         ),
                     }))
                 }

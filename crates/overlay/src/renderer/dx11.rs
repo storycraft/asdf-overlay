@@ -1,6 +1,6 @@
 use core::{
     mem,
-    num::NonZeroUsize,
+    num::NonZeroU32,
     slice::{self},
 };
 
@@ -335,7 +335,7 @@ impl Dx11Renderer {
 
 fn open_shared_texture(
     device: &ID3D11Device,
-    handle: NonZeroUsize,
+    handle: NonZeroU32,
 ) -> anyhow::Result<Option<Dx11Tex>> {
     let mut texture = None;
     if unsafe {
