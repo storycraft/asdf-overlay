@@ -1,4 +1,5 @@
 use std::{
+    env,
     ffi::OsStr,
     fs,
     process::{Command, Stdio},
@@ -61,9 +62,9 @@ fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
     let x86_path = x86_path.context("i686 build has no output")?;
     let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
-    fs::copy(x64_path, "./asdf_overlay-x64.dll")?;
-    fs::copy(x86_path, "./asdf_overlay-x86.dll")?;
-    fs::copy(aarch64_path, "./asdf_overlay-aarch64.dll")?;
+    fs::copy(x64_path, "./build/asdf_overlay-x64.dll")?;
+    fs::copy(x86_path, "./build/asdf_overlay-x86.dll")?;
+    fs::copy(aarch64_path, "./build/asdf_overlay-aarch64.dll")?;
 
     Ok(())
 }
@@ -73,14 +74,18 @@ fn cargo_artifacts<const TARGETS: usize>(
     project: &str,
     targets: [&str; TARGETS],
 ) -> [Option<Utf8PathBuf>; TARGETS] {
-    let mut command = Command::new("cargo")
-        .arg("build")
-        .args(args)
-        .args(["-p", project, "--message-format=json-render-diagnostics"])
-        .args(targets.iter().map(|target| format!("--target={target}")))
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut command = Command::new(
+        env::var_os("CARGO")
+            .as_deref()
+            .unwrap_or(OsStr::new("cargo")),
+    )
+    .arg("build")
+    .args(args)
+    .args(["-p", project, "--message-format=json-render-diagnostics"])
+    .args(targets.iter().map(|target| format!("--target={target}")))
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
 
     let mut exe = [const { None }; TARGETS];
 
