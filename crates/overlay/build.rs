@@ -42,7 +42,7 @@ fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
         .args([
             "detours\\vc\\Detours.sln",
             "/p:Configuration=ReleaseMD",
-            &format!("/p:Platform={}", platform),
+            &format!("/p:Platform={platform}"),
         ])
         .output()?
         .status
@@ -56,7 +56,7 @@ fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
         "cargo:rustc-link-search={}",
         PathBuf::from(&dir)
             .join("detours")
-            .join(format!("lib.{}", platform))
+            .join(format!("lib.{platform}"))
             .display()
     );
 
