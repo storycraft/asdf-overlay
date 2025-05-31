@@ -62,9 +62,9 @@ fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
     let x86_path = x86_path.context("i686 build has no output")?;
     let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
-    fs::copy(x64_path, "./build/asdf_overlay-x64.dll")?;
-    fs::copy(x86_path, "./build/asdf_overlay-x86.dll")?;
-    fs::copy(aarch64_path, "./build/asdf_overlay-aarch64.dll")?;
+    fs::copy(x64_path, "./asdf_overlay-x64.dll")?;
+    fs::copy(x86_path, "./asdf_overlay-x86.dll")?;
+    fs::copy(aarch64_path, "./asdf_overlay-aarch64.dll")?;
 
     Ok(())
 }
