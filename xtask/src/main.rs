@@ -1,12 +1,12 @@
 use std::{
+    env,
     ffi::OsStr,
     fs,
     process::{Command, Stdio},
-    thread,
 };
 
 use anyhow::Context;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::Message;
 use clap::Parser;
 
@@ -34,22 +34,13 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
-    let build_dll = |target| cargo_artifacts("asdf-overlay-node", target, cargo_args);
-
-    let tasks = thread::scope(|scope| {
-        let x64_task = scope.spawn(|| build_dll("x86_64-pc-windows-msvc"));
-        let aarch64_task = scope.spawn(|| build_dll("aarch64-pc-windows-msvc"));
-
-        (x64_task.join(), aarch64_task.join())
-    });
-    let x64_path = tasks
-        .0
-        .expect("x86_64 target build failed")
-        .context("x86_64 build has no output")?;
-    let aarch64_path = tasks
-        .1
-        .expect("aarch64 target build failed")
-        .context("aarch64 build has no output")?;
+    let [x64_path, aarch64_path] = cargo_artifacts(
+        cargo_args,
+        "asdf-overlay-node",
+        ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
+    );
+    let x64_path = x64_path.context("x86_64 build has no output")?;
+    let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
     fs::copy(x64_path, "./addon-x64.node")?;
     fs::copy(aarch64_path, "./addon-aarch64.node")?;
@@ -58,27 +49,18 @@ fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
 }
 
 fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
-    let build_dll = |target| cargo_artifacts("asdf-overlay", target, cargo_args);
-
-    let tasks = thread::scope(|scope| {
-        let x64_task = scope.spawn(|| build_dll("x86_64-pc-windows-msvc"));
-        let x86_task = scope.spawn(|| build_dll("i686-pc-windows-msvc"));
-        let aarch64_task = scope.spawn(|| build_dll("aarch64-pc-windows-msvc"));
-
-        (x64_task.join(), x86_task.join(), aarch64_task.join())
-    });
-    let x64_path = tasks
-        .0
-        .expect("x86_64 target build failed")
-        .context("x86_64 build has no output")?;
-    let x86_path = tasks
-        .1
-        .expect("i686 target build failed")
-        .context("i686 build has no output")?;
-    let aarch64_path = tasks
-        .2
-        .expect("aarch64 target build failed")
-        .context("aarch64 build has no output")?;
+    let [x64_path, x86_path, aarch64_path] = cargo_artifacts(
+        cargo_args,
+        "asdf-overlay",
+        [
+            "x86_64-pc-windows-msvc",
+            "i686-pc-windows-msvc",
+            "aarch64-pc-windows-msvc",
+        ],
+    );
+    let x64_path = x64_path.context("x86_64 build has no output")?;
+    let x86_path = x86_path.context("i686 build has no output")?;
+    let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
     fs::copy(x64_path, "./asdf_overlay-x64.dll")?;
     fs::copy(x86_path, "./asdf_overlay-x86.dll")?;
@@ -87,25 +69,25 @@ fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cargo_artifacts(
-    project: &str,
-    target: &str,
+fn cargo_artifacts<const TARGETS: usize>(
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> Option<Utf8PathBuf> {
-    let mut command = Command::new("cargo")
-        .arg("build")
-        .args(args)
-        .args([
-            "-p",
-            project,
-            "--message-format=json-render-diagnostics",
-            &format!("--target={target}"),
-        ])
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    project: &str,
+    targets: [&str; TARGETS],
+) -> [Option<Utf8PathBuf>; TARGETS] {
+    let mut command = Command::new(
+        env::var_os("CARGO")
+            .as_deref()
+            .unwrap_or(OsStr::new("cargo")),
+    )
+    .arg("build")
+    .args(args)
+    .args(["-p", project, "--message-format=json-render-diagnostics"])
+    .args(targets.iter().map(|target| format!("--target={target}")))
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
 
-    let mut exe = None;
+    let mut exe = [const { None }; TARGETS];
 
     let target_name = project.replace("-", "_");
 
@@ -116,8 +98,17 @@ fn cargo_artifacts(
                 continue;
             }
 
-            if exe.is_none() {
-                exe = artifact.filenames.first().cloned();
+            if let Some(name) = artifact.filenames.first() {
+                let Some(target_path) = name.parent().and_then(Utf8Path::parent) else {
+                    continue;
+                };
+
+                for (i, slot) in exe.iter_mut().enumerate() {
+                    if target_path.ends_with(targets[i]) {
+                        *slot = Some(name.clone());
+                        break;
+                    }
+                }
             }
         }
     }
