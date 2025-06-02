@@ -190,7 +190,7 @@ impl OpenglRenderer {
 
                 let dx11_tex_handle = wgl::DXRegisterObjectNV(
                     self.dx_device_handle,
-                    texture.into_raw(),
+                    texture.as_raw(),
                     self.texture,
                     gl::TEXTURE_2D,
                     wgl::ACCESS_READ_ONLY_NV,
