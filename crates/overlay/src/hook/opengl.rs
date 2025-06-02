@@ -3,19 +3,13 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use once_cell::sync::{Lazy, OnceCell};
-use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
-            Gdi::{GetDC, HDC, WindowFromDC},
-            OpenGL::{
-                ChoosePixelFormat, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE,
-                PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR, SetPixelFormat,
-                wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetCurrentDC,
-                wglGetProcAddress, wglMakeCurrent,
-            },
+            Gdi::{HDC, WindowFromDC},
+            OpenGL::{HGLRC, wglGetCurrentContext, wglGetProcAddress},
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
     },
@@ -47,9 +41,6 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     let addrs = get_wgl_addrs().expect("cannot get wgl fn addrs");
 
     HOOK.get_or_try_init(|| unsafe {
-        debug!("setting up opengl");
-        setup_gl(dummy_hwnd).context("opengl setup failed")?;
-
         debug!("hooking WglDeleteContext");
         let wgl_delete_context =
             DetourHook::attach(addrs.delete_context, hooked_wgl_delete_context as _)?;
@@ -98,6 +89,19 @@ extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
             if backend.renderer.dx11.is_some() {
                 MAP.remove(&(last_hglrc.0 as u32));
+                return;
+            }
+
+            if !gl::GetIntegerv::is_loaded() {
+                debug!("setting up opengl");
+                if let Err(err) = setup_gl() {
+                    error!("opengl setup failed. err: {}", err);
+                    return;
+                }
+            }
+
+            if !wgl::DXOpenDeviceNV::is_loaded() {
+                error!("WGL_NV_DX_interop2 is not supported");
                 return;
             }
 
@@ -181,7 +185,7 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
 }
 
 #[tracing::instrument]
-fn setup_gl(dummy_hwnd: HWND) -> anyhow::Result<()> {
+fn setup_gl() -> anyhow::Result<()> {
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
     #[tracing::instrument]
@@ -202,37 +206,8 @@ fn setup_gl(dummy_hwnd: HWND) -> anyhow::Result<()> {
         addr
     }
 
-    unsafe {
-        let last_hdc = wglGetCurrentDC();
-        let last_cx = wglGetCurrentContext();
-
-        let hdc = GetDC(Some(dummy_hwnd));
-        let pfd = PIXELFORMATDESCRIPTOR {
-            nSize: mem::size_of::<PIXELFORMATDESCRIPTOR>() as _,
-            nVersion: 1,
-            dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-            iPixelType: PFD_TYPE_RGBA,
-            cColorBits: 32,
-            cDepthBits: 24,
-            cStencilBits: 8,
-            iLayerType: PFD_MAIN_PLANE.0 as _,
-            ..PIXELFORMATDESCRIPTOR::default()
-        };
-        let format = ChoosePixelFormat(hdc, &pfd);
-        SetPixelFormat(hdc, format, &pfd).context("SetPixelFormat failed")?;
-
-        let tmp_cx = wglCreateContext(hdc).context("wglCreateContext failed")?;
-        defer!({
-            _ = wglDeleteContext(tmp_cx);
-        });
-
-        wglMakeCurrent(hdc, tmp_cx).context("wglMakeCurrent failed")?;
-
-        wgl::load_with(|s| loader(opengl32module, s));
-        gl::load_with(|s| loader(opengl32module, s));
-
-        wglMakeCurrent(last_hdc, last_cx).context("wglMakeCurrent failed")?;
-    }
+    wgl::load_with(|s| loader(opengl32module, s));
+    gl::load_with(|s| loader(opengl32module, s));
 
     Ok(())
 }
