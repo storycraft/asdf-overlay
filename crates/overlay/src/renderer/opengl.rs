@@ -190,7 +190,7 @@ impl OpenglRenderer {
 
                 let dx11_tex_handle = wgl::DXRegisterObjectNV(
                     self.dx_device_handle,
-                    texture.as_raw(),
+                    texture.into_raw(),
                     self.texture,
                     gl::TEXTURE_2D,
                     wgl::ACCESS_READ_ONLY_NV,
@@ -202,7 +202,6 @@ impl OpenglRenderer {
                 Ok(Some(Tex {
                     size,
                     owned_device_handle: self.dx_device_handle,
-                    _dx11_tex: texture,
                     dx11_tex_handle,
                 }))
             }
@@ -279,7 +278,6 @@ unsafe impl Sync for OpenglRenderer {}
 struct Tex {
     size: (u32, u32),
     owned_device_handle: *mut c_void,
-    _dx11_tex: ID3D11Texture2D,
     dx11_tex_handle: *const c_void,
 }
 
