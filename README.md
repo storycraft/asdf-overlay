@@ -39,8 +39,8 @@ As a result, Asdf Overlay is capable of rendering overlay with any size without 
 
 | | | |
 | :-----: | ----- | ----- |
-| [<img src="https://github.com/organization/alspotron/assets/16558115/447a957e-faf2-4759-8884-5d7b04fb1fbb" height="48">][alspotron-url] | [Alspotron][alspotron-url] | Ingame lyrics overlay
-| [<img src="https://avatars.githubusercontent.com/u/184138403?s=48" height="48">][tosu-url] | [Tosu][tosu-url] | Ingame overlay
+| [<img src="https://github.com/organization/alspotron/assets/16558115/447a957e-faf2-4759-8884-5d7b04fb1fbb" style="max-height: 48px">][alspotron-url] | [Alspotron][alspotron-url] | Ingame lyrics overlay
+| [<img src="https://avatars.githubusercontent.com/u/184138403?s=48" style="max-height: 48px">][tosu-url] | [Tosu][tosu-url] | Ingame overlay
 
 ## Sponsers
 [sign-path-io-url]: https://signpath.io/
@@ -48,7 +48,7 @@ As a result, Asdf Overlay is capable of rendering overlay with any size without 
 
 | | |
 | :-----: | ----- |
-| [<img src="https://about.signpath.io/assets/signpath-logo.svg" height="48">][sign-path-io-url] | Free code signing provided by [SignPath.io][sign-path-io-url], certificate by [SignPath Foundation][sign-path-foundation-url] |
+| [<img src="https://about.signpath.io/assets/signpath-logo.svg" style="max-height: 48px">][sign-path-io-url] | Free code signing provided by [SignPath.io][sign-path-io-url], certificate by [SignPath Foundation][sign-path-foundation-url] |
 
 ## Pre-requirement
 1. node, pnpm package manager
