@@ -94,6 +94,17 @@ jobs:
       - name: Use signed artifacts
         run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "asdf-overlay-artifact-${{ steps.bump.outputs.version }}"
+          path: |
+            addon-aarch64.node
+            addon-x64.node
+            asdf_overlay-aarch64.dll
+            asdf_overlay-x86.dll
+            asdf_overlay-x64.dll
+
       - name: Publish node package
         run: pnpm ci:publish
         env:
