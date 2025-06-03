@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       signing-policy:
-        required: true
+        required: false
         type: string
   workflow_dispatch:
     inputs:
