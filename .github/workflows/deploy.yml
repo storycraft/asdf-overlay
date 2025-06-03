@@ -30,7 +30,8 @@ jobs:
           git config user.name 'Asdf Overlay Continuous Deployment'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - id: commit-sha
+      - name: Extract Commit SHA
+        id: commit-sha
         run: |
           "short_sha=" + "${{ github.sha }}".SubString(0, 8) >> $env:GITHUB_OUTPUT
 
