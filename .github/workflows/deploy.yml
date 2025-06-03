@@ -1,7 +1,19 @@
 name: deploy
 
 on:
+  workflow_call:
+    inputs:
+      signing-policy:
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      signing-policy:
+        type: choice
+        description: Signing policy
+        options:
+          - 'test-signing'
+          - 'release-signing'
   pull_request:
     paths:
       - "Cargo.toml"
@@ -20,6 +32,9 @@ jobs:
   deploy:
     runs-on: windows-latest
     environment: deploy
+    outputs:
+      unsigned-artifact-id: ${{ steps.upload-unsigned-artifact.outputs.artifact-id }}
+      signed-artifact-id: ${{ steps.upload-signed-artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +54,8 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: 'deploy'
 
       - name: Install cargo-release
         run: cargo install cargo-release
@@ -71,19 +88,22 @@ jobs:
             asdf_overlay-x86.dll
             asdf_overlay-x64.dll
 
-      - id: optional_step_id
+      - name: Sign artifacts
+        if: "${{ inputs.signing-policy != '' }}"
         uses: signpath/github-action-submit-signing-request@v1.1
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
           organization-id: 'ce1cab5c-4a01-4210-a422-9f92bb175179'
           project-slug: 'asdf-overlay'
-          signing-policy-slug: 'test-signing'
+          signing-policy-slug: ${{ inputs.signing-policy }}
           artifact-configuration-slug: 'github-action-deploy'
           github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
           wait-for-completion: true
           output-artifact-directory: 'target/out-signed-artifact'
 
       - name: Upload signed artifact
+        id: upload-signed-artifact
+        if: "${{ inputs.signing-policy != '' }}"
         uses: actions/upload-artifact@v4
         with:
           name: "asdf-overlay-artifact-${{ steps.commit-sha.outputs.short_sha }}"

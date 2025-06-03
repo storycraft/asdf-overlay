@@ -34,6 +34,8 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: 'deploy'
 
       - name: Install cargo-release
         run: cargo install cargo-release
