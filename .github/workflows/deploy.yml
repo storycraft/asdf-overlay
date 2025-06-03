@@ -10,6 +10,7 @@ on:
     inputs:
       signing-policy:
         type: choice
+        required: false
         description: Signing policy
         options:
           - 'test-signing'
