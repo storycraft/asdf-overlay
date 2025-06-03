@@ -78,13 +78,14 @@ jobs:
           organization-id: 'ce1cab5c-4a01-4210-a422-9f92bb175179'
           project-slug: 'asdf-overlay'
           signing-policy-slug: 'test-signing'
+          artifact-configuration-slug: 'github-action-deploy'
           github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
           wait-for-completion: true
-          output-artifact-directory: '${{ runner.temp }}/signed-artifact'
+          output-artifact-directory: 'target/out-signed-artifact'
 
       - name: Upload signed artifact
         uses: actions/upload-artifact@v4
         with:
           name: "asdf-overlay-artifact-${{ steps.commit-sha.outputs.short_sha }}"
           path: |
-            ${{ runner.temp }}/signed-artifact/**/*
+            target/out-signed-artifact/**/*
