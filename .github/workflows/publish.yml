@@ -42,6 +42,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: 'deploy'
+          cache-on-failure: true
 
       - name: Install cargo-release
         run: cargo install cargo-release
