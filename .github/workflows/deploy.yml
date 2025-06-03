@@ -92,7 +92,7 @@ jobs:
             asdf_overlay-x64.dll
 
       - name: Sign artifacts
-        if: '${{ inputs.signing-policy != '' }}'
+        if: "${{ inputs.signing-policy != '' }}"
         uses: signpath/github-action-submit-signing-request@v1.1
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload signed artifact
         id: upload-signed-artifact
-        if: '${{ inputs.signing-policy != '' }}'
+        if: "${{ inputs.signing-policy != '' }}"
         uses: actions/upload-artifact@v4
         with:
           name: 'asdf-overlay-artifact-${{ steps.commit-sha.outputs.short_sha }}'
