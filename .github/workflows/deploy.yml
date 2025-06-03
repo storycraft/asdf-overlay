@@ -6,6 +6,9 @@ on:
       signing-policy:
         required: false
         type: string
+    secrets:
+      SIGNPATH_API_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       signing-policy:
