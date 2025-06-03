@@ -85,7 +85,7 @@ jobs:
           path: 'target/out-signed-artifact'
 
       - name: Use signed artifacts
-        run: Move-Item -Path "target\out-signed-artifact\*" -Force
+        run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
         run: pnpm ci:publish
