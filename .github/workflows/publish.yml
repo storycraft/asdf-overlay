@@ -67,7 +67,7 @@ jobs:
         run: pnpm install
 
       - name: Set node dry run
-        if: ${{ inputs.execute == 'false' }}
+        if: ${{ inputs.execute != 'true' }}
         run: npm config set dry-run=true
 
       - name: Bump node package version
