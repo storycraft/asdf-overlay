@@ -14,9 +14,15 @@ on:
           - patch
 
 jobs:
+  release-deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      signing-policy: 'release-signing'
+
   publish:
     runs-on: windows-latest
     environment: publish
+    needs: release-deploy
     permissions:
       contents: write
       id-token: write
@@ -70,17 +76,14 @@ jobs:
       - name: Run build script
         run: npm run ci:build
 
-      - name: Upload artifact
-        id: upload-artifact
-        uses: actions/upload-artifact@v4
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: "asdf-overlay-artifact-${{ steps.bump.outputs.version }}"
-          path: |
-            addon-aarch64.node
-            addon-x64.node
-            asdf_overlay-aarch64.dll
-            asdf_overlay-x86.dll
-            asdf_overlay-x64.dll
+          artifact-ids: ${{ needs.release-deploy.outputs.signed-artifact-id }}
+          path: 'target/out-signed-artifact'
+
+      - name: Use signed artifacts
+        run: Move-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
         run: pnpm ci:publish
