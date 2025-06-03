@@ -58,6 +58,7 @@ jobs:
         with:
           shared-key: 'deploy'
           cache-on-failure: true
+          cache-all-crates: true
 
       - name: Install cargo-release
         run: cargo install cargo-release
