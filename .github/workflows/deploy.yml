@@ -17,13 +17,13 @@ on:
           - 'release-signing'
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "crates/**/*"
-      - "src/**/*"
-      - "xtask/**/*"
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'crates/**/*'
+      - 'src/**/*'
+      - 'xtask/**/*'
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -43,8 +43,8 @@ jobs:
 
       - name: Setup cd
         run: |
-          git config user.name 'Asdf Overlay Continuous Deployment'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name "Asdf Overlay Continuous Deployment"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Extract Commit SHA
         id: commit-sha
@@ -83,7 +83,7 @@ jobs:
         id: upload-unsigned-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "asdf-overlay-artifact-unsigned-${{ steps.commit-sha.outputs.short_sha }}"
+          name: 'asdf-overlay-artifact-unsigned-${{ steps.commit-sha.outputs.short_sha }}'
           path: |
             addon-aarch64.node
             addon-x64.node
@@ -92,7 +92,7 @@ jobs:
             asdf_overlay-x64.dll
 
       - name: Sign artifacts
-        if: "${{ inputs.signing-policy != '' }}"
+        if: '${{ inputs.signing-policy != '' }}'
         uses: signpath/github-action-submit-signing-request@v1.1
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
@@ -106,9 +106,9 @@ jobs:
 
       - name: Upload signed artifact
         id: upload-signed-artifact
-        if: "${{ inputs.signing-policy != '' }}"
+        if: '${{ inputs.signing-policy != '' }}'
         uses: actions/upload-artifact@v4
         with:
-          name: "asdf-overlay-artifact-${{ steps.commit-sha.outputs.short_sha }}"
+          name: 'asdf-overlay-artifact-${{ steps.commit-sha.outputs.short_sha }}'
           path: |
             target/out-signed-artifact/**/*
