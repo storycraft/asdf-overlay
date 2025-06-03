@@ -77,7 +77,7 @@ pub async fn inject(
 
     {
         let injector = Syringe::for_process(process);
-        let module = injector.inject(dll_path.unwrap_or_else(default_dll_path))?;
+        let module = injector.find_or_inject(dll_path.unwrap_or_else(default_dll_path))?;
 
         let start = unsafe {
             injector
