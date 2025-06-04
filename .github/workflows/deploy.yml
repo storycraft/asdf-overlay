@@ -63,9 +63,6 @@ jobs:
           cache-on-failure: true
           cache-all-crates: true
 
-      - name: Install cargo-release
-        run: cargo install cargo-release
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -79,8 +76,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run build script
-        run: npm run ci:build
+      - name: Deploy
+        run: npm run ci:deploy
 
       - name: Upload unsignd artifact
         id: upload-unsigned-artifact
