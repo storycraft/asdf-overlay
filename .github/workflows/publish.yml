@@ -78,12 +78,6 @@ jobs:
           git commit -a -m "chore: Bump node package version"
           "version=" + $ver.substring(1) >> $env:GITHUB_OUTPUT
 
-      - name: Bump cargo package versions, publish
-        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute == 'true' && '--execute' || '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-
       - name: Download signed artifacts
         uses: actions/download-artifact@v4
         with:
@@ -98,6 +92,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Bump cargo package versions, publish
+        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute == 'true' && '--execute' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
       - name: Release
         if: ${{ inputs.execute == 'true' }}
