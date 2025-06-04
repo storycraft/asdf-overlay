@@ -65,9 +65,6 @@ pnpm install
 pnpm build
 ```
 
-> [!WARNING]
-> DLL and the client must be built using same rust compiler or it will misbehaviour
-
 ## Example
 Examples are located in `examples` directory.
 
