@@ -1,8 +1,9 @@
 use anyhow::{Context, bail};
 use cc::windows_registry::find_tool;
+use file_guard::Lock;
 use gl_generator::{Api, Fallbacks, GlobalGenerator, Profile, Registry};
 use std::env;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use winres::WindowsResource;
 
@@ -26,28 +27,37 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
 fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=detours_wrapper.h");
 
+    let mut lockfile = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(".detours-lock")?;
+    let _lock = file_guard::lock(&mut lockfile, Lock::Exclusive, 0, 1)?;
+
     let dir = env::var("CARGO_MANIFEST_DIR")?;
 
-    let tool = find_tool("x86_64-pc-windows-msvc", "msbuild").context("msbuild not found")?;
-
-    let platform = match env::var("TARGET")?.as_str() {
+    let target = env::var("TARGET")?;
+    let target = target.as_str();
+    let platform = match target {
         "x86_64-pc-windows-msvc" => "x64",
         "i686-pc-windows-msvc" => "x86",
         "aarch64-pc-windows-msvc" => "ARM64",
         target => bail!("Unsupported target {}", target),
     };
 
-    if !tool
+    let tool = find_tool("x86_64-pc-windows-msvc", "msbuild").context("msbuild not found")?;
+    let output = tool
         .to_command()
         .args([
             "detours\\vc\\Detours.sln",
             "/p:Configuration=ReleaseMD",
             &format!("/p:Platform={platform}"),
         ])
-        .output()?
-        .status
-        .success()
-    {
+        .output()?;
+    if !output.status.success() {
+        eprintln!(
+            "error: {}",
+            str::from_utf8(&output.stdout).ok().unwrap_or_default()
+        );
         bail!("Detour build failed");
     }
 
