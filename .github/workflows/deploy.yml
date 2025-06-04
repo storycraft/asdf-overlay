@@ -6,6 +6,13 @@ on:
       signing-policy:
         required: false
         type: string
+    outputs:
+      unsigned-artifact-id:
+        description: "Unsigned artifact Id"
+        value: ${{ jobs.deploy.outputs.unsigned-artifact-id }}
+      signed-artifact-id:
+        description: "Signed artifact Id"
+        value: ${{ jobs.deploy.outputs.signed-artifact-id }}
     secrets:
       SIGNPATH_API_TOKEN:
         required: true
