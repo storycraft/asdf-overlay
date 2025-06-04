@@ -79,6 +79,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.release-deploy.outputs.signed-artifact-id }}
           path: 'target/out-signed-artifact'
+          merge-multiple: true
 
       - name: Apply artifacts
         run: Copy-Item -Path "target\out-signed-artifact\*" -Force
