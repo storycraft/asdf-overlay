@@ -42,7 +42,7 @@ As a result, Asdf Overlay is capable of rendering overlay with any size without 
 | [![Alspotron logo](.github/images/alspotron-logo.png)][alspotron-url] | [Alspotron][alspotron-url] | Ingame lyrics overlay
 | [![Tosu logo](.github/images/tosu-logo.png)][tosu-url] | [Tosu][tosu-url] | Ingame overlay
 
-## Sponsers
+## Sponsorship
 [sign-path-io-url]: https://signpath.io/
 [sign-path-foundation-url]: https://signpath.org/
 
