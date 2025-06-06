@@ -85,7 +85,7 @@ jobs:
         run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
-        run: pnpm ci:publish ${{ inputs.execute && '--dry-run' || '' }}
+        run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
