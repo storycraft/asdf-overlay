@@ -10,6 +10,7 @@ repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
 asdf-overlay = { version = "0.6.4", path = "./crates/overlay" }
+asdf-overlay-hook = { version = "0.6.4", path = "./crates/hook" }
 asdf-overlay-client = { version = "0.6.4", path = "./crates/client" }
 asdf-overlay-common = { version = "0.6.4", path = "./crates/common" }
 
@@ -20,3 +21,6 @@ version = "0.15.2"
 git = "https://github.com/fry/dll-syringe"
 rev = "0a8b18e"
 default-features = false
+
+[workspace.dependencies.windows]
+version = "0.61.1"

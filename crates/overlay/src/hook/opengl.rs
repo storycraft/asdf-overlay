@@ -2,6 +2,7 @@ use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
+use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
 use tracing::{debug, error, trace};
 use windows::{
@@ -23,8 +24,6 @@ use crate::{
     types::IntDashMap,
     wgl,
 };
-
-use super::DetourHook;
 
 struct Hook {
     wgl_delete_context: DetourHook<WglDeleteContextFn>,

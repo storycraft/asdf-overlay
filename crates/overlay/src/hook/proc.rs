@@ -1,3 +1,4 @@
+use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
@@ -9,8 +10,6 @@ use windows::{
 };
 
 use crate::backend::{Backends, proc::dispatch_message};
-
-use super::DetourHook;
 
 #[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 unsafe extern "system" {

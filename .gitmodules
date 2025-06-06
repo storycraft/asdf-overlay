@@ -1,3 +1,3 @@
-[submodule "crates/overlay/detours"]
-	path = crates/overlay/detours
+[submodule "crates/hook/detours"]
+	path = crates/hook/detours
 	url = https://github.com/microsoft/Detours
