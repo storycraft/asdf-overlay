@@ -155,7 +155,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     }),
                 )?;
 
-                let ref texture = *surface.insert(texture);
+                let texture = surface.insert(texture);
                 unsafe {
                     self.cx.Flush();
                     Ok(Some(UpdateSharedHandle {
