@@ -20,7 +20,7 @@ jobs:
   release-deploy:
     uses: ./.github/workflows/deploy.yml
     with:
-      signing-policy: ${{ inputs.execute == 'true' && 'release-signing' || 'test-signing' }}
+      signing-policy: ${{ inputs.execute && 'release-signing' || 'test-signing' }}
     secrets:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
 
@@ -85,19 +85,19 @@ jobs:
         run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
-        run: pnpm ci:publish ${{ inputs.execute != 'true' && '--dry-run' || '' }}
+        run: pnpm ci:publish ${{ inputs.execute && '--dry-run' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Bump cargo package versions, publish
-        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute == 'true' && '--execute' || '' }}
+        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute && '--execute' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
 
       - name: Release
-        if: ${{ inputs.execute == 'true' }}
+        if: ${{ inputs.execute }}
         uses: softprops/action-gh-release@v2
         with:
           name: 'Asdf Overlay v${{ steps.bump.outputs.version }}'
