@@ -19,6 +19,7 @@
     "build:dist": "tsc",
     "build": "npm run cargo-build -- --release && npm run build-dll -- --release && npm run build:dist",
     "build:debug": "npm run cargo-build && npm run build-dll && npm run build:dist",
+    "doc": "mdbook build ./doc",
     "ci:deploy": "npm run build",
     "ci:publish": "npm run build:dist && pnpm publish -r --provenance --access public"
   },
