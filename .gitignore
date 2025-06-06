@@ -8,3 +8,4 @@ node_modules
 /lib
 /examples/node/ingame-browser/out
 .detours-lock
+doc/book
