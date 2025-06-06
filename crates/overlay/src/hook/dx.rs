@@ -3,14 +3,13 @@ mod dx9;
 mod dxgi;
 pub mod util;
 
+use asdf_overlay_hook::DetourHook;
 use dx9::{EndSceneFn, ResetFn};
 use dx12::ExecuteCommandListsFn;
 use dxgi::{CreateSwapChainFn, Present1Fn, PresentFn, ResizeBuffersFn};
 use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::Win32::Foundation::HWND;
-
-use super::DetourHook;
 
 #[derive(Default)]
 struct Hook {

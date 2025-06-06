@@ -104,16 +104,13 @@ dependencies = [
  "anyhow",
  "array-util",
  "asdf-overlay-common",
+ "asdf-overlay-hook",
  "ash",
- "bindgen",
  "bitflags 2.9.1",
  "bitvec",
  "bytemuck",
- "camino",
- "cc",
  "dashmap",
  "dll-syringe",
- "file-guard",
  "futures",
  "gl",
  "gl_generator",
@@ -160,6 +157,18 @@ dependencies = [
  "scopeguard",
  "tokio",
  "winapi",
+]
+
+[[package]]
+name = "asdf-overlay-hook"
+version = "0.6.4"
+dependencies = [
+ "anyhow",
+ "bindgen",
+ "camino",
+ "cc",
+ "file-guard",
+ "tracing",
 ]
 
 [[package]]

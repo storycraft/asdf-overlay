@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
+asdf-overlay-hook = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 anyhow = "1.0.97"
@@ -40,7 +41,7 @@ version = "0.1"
 features = ["max_level_trace", "release_max_level_off"]
 
 [dependencies.windows]
-version = "0.61.1"
+workspace = true
 features = [
     "Win32_System_Threading",
     "Win32_Foundation",
@@ -65,13 +66,9 @@ features = [
 ]
 
 [build-dependencies]
-camino = "1.1.9"
 anyhow = "1.0.97"
 gl_generator = "0.14.0"
-bindgen = "0.71.0"
-cc = "1.2.18"
 winres = "0.1.12"
-file-guard = "0.2.0"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]
