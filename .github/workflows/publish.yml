@@ -20,7 +20,7 @@ jobs:
   release-deploy:
     uses: ./.github/workflows/deploy.yml
     with:
-      signing-policy: ${{ inputs.execute && 'release-signing' || 'test-signing' }}
+      signing-policy: ${{ inputs.execute && 'release-signing' || '' }}
     secrets:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
 
