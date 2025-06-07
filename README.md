@@ -10,28 +10,9 @@
 [docs-url]: https://docs.rs/asdf-overlay-client
 
 # Asdf Overlay
-Blazingly fast™ & Easy to use Windows Overlay library
+Blazingly fast™ Windows Overlay library
 
-Asdf Overlay provides an easy to use interface to draw on top of window framebuffer by hooking rendering backends
-
-GPU shared texture was used to avoid framebuffer copy via CPU.
-As a result, Asdf Overlay is capable of rendering overlay with any size without performance loss.
-
-![Screenshot](assets/example.png)
-
-## Supported API
-* [x] OpenGL
-* [x] DX9
-* [ ] DX10
-* [x] DX11
-* [x] DX12
-* [ ] Vulkan
-
-## Features
-1. Supports multiple backends
-2. Blazingly fast™
-3. GPU accelerated shared overlay surface
-4. Input capture control
+[Documentation](https://storycraft.github.io/asdf-overlay/)
 
 ## Used by
 [alspotron-url]: https://github.com/organization/alspotron
@@ -49,21 +30,6 @@ As a result, Asdf Overlay is capable of rendering overlay with any size without 
 | | |
 | :-----: | ----- |
 | [![SignPath logo](.github/images/signpath-logo.png)][sign-path-io-url] | Free code signing provided by [SignPath.io][sign-path-io-url], certificate by [SignPath Foundation][sign-path-foundation-url] |
-
-## Pre-requirement
-1. node, pnpm package manager
-2. nightly rustc, cargo, msvc(x64, x86, arm64)
-3. Install x86_64-pc-windows-msvc, i686-pc-windows-msvc, aarch64-pc-windows-msvc rustc targets
-
-### Installing node dependencies
-```bash
-pnpm install
-```
-
-### Build
-```bash
-pnpm build
-```
 
 ## Example
 Examples are located in `examples` directory.
@@ -91,10 +57,6 @@ https://github.com/user-attachments/assets/069d1cc1-f95d-4a44-899c-7f538c0f5a69
 cargo build && cargo run -p input-capture <process_name>
 ```
 It will listen and block inputs from target process until process exit
-
-## Debugging
-Run with debug build.
-Use external debug log viewer (ex: `DebugView`) to see tracing log of injected process
 
 ## License
 This project is dual licensed under MIT or Apache-2.0 License
