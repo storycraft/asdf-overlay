@@ -6,6 +6,7 @@ use core::{
 
 use anyhow::Context;
 use asdf_overlay_common::request::UpdateSharedHandle;
+use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -15,10 +16,10 @@ use windows::{
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
-            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGISwapChain},
+            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGISwapChain},
         },
     },
-    core::{BOOL, s},
+    core::{BOOL, Interface, s},
 };
 
 use crate::texture::OverlayTextureState;
@@ -64,6 +65,7 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
 struct Dx11Tex {
     size: (u32, u32),
     _texture: ID3D11Texture2D,
+    mutex: IDXGIKeyedMutex,
     view: ID3D11ShaderResourceView,
 }
 
@@ -252,7 +254,9 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let Some(Dx11Tex { size, view, .. }) = self
+        let Some(Dx11Tex {
+            size, view, mutex, ..
+        }) = self
             .texture
             .get_or_create(|handle| open_shared_texture(device, handle))?
         else {
@@ -304,6 +308,11 @@ impl Dx11Renderer {
             cx.VSSetShader(&self.vertex_shader, None);
             cx.PSSetShader(&self.pixel_shader, None);
 
+            mutex.AcquireSync(0, u32::MAX)?;
+            defer!({
+                _ = mutex.ReleaseSync(0);
+            });
+
             cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
             cx.PSSetSamplers(0, Some(&[Some(self.sampler_state.clone())]));
 
@@ -348,6 +357,8 @@ fn open_shared_texture(
         return Ok(None);
     }
 
+    let mutex = texture.cast::<IDXGIKeyedMutex>()?;
+
     let mut view = None;
     unsafe {
         device.CreateShaderResourceView(
@@ -370,6 +381,7 @@ fn open_shared_texture(
     Ok(Some(Dx11Tex {
         size,
         _texture: texture,
+        mutex,
         view,
     }))
 }
