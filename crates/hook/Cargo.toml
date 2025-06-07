@@ -12,11 +12,9 @@ readme = "../../README.md"
 tracing = "0.1"
 
 [build-dependencies]
-camino = "1.1.9"
 anyhow = "1.0.97"
 bindgen = "0.71.0"
 cc = "1.2.18"
-file-guard = "0.2.0"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

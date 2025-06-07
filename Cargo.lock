@@ -165,9 +165,7 @@ version = "0.6.4"
 dependencies = [
  "anyhow",
  "bindgen",
- "camino",
  "cc",
- "file-guard",
  "tracing",
 ]
 
@@ -536,16 +534,6 @@ name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
-
-[[package]]
-name = "file-guard"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21ef72acf95ec3d7dbf61275be556299490a245f017cf084bd23b4f68cf9407c"
-dependencies = [
- "libc",
- "winapi",
-]
 
 [[package]]
 name = "funty"
