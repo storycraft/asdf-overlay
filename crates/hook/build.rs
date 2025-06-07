@@ -6,10 +6,13 @@ fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=detours_wrapper.h");
 
     cc::Build::new()
-        .include("detours/src")
         .define(
             "DETOUR_DEBUG",
-            if env::var("DEBUG").unwrap() == "true" { "1" } else { "0" },
+            if env::var("DEBUG").unwrap() == "true" {
+                "1"
+            } else {
+                "0"
+            },
         )
         .file("detours/src/detours.cpp")
         .file("detours/src/modules.cpp")
