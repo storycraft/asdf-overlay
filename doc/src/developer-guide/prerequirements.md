@@ -1,6 +1,6 @@
 # Prerequirements
 To build Asdf Overlay, you need prerequirements.
-Click each items below and follow install instructions.
+Click each items below, follow the install instructions.
 
 * [Node.js](https://nodejs.org/en/download)
 * [Microsoft Visual C++ Compiler](https://visualstudio.microsoft.com/) for x86, x64 and ARM64

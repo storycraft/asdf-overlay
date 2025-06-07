@@ -2,7 +2,7 @@
 By default, release build will not emit any logs due to performance overhead.
 To debug overlay DLL, you need to build with debug profile. 
 
-Build overlay DLL with debug profile, following command can be used
+To build overlay DLL with debug profile, following command can be used.
 ```bash
 pnpm build-dll
 ``` 

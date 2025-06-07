@@ -23,4 +23,4 @@ By reading the documentation you will learn how to
 * [ ] Vulkan
 
 ## License
-This project is dual licensed under MIT or Apache-2.0 License
+This project is dual licensed under MIT or Apache-2.0 License.

@@ -11,7 +11,7 @@ After cloning repository, change the current directory.
 cd asdf-overlay
 ```
 
-Initialize and update submodules by using commands below.
+Initialize and update submodules by using a command below.
 ```bash
 git submodule update --init --recursive
 ```
@@ -22,7 +22,7 @@ pnpm install
 ```
 
 ## Building project
-Once you done set up workspace, you can build the project using follwing command.
+Once you done set up workspace, you can build the project using following command.
 ```bash
 pnpm build
 ```
