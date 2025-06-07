@@ -199,10 +199,10 @@ DX12</li>
 Vulkan</li>
 </ul>
 <h2 id="license"><a class="header" href="#license">License</a></h2>
-<p>This project is dual licensed under MIT or Apache-2.0 License</p>
+<p>This project is dual licensed under MIT or Apache-2.0 License.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="prerequirements"><a class="header" href="#prerequirements">Prerequirements</a></h1>
 <p>To build Asdf Overlay, you need prerequirements.
-Click each items below and follow install instructions.</p>
+Click each items below, follow the install instructions.</p>
 <ul>
 <li><a href="https://nodejs.org/en/download">Node.js</a></li>
 <li><a href="https://visualstudio.microsoft.com/">Microsoft Visual C++ Compiler</a> for x86, x64 and ARM64</li>
@@ -217,21 +217,21 @@ Click each items below and follow install instructions.</p>
 <p>After cloning repository, change the current directory.</p>
 <pre><code class="language-bash">cd asdf-overlay
 </code></pre>
-<p>Initialize and update submodules by using commands below.</p>
+<p>Initialize and update submodules by using a command below.</p>
 <pre><code class="language-bash">git submodule update --init --recursive
 </code></pre>
 <p>Finish by installing node dependencies.</p>
 <pre><code class="language-bash">pnpm install
 </code></pre>
 <h2 id="building-project"><a class="header" href="#building-project">Building project</a></h2>
-<p>Once you done set up workspace, you can build the project using follwing command.</p>
+<p>Once you done set up workspace, you can build the project using following command.</p>
 <pre><code class="language-bash">pnpm build
 </code></pre>
 <p>For more detail, see <a href="developer-guide/./pnpm/build.html">Pnpm Command - build</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="debugging"><a class="header" href="#debugging">Debugging</a></h1>
 <p>By default, release build will not emit any logs due to performance overhead.
 To debug overlay DLL, you need to build with debug profile.</p>
-<p>Build overlay DLL with debug profile, following command can be used</p>
+<p>To build overlay DLL with debug profile, following command can be used.</p>
 <pre><code class="language-bash">pnpm build-dll
 </code></pre>
 <p>After building, replace overlay DLL.
