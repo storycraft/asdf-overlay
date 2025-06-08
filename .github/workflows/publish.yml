@@ -50,8 +50,10 @@ jobs:
           cache-on-failure: true
           cache-all-crates: true
 
+      - uses: cargo-bins/cargo-binstall@main
+
       - name: Install cargo-release
-        run: cargo install cargo-release
+        run: cargo binstall cargo-release --no-confirm
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
