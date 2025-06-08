@@ -85,8 +85,24 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
 }
 
-fn draw_overlay(hglrc: HGLRC, hwnd: HWND) {
-    let enabled = Overlay::with(|overlay| {
+#[inline]
+fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
+    thread_local! {
+        static SWAP_CALL_COUNT: Cell<u32> = const { Cell::new(0) };
+    }
+
+    let last_call_count = SWAP_CALL_COUNT.get();
+    SWAP_CALL_COUNT.set(last_call_count + 1);
+    defer!({
+        SWAP_CALL_COUNT.set(last_call_count);
+    });
+
+    f(last_call_count)
+}
+
+#[inline]
+fn draw_overlay(hdc: HDC) {
+    fn inner(overlay: &Overlay, hglrc: HGLRC, hwnd: HWND) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
             // Disable opengl rendering if presenting on DXGI Swapchain is enabled
             // Nvidia(DX11), AMD(DX12)
@@ -142,6 +158,20 @@ fn draw_overlay(hglrc: HGLRC, hwnd: HWND) {
                 error!("Backends::with_or_init_backend failed. err: {:?}", _err);
             }
         }
+    }
+
+    let hglrc = unsafe { wglGetCurrentContext() };
+    if hglrc.is_invalid() {
+        return;
+    }
+
+    let hwnd = unsafe { WindowFromDC(hdc) };
+    if hwnd.is_invalid() {
+        return;
+    }
+
+    let enabled = Overlay::with(|overlay| {
+        inner(overlay, hglrc, hwnd);
     })
     .is_some();
 
@@ -150,104 +180,46 @@ fn draw_overlay(hglrc: HGLRC, hwnd: HWND) {
     }
 }
 
-thread_local! {
-    static SWAP_CALL_COUNT: Cell<u32> = const { Cell::new(0) };
-}
-
 #[tracing::instrument]
 extern "system" fn hooked_swap_buffers(hdc: HDC) -> BOOL {
     trace!("SwapBuffers called");
 
-    let last_call_count = SWAP_CALL_COUNT.get();
-    SWAP_CALL_COUNT.set(last_call_count + 1);
-    defer!({
-        SWAP_CALL_COUNT.set(last_call_count);
-    });
-
-    'draw_overlay: {
-        if last_call_count != 0 {
-            break 'draw_overlay;
+    with_gl_call_count(move |last_call_count| {
+        if last_call_count == 0 {
+            draw_overlay(hdc);
         }
 
-        let hglrc = unsafe { wglGetCurrentContext() };
-        if hglrc.is_invalid() {
-            break 'draw_overlay;
-        }
-
-        let hwnd = unsafe { WindowFromDC(hdc) };
-        if hwnd.is_invalid() {
-            break 'draw_overlay;
-        }
-
-        draw_overlay(hglrc, hwnd);
-    }
-
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.swap_buffers.original_fn()(hdc) }
+        let hook = HOOK.get().unwrap();
+        unsafe { hook.swap_buffers.original_fn()(hdc) }
+    })
 }
 
 #[tracing::instrument]
 extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
-    let last_call_count = SWAP_CALL_COUNT.get();
-    SWAP_CALL_COUNT.set(last_call_count + 1);
-    defer!({
-        SWAP_CALL_COUNT.set(last_call_count);
-    });
-
-    'draw_overlay: {
-        if last_call_count != 0 {
-            break 'draw_overlay;
-        }
-        let hglrc = unsafe { wglGetCurrentContext() };
-        if hglrc.is_invalid() {
-            break 'draw_overlay;
+    with_gl_call_count(move |last_call_count| {
+        if last_call_count == 0 {
+            draw_overlay(hdc);
         }
 
-        let hwnd = unsafe { WindowFromDC(hdc) };
-        if hwnd.is_invalid() {
-            break 'draw_overlay;
-        }
-
-        draw_overlay(hglrc, hwnd);
-    }
-
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
+        let hook = HOOK.get().unwrap();
+        unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
+    })
 }
 
 #[tracing::instrument]
 extern "system" fn hooked_wgl_swap_layer_buffers(hdc: HDC, plane: u32) -> BOOL {
     trace!("SwapLayerBuffers called");
 
-    let last_call_count = SWAP_CALL_COUNT.get();
-    SWAP_CALL_COUNT.set(last_call_count + 1);
-    defer!({
-        SWAP_CALL_COUNT.set(last_call_count);
-    });
-
-    'draw_overlay: {
-        if last_call_count != 0 {
-            break 'draw_overlay;
-        }
-        if plane != WGL_SWAP_MAIN_PLANE {
-            break 'draw_overlay;
+    with_gl_call_count(move |last_call_count| {
+        if last_call_count == 0 && plane == WGL_SWAP_MAIN_PLANE {
+            draw_overlay(hdc);
         }
 
-        let hglrc = unsafe { wglGetCurrentContext() };
-        if hglrc.is_invalid() {
-            break 'draw_overlay;
-        }
-
-        let hwnd = unsafe { WindowFromDC(hdc) };
-        if hwnd.is_invalid() {
-            break 'draw_overlay;
-        }
-    }
-
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.wgl_swap_layer_buffers.original_fn()(hdc, plane) }
+        let hook = HOOK.get().unwrap();
+        unsafe { hook.wgl_swap_layer_buffers.original_fn()(hdc, plane) }
+    })
 }
 
 type SwapBuffersFn = unsafe extern "system" fn(HDC) -> BOOL;
