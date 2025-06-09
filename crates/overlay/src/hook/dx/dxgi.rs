@@ -7,7 +7,7 @@ use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
-            Direct3D::D3D_FEATURE_LEVEL_11_0,
+            Direct3D::{D3D_FEATURE_LEVEL_11_0, ID3DDestructionNotifier},
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
             },
@@ -41,7 +41,7 @@ use super::{
 };
 
 #[tracing::instrument(skip(overlay, backend))]
-fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXGISwapChain) {
+fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = backend.size;
@@ -51,6 +51,10 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
         if let Some(queue) = get_queue_for(&device) {
             let renderer = backend.renderer.dx12.get_or_insert_with(|| {
                 debug!("initializing dx12 renderer");
+
+                if let Err(err) = register_destruction_noti(&swapchain) {
+                    error!("failed to register destruction noti. err: {:?}", err);
+                }
                 Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
             });
 
@@ -104,6 +108,10 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
         trace!("using dx11 renderer");
         let renderer = backend.renderer.dx11.get_or_insert_with(|| {
             debug!("initializing dx11 renderer");
+
+            if let Err(err) = register_destruction_noti(swapchain) {
+                error!("failed to register destruction noti. err: {:?}", err);
+            }
             Dx11Renderer::new(&device).expect("renderer creation failed")
         });
 
@@ -119,7 +127,8 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
 }
 
 #[tracing::instrument]
-fn cleanup_state(swapchain: &IDXGISwapChain1, hwnd: Option<HWND>) {
+fn cleanup_state(swapchain: &IDXGISwapChain, hwnd: Option<HWND>) {
+    trace!("render state cleanup");
     if let Some(hwnd) = hwnd {
         _ = Backends::with_backend(hwnd, |backend| {
             backend.cx.dx11.take();
@@ -127,7 +136,36 @@ fn cleanup_state(swapchain: &IDXGISwapChain1, hwnd: Option<HWND>) {
     }
 
     dx12::clear();
-    trace!("cleanedup render states");
+}
+
+#[tracing::instrument]
+fn register_destruction_noti(swapchain: &IDXGISwapChain1) -> anyhow::Result<()> {
+    #[tracing::instrument]
+    extern "system" fn callback(swapchain: *mut c_void) {
+        debug!("dx renderer cleanup");
+
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&swapchain).unwrap() };
+        let hwnd = unsafe { swapchain.GetHwnd() }.ok();
+
+        let Some(hwnd) = hwnd else {
+            return;
+        };
+
+        _ = Backends::with_backend(hwnd, |backend| {
+            backend.cx.dx11.take();
+            backend.renderer.dx11.take();
+            backend.renderer.dx12.take();
+            dx12::clear();
+        });
+    }
+
+    let notifier = swapchain.cast::<ID3DDestructionNotifier>()?;
+    unsafe {
+        // register with swapchain pointer without increasing ref
+        notifier.RegisterDestructionCallback(Some(callback), swapchain.as_raw())?;
+    }
+
+    Ok(())
 }
 
 #[tracing::instrument]
