@@ -1,6 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::{
@@ -153,8 +154,20 @@ fn register_destruction_noti(swapchain: &IDXGISwapChain1) -> anyhow::Result<()> 
 
         _ = Backends::with_backend(hwnd, |backend| {
             backend.cx.dx11.take();
-            backend.renderer.dx11.take();
-            backend.renderer.dx12.take();
+            if let Some(mut renderer) = backend.renderer.dx11.take() {
+                if let Some(handle) = renderer.take_texture() {
+                    backend.pending_handle = Some(UpdateSharedHandle {
+                        handle: Some(handle),
+                    });
+                }
+            }
+            if let Some(mut renderer) = backend.renderer.dx12.take() {
+                if let Some(handle) = renderer.take_texture() {
+                    backend.pending_handle = Some(UpdateSharedHandle {
+                        handle: Some(handle),
+                    });
+                }
+            }
             dx12::clear();
         });
     }

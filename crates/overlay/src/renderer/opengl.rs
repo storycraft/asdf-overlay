@@ -2,7 +2,7 @@ pub mod data;
 
 use anyhow::bail;
 use asdf_overlay_common::request::UpdateSharedHandle;
-use core::{ffi::c_void, mem, ptr};
+use core::{ffi::c_void, mem, num::NonZeroU32, ptr};
 use gl::types::{GLint, GLuint};
 use scopeguard::defer;
 use tracing::trace;
@@ -15,6 +15,7 @@ use windows::{
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
                 D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
             },
+            Dxgi::IDXGIResource,
         },
     },
     core::Interface,
@@ -162,6 +163,17 @@ impl OpenglRenderer {
         self.state.update(shared);
     }
 
+    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
+        self.state.take_handle(|tex| unsafe {
+            tex.d3d11_texture
+                .cast::<IDXGIResource>()
+                .unwrap()
+                .GetSharedHandle()
+                .ok()
+                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
+        })
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) -> anyhow::Result<()> {
         if screen.0 == 0 || screen.1 == 0 {
@@ -201,6 +213,7 @@ impl OpenglRenderer {
 
                 Ok(Some(Tex {
                     size,
+                    d3d11_texture: texture,
                     owned_device_handle: self.dx_device_handle,
                     dx11_tex_handle,
                 }))
@@ -233,21 +246,19 @@ impl OpenglRenderer {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::BindVertexArray(self.vao);
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::UseProgram(self.program);
+            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
+            gl::Uniform1i(self.tex_loc, 0);
+
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
 
             wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
             defer!({
                 wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
             });
-
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
-
-            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
-            gl::Uniform1i(self.tex_loc, 0);
-
             gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         }
 
@@ -277,6 +288,7 @@ unsafe impl Sync for OpenglRenderer {}
 
 struct Tex {
     size: (u32, u32),
+    d3d11_texture: ID3D11Texture2D,
     owned_device_handle: *mut c_void,
     dx11_tex_handle: *const c_void,
 }

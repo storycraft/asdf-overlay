@@ -16,7 +16,9 @@ use windows::{
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
-            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGISwapChain},
+            Dxgi::{
+                Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource, IDXGISwapChain,
+            },
         },
     },
     core::{BOOL, Interface, s},
@@ -64,7 +66,7 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
 
 struct Dx11Tex {
     size: (u32, u32),
-    _texture: ID3D11Texture2D,
+    texture: ID3D11Texture2D,
     mutex: IDXGIKeyedMutex,
     view: ID3D11ShaderResourceView,
 }
@@ -241,6 +243,17 @@ impl Dx11Renderer {
         self.texture.update(shared);
     }
 
+    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
+        self.texture.take_handle(|tex| unsafe {
+            tex.texture
+                .cast::<IDXGIResource>()
+                .unwrap()
+                .GetSharedHandle()
+                .ok()
+                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
+        })
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn draw(
         &mut self,
@@ -380,7 +393,7 @@ fn open_shared_texture(
 
     Ok(Some(Dx11Tex {
         size,
-        _texture: texture,
+        texture,
         mutex,
         view,
     }))
