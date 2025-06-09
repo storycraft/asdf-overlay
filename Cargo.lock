@@ -99,7 +99,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asdf-overlay"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "array-util",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-client"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
@@ -143,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-common"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-hook"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-node"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
