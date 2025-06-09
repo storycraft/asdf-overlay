@@ -233,21 +233,19 @@ impl OpenglRenderer {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::BindVertexArray(self.vao);
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::UseProgram(self.program);
+            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
+            gl::Uniform1i(self.tex_loc, 0);
+
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
 
             wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
             defer!({
                 wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
             });
-
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
-
-            gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
-            gl::Uniform1i(self.tex_loc, 0);
-
             gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         }
 
