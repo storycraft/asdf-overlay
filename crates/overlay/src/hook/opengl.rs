@@ -1,7 +1,7 @@
 use core::{cell::Cell, ffi::c_void, mem};
 use std::ffi::CString;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use asdf_overlay_common::request::UpdateSharedHandle;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
@@ -126,20 +126,24 @@ fn draw_overlay(hdc: HDC) {
                 return true;
             }
 
+            if !gl::GetIntegerv::is_loaded() {
+                debug!("setting up opengl");
+                if let Err(err) = setup_gl() {
+                    error!("opengl setup failed. err: {:?}", err);
+                    return true;
+                }
+            }
+
+            if !wgl::DXOpenDeviceNV::is_loaded() {
+                error!("WGL_NV_DX_interop2 is not supported");
+                return true;
+            }
+
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
                 let (_, ref mut renderer) =
                     *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
                         debug!("initializing opengl renderer");
-
-                        if !gl::GetIntegerv::is_loaded() {
-                            debug!("setting up opengl");
-                            setup_gl().context("opengl setup failed")?;
-                        }
-
-                        if !wgl::DXOpenDeviceNV::is_loaded() {
-                            bail!("WGL_NV_DX_interop2 is not supported");
-                        }
 
                         Ok::<_, anyhow::Error>((
                             hwnd.0 as u32,
