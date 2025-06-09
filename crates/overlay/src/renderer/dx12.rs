@@ -7,6 +7,7 @@ use asdf_overlay_common::request::UpdateSharedHandle;
 use buffer::UploadBuffer;
 use core::{
     mem::{self, ManuallyDrop},
+    num::NonZeroU32,
     slice::{self},
 };
 use rtv::RtvDescriptors;
@@ -22,11 +23,11 @@ use windows::{
             Direct3D12::*,
             Dxgi::{
                 Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
-                IDXGISwapChain, IDXGISwapChain3,
+                IDXGIResource, IDXGISwapChain, IDXGISwapChain3,
             },
         },
     },
-    core::{BOOL, s},
+    core::{BOOL, Interface, s},
 };
 
 use crate::{
@@ -51,7 +52,7 @@ const VERTICES: VertexArray = [
 
 struct Dx12Tex {
     size: (u32, u32),
-    _resource: ID3D12Resource,
+    resource: ID3D12Resource,
 }
 
 const INPUT_DESC: [D3D12_INPUT_ELEMENT_DESC; 1] = [D3D12_INPUT_ELEMENT_DESC {
@@ -341,6 +342,17 @@ impl Dx12Renderer {
         self.texture.update(shared);
     }
 
+    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
+        self.texture.take_handle(|tex| unsafe {
+            tex.resource
+                .cast::<IDXGIResource>()
+                .unwrap()
+                .GetSharedHandle()
+                .ok()
+                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
+        })
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn draw(
         &mut self,
@@ -387,7 +399,7 @@ impl Dx12Renderer {
 
             Ok(Some(Dx12Tex {
                 size: (desc.Width as u32, desc.Height),
-                _resource: texture,
+                resource: texture,
             }))
         })?
         else {

@@ -2,6 +2,7 @@ use core::{cell::Cell, ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
@@ -40,8 +41,8 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
-// HGLRC -> OpenglRenderer
-static MAP: Lazy<IntDashMap<u32, OpenglRenderer>> = Lazy::new(IntDashMap::default);
+// HGLRC -> (HWND, OpenglRenderer)
+static MAP: Lazy<IntDashMap<u32, (u32, OpenglRenderer)>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
@@ -79,10 +80,25 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    MAP.remove(&(hglrc.0 as u32));
+    cleanup_renderer(hglrc);
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
+}
+
+#[tracing::instrument]
+fn cleanup_renderer(hglrc: HGLRC) {
+    debug!("gl renderer cleanup");
+
+    if let Some((_, (hwnd, mut renderer))) = MAP.remove(&(hglrc.0 as u32)) {
+        _ = Backends::with_backend(HWND(hwnd as _), |backend| {
+            if let Some(handle) = renderer.take_texture() {
+                backend.pending_handle = Some(UpdateSharedHandle {
+                    handle: Some(handle),
+                });
+            }
+        });
+    }
 }
 
 #[inline]
@@ -107,7 +123,7 @@ fn draw_overlay(hdc: HDC) {
             // Disable opengl rendering if presenting on DXGI Swapchain is enabled
             // Nvidia(DX11), AMD(DX12)
             if backend.renderer.dx11.is_some() || backend.renderer.dx12.is_some() {
-                MAP.remove(&(hglrc.0 as u32));
+                cleanup_renderer(hglrc);
                 return;
             }
 
@@ -126,19 +142,23 @@ fn draw_overlay(hdc: HDC) {
 
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                let mut renderer = match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
-                    debug!("initializing opengl renderer");
+                let (_, ref mut renderer) =
+                    *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
+                        debug!("initializing opengl renderer");
 
-                    OpenglRenderer::new()
-                        .context("failed to create OpenglRenderer")
-                        .context("failed to create WglContextWrapped")
-                }) {
-                    Ok(renderer) => renderer,
-                    Err(err) => {
-                        error!("renderer setup failed. err: {:?}", err);
-                        return;
-                    }
-                };
+                        Ok::<_, anyhow::Error>((
+                            hwnd.0 as u32,
+                            OpenglRenderer::new()
+                                .context("failed to create OpenglRenderer")
+                                .context("failed to create WglContextWrapped")?,
+                        ))
+                    }) {
+                        Ok(renderer) => renderer,
+                        Err(err) => {
+                            error!("renderer setup failed. err: {:?}", err);
+                            return;
+                        }
+                    };
 
                 let screen = backend.size;
                 if let Some(shared) = backend.pending_handle.take() {
@@ -176,7 +196,7 @@ fn draw_overlay(hdc: HDC) {
     .is_some();
 
     if !enabled {
-        MAP.remove(&(hglrc.0 as _));
+        cleanup_renderer(hglrc);
     }
 }
 

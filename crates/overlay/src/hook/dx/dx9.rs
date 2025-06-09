@@ -1,6 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
@@ -86,6 +87,13 @@ pub(super) extern "system" fn hooked_reset(
     if !hwnd.is_invalid() {
         Backends::with_backend(hwnd, |backend| {
             backend.renderer.dx9.take();
+            if let Some(mut reader) = backend.cx.fallback_reader.take() {
+                if let Some(handle) = reader.take_texture() {
+                    backend.pending_handle = Some(UpdateSharedHandle {
+                        handle: Some(handle),
+                    });
+                }
+            }
         })
         .expect("Backends::with_backend failed");
     }
