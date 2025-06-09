@@ -47,7 +47,7 @@ pub struct DetourError(LONG);
 
 impl Display for DetourError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Detour call error: {}", self.0)
+        write!(f, "Detour call error: {:?}", self.0)
     }
 }
 

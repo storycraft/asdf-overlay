@@ -114,7 +114,7 @@ fn draw_overlay(hdc: HDC) {
             if !gl::GetIntegerv::is_loaded() {
                 debug!("setting up opengl");
                 if let Err(err) = setup_gl() {
-                    error!("opengl setup failed. err: {}", err);
+                    error!("opengl setup failed. err: {:?}", err);
                     return;
                 }
             }
