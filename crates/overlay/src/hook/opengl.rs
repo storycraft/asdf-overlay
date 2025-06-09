@@ -88,17 +88,18 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
 #[tracing::instrument]
 fn cleanup_renderer(hglrc: HGLRC) {
+    let Some((_, (hwnd, mut renderer))) = MAP.remove(&(hglrc.0 as u32)) else {
+        return;
+    };
     debug!("gl renderer cleanup");
 
-    if let Some((_, (hwnd, mut renderer))) = MAP.remove(&(hglrc.0 as u32)) {
-        _ = Backends::with_backend(HWND(hwnd as _), |backend| {
-            if let Some(handle) = renderer.take_texture() {
-                backend.pending_handle = Some(UpdateSharedHandle {
-                    handle: Some(handle),
-                });
-            }
-        });
-    }
+    _ = Backends::with_backend(HWND(hwnd as _), |backend| {
+        if let Some(handle) = renderer.take_texture() {
+            backend.pending_handle = Some(UpdateSharedHandle {
+                handle: Some(handle),
+            });
+        }
+    });
 }
 
 #[inline]
