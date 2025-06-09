@@ -1,7 +1,7 @@
 use core::{cell::Cell, ffi::c_void, mem};
 use std::ffi::CString;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_common::request::UpdateSharedHandle;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
@@ -119,25 +119,11 @@ fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
 #[inline]
 fn draw_overlay(hdc: HDC) {
     fn inner(overlay: &Overlay, hglrc: HGLRC, hwnd: HWND) {
-        let res = Backends::with_or_init_backend(hwnd, |backend| {
+        let should_cleanup = Backends::with_or_init_backend(hwnd, |backend| {
             // Disable opengl rendering if presenting on DXGI Swapchain is enabled
             // Nvidia(DX11), AMD(DX12)
             if backend.renderer.dx11.is_some() || backend.renderer.dx12.is_some() {
-                cleanup_renderer(hglrc);
-                return;
-            }
-
-            if !gl::GetIntegerv::is_loaded() {
-                debug!("setting up opengl");
-                if let Err(err) = setup_gl() {
-                    error!("opengl setup failed. err: {:?}", err);
-                    return;
-                }
-            }
-
-            if !wgl::DXOpenDeviceNV::is_loaded() {
-                error!("WGL_NV_DX_interop2 is not supported");
-                return;
+                return true;
             }
 
             trace!("using opengl renderer");
@@ -145,6 +131,15 @@ fn draw_overlay(hdc: HDC) {
                 let (_, ref mut renderer) =
                     *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
                         debug!("initializing opengl renderer");
+
+                        if !gl::GetIntegerv::is_loaded() {
+                            debug!("setting up opengl");
+                            setup_gl().context("opengl setup failed")?;
+                        }
+
+                        if !wgl::DXOpenDeviceNV::is_loaded() {
+                            bail!("WGL_NV_DX_interop2 is not supported");
+                        }
 
                         Ok::<_, anyhow::Error>((
                             hwnd.0 as u32,
@@ -156,7 +151,7 @@ fn draw_overlay(hdc: HDC) {
                         Ok(renderer) => renderer,
                         Err(err) => {
                             error!("renderer setup failed. err: {:?}", err);
-                            return;
+                            return true;
                         }
                     };
 
@@ -169,11 +164,15 @@ fn draw_overlay(hdc: HDC) {
                 let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
                 let _res = renderer.draw(position, screen);
                 trace!("opengl render: {:?}", _res);
-            });
+                false
+            })
         });
 
-        match res {
-            Ok(_) => (),
+        match should_cleanup {
+            Ok(true) => {
+                cleanup_renderer(hglrc);
+            }
+            Ok(_) => {}
             Err(_err) => {
                 error!("Backends::with_or_init_backend failed. err: {:?}", _err);
             }
