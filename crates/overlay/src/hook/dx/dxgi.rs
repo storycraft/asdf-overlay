@@ -23,7 +23,7 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1, IDXGISwapChain3,
+                IDXGIFactory1, IDXGISwapChain1, IDXGISwapChain3,
             },
         },
     },
@@ -128,7 +128,7 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
 }
 
 #[tracing::instrument]
-fn cleanup_state(swapchain: &IDXGISwapChain, hwnd: Option<HWND>) {
+fn cleanup_state(hwnd: Option<HWND>) {
     trace!("render state cleanup");
     if let Some(hwnd) = hwnd {
         _ = Backends::with_backend(hwnd, |backend| {
@@ -154,6 +154,8 @@ fn register_destruction_noti(swapchain: &IDXGISwapChain1) -> anyhow::Result<()> 
 
         _ = Backends::with_backend(hwnd, |backend| {
             backend.cx.dx11.take();
+            dx12::clear();
+
             if let Some(mut renderer) = backend.renderer.dx11.take() {
                 if let Some(handle) = renderer.take_texture() {
                     backend.pending_handle = Some(UpdateSharedHandle {
@@ -168,7 +170,6 @@ fn register_destruction_noti(swapchain: &IDXGISwapChain1) -> anyhow::Result<()> 
                     });
                 }
             }
-            dx12::clear();
         });
     }
 
@@ -215,12 +216,11 @@ pub(super) extern "system" fn hooked_create_swapchain(
 ) -> HRESULT {
     trace!("CreateSwapChain called");
 
-    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
     let desc = unsafe { &*desc };
     let hwnd = desc.OutputWindow;
 
     if !hwnd.is_invalid() {
-        cleanup_state(swapchain, if hwnd.is_invalid() { None } else { Some(hwnd) });
+        cleanup_state(Some(hwnd));
     }
 
     let create_swapchain = HOOK.create_swapchain.get().unwrap();
@@ -240,7 +240,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this) }.unwrap();
     let hwnd = unsafe { swapchain.GetHwnd().ok() };
-    cleanup_state(swapchain, hwnd);
+    cleanup_state(hwnd);
 
     let resize_buffers = HOOK.resize_buffers.get().unwrap();
     let res =
