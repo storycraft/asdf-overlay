@@ -56,6 +56,7 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
                 });
             }
         }
+        backend.cx.dx12.take();
     });
 }
 
