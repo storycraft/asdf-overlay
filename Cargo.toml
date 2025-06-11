@@ -3,16 +3,16 @@ members = ["./crates/*", "./xtask", "./examples/rust/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.6.5"
+version = "0.6.6"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
-asdf-overlay = { version = "0.6.4", path = "./crates/overlay" }
-asdf-overlay-hook = { version = "0.6.4", path = "./crates/hook" }
-asdf-overlay-client = { version = "0.6.4", path = "./crates/client" }
-asdf-overlay-common = { version = "0.6.4", path = "./crates/common" }
+asdf-overlay = { version = "0.6.6", path = "./crates/overlay" }
+asdf-overlay-hook = { version = "0.6.6", path = "./crates/hook" }
+asdf-overlay-client = { version = "0.6.6", path = "./crates/client" }
+asdf-overlay-common = { version = "0.6.6", path = "./crates/common" }
 
 tokio = "1.44.2"
 
