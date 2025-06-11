@@ -13,7 +13,7 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
         return;
     };
 
-    // We don't know if they are trying cleaning up entire device, so cleanup everything
+    // We don't know if they are trying clean up entire device, so cleanup everything
     _ = Backends::with_backend(hwnd, |backend| {
         let Some(Renderer::Dx11(ref mut renderer)) = backend.renderer else {
             return;
