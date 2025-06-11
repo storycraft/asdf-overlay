@@ -93,7 +93,7 @@ impl Backends {
 
                 pending_handle: None,
                 size,
-                renderer: Renderer::new(),
+                renderer: None,
                 cx: DrawContext::new(),
             })
         };
@@ -130,7 +130,7 @@ pub struct WindowBackend {
 
     pub size: (u32, u32),
     pub pending_handle: Option<UpdateSharedHandle>,
-    pub renderer: Renderer,
+    pub renderer: Option<Renderer>,
     pub cx: DrawContext,
 }
 
@@ -139,7 +139,7 @@ impl WindowBackend {
     fn cleanup(&mut self) {
         trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
         mem::take(&mut self.cx);
-        mem::take(&mut self.renderer);
+        self.renderer.take();
         self.pending_handle.take();
         self.listen_input = ListenInputFlags::empty();
         self.blocking_state.change(false);

@@ -155,7 +155,7 @@ const MAX_RENDER_TARGETS: usize = D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT as _;
 
 pub struct Dx12Renderer {
     sig: ID3D12RootSignature,
-    rtv: RtvDescriptors,
+    rtv: Option<RtvDescriptors>,
 
     pipeline: ID3D12PipelineState,
     vertex_buffer: ID3D12Resource,
@@ -171,7 +171,7 @@ impl Dx12Renderer {
     pub fn new(
         device: &ID3D12Device,
         queue: &ID3D12CommandQueue,
-        swapchain: &IDXGISwapChain3,
+        swapchain: &IDXGISwapChain,
     ) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
@@ -183,8 +183,6 @@ impl Dx12Renderer {
                 0,
                 slice::from_raw_parts(sig.GetBufferPointer().cast::<u8>(), sig.GetBufferSize()),
             )?;
-
-            let rtv = RtvDescriptors::new(device, swapchain)?;
 
             let mut vs_blob = None;
             D3DCompile(
@@ -314,7 +312,7 @@ impl Dx12Renderer {
 
             Ok(Self {
                 sig,
-                rtv,
+                rtv: None,
 
                 pipeline,
                 vertex_buffer,
@@ -331,10 +329,8 @@ impl Dx12Renderer {
         self.texture.map(|tex| tex.size).unwrap_or((0, 0))
     }
 
-    pub fn resize(&self, device: &ID3D12Device, swapchain: &IDXGISwapChain) {
-        unsafe {
-            self.rtv.reset(device, swapchain);
-        }
+    pub fn reset(&mut self) {
+        self.rtv = None;
     }
 
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
@@ -420,6 +416,11 @@ impl Dx12Renderer {
             let (ref command_list, ref command_alloc) =
                 self.command_list[backbuffer_index as usize];
 
+            let rtv = match self.rtv {
+                Some(ref mut rtv) => rtv,
+                None => self.rtv.insert(RtvDescriptors::new(device, swapchain)?),
+            };
+
             command_alloc.Reset()?;
             command_list.Reset(command_alloc, &self.pipeline)?;
 
@@ -453,7 +454,7 @@ impl Dx12Renderer {
                 D3D12_RESOURCE_STATE_RENDER_TARGET,
             )]);
 
-            let render_target_desc = self.rtv.desc_for(backbuffer_index as _);
+            let render_target_desc = rtv.desc_for(backbuffer_index as _);
             command_list.OMSetRenderTargets(1, Some(&render_target_desc), true, None);
             command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
             command_list.IASetVertexBuffers(

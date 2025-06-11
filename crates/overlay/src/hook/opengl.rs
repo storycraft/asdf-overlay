@@ -21,7 +21,7 @@ use windows::{
 
 use crate::{
     app::Overlay,
-    backend::Backends,
+    backend::{Backends, renderers::Renderer},
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
     wgl,
@@ -121,10 +121,18 @@ fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
 fn draw_overlay(hdc: HDC) {
     fn inner(overlay: &Overlay, hglrc: HGLRC, hwnd: HWND) {
         let should_cleanup = Backends::with_or_init_backend(hwnd, |backend| {
-            // Disable opengl rendering if presenting on DXGI Swapchain is enabled
-            // Nvidia(DX11), AMD(DX12)
-            if backend.renderer.dx11.is_some() || backend.renderer.dx12.is_some() {
-                return true;
+            match backend.renderer {
+                Some(Renderer::Opengl) => {}
+                Some(_) => {
+                    trace!("ignoring opengl rendering");
+                    return false;
+                }
+                None => {
+                    debug!("Found opengl window");
+                    backend.renderer = Some(Renderer::Opengl);
+                    // wait next swap for possible dxgi swapchain check
+                    return false;
+                }
             }
 
             if !gl::GetIntegerv::is_loaded() {

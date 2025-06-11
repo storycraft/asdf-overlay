@@ -10,26 +10,45 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
         },
+        Dxgi::IDXGISwapChain1,
     },
-    core::Interface,
+    core::{Interface, Weak},
 };
 
-use crate::types::IntDashMap;
+use crate::{
+    backend::{Backends, renderers::Renderer},
+    types::IntDashMap,
+};
 
 use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
-static QUEUE_MAP: Lazy<IntDashMap<usize, ID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
+static QUEUE_MAP: Lazy<IntDashMap<usize, Weak<ID3D12CommandQueue>>> =
+    Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
-    Some(QUEUE_MAP.remove(&(device.as_raw() as _))?.1)
+    QUEUE_MAP.remove(&(device.as_raw() as _))?.1.upgrade()
 }
 
 #[tracing::instrument]
-pub fn clear() {
-    QUEUE_MAP.clear();
+pub fn cleanup_dx12_swapchain(swapchain: &IDXGISwapChain1) {
+    debug!("dx12 renderer cleanup");
+
+    let hwnd = unsafe { swapchain.GetHwnd() }.ok();
+
+    let Some(hwnd) = hwnd else {
+        return;
+    };
+
+    _ = Backends::with_backend(hwnd, |backend| {
+        let Some(Renderer::Dx12(Some(ref mut renderer))) = backend.renderer else {
+            return;
+        };
+
+        renderer.reset();
+    });
 }
 
 #[tracing::instrument]
@@ -52,7 +71,7 @@ pub extern "system" fn hooked_execute_command_lists(
                 "found DIRECT command queue {:?} for device {:?}",
                 queue, device
             );
-            QUEUE_MAP.insert(device.as_raw() as _, queue.clone());
+            QUEUE_MAP.insert(device.as_raw() as _, queue.downgrade().unwrap());
         }
 
         let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
