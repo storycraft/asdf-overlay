@@ -342,6 +342,7 @@ impl Dx12Renderer {
     }
 
     #[tracing::instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         device: &ID3D12Device,

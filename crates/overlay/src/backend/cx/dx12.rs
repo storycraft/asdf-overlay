@@ -1,4 +1,3 @@
-use scopeguard::defer;
 use windows::Win32::Graphics::{Direct3D12::*, Dxgi::IDXGISwapChain};
 
 #[derive(Debug)]

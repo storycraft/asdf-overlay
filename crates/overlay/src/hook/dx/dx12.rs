@@ -48,7 +48,6 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
             return;
         };
 
-
         if let Some(mut renderer) = renderer.take() {
             if let Some(handle) = renderer.take_texture() {
                 backend.pending_handle = Some(UpdateSharedHandle {
