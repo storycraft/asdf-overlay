@@ -1,3 +1,4 @@
+mod dx11;
 mod dx12;
 mod dx9;
 mod dxgi;
@@ -6,7 +7,7 @@ pub mod util;
 use asdf_overlay_hook::DetourHook;
 use dx9::{EndSceneFn, ResetFn};
 use dx12::ExecuteCommandListsFn;
-use dxgi::{CreateSwapChainFn, Present1Fn, PresentFn, ResizeBuffersFn};
+use dxgi::{Present1Fn, PresentFn};
 use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::Win32::Foundation::HWND;
@@ -15,8 +16,6 @@ use windows::Win32::Foundation::HWND;
 struct Hook {
     present: OnceCell<DetourHook<PresentFn>>,
     present1: OnceCell<DetourHook<Present1Fn>>,
-    create_swapchain: OnceCell<DetourHook<CreateSwapChainFn>>,
-    resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
     execute_command_lists: OnceCell<DetourHook<ExecuteCommandListsFn>>,
     end_scene: OnceCell<DetourHook<EndSceneFn>>,
     reset: OnceCell<DetourHook<ResetFn>>,
@@ -25,8 +24,6 @@ struct Hook {
 static HOOK: Hook = Hook {
     present: OnceCell::new(),
     present1: OnceCell::new(),
-    create_swapchain: OnceCell::new(),
-    resize_buffers: OnceCell::new(),
     execute_command_lists: OnceCell::new(),
     end_scene: OnceCell::new(),
     reset: OnceCell::new(),
@@ -58,22 +55,6 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
             DetourHook::attach(present1 as _, dxgi::hooked_present1 as _)
         })?;
     }
-
-    debug!("hooking IDXGIFactory::CreateSwapChain");
-    HOOK.create_swapchain.get_or_try_init(|| unsafe {
-        DetourHook::attach(
-            dxgi_functions.create_swapchain as _,
-            dxgi::hooked_create_swapchain as _,
-        )
-    })?;
-
-    debug!("hooking IDXGISwapChain::ResizeBuffers");
-    HOOK.resize_buffers.get_or_try_init(|| unsafe {
-        DetourHook::attach(
-            dxgi_functions.resize_buffers as _,
-            dxgi::hooked_resize_buffers as _,
-        )
-    })?;
 
     // dx9
     let (end_scene, reset) = dx9::get_dx9_addr(dummy_hwnd)?;

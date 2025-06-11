@@ -16,7 +16,10 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay, backend::Backends, reader::SharedHandleReader, renderer::dx9::Dx9Renderer,
+    app::Overlay,
+    backend::{Backends, renderers::Renderer},
+    reader::SharedHandleReader,
+    renderer::dx9::Dx9Renderer,
 };
 
 use super::HOOK;
@@ -37,11 +40,24 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
         unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
 
         if params.hDeviceWindow.is_invalid() {
-            error!("invalid hDeviceWindow");
             return;
         }
 
         let res = Backends::with_or_init_backend(params.hDeviceWindow, |backend| {
+            let renderer = match backend.renderer {
+                Some(Renderer::Dx9(ref mut renderer)) => renderer,
+                Some(_) => {
+                    trace!("ignoring dx9 rendering");
+                    return;
+                }
+                None => {
+                    debug!("Found dx9 window");
+                    backend.renderer = Some(Renderer::Dx9(None));
+                    // wait next swap for possible remaining renderer check
+                    return;
+                }
+            };
+
             let reader = backend
                 .cx
                 .fallback_reader
@@ -49,7 +65,7 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             let screen = backend.size;
 
             trace!("using dx9 renderer");
-            let renderer = backend.renderer.dx9.get_or_insert_with(|| {
+            let renderer = renderer.get_or_insert_with(|| {
                 Dx9Renderer::new(device).expect("Dx9Renderer creation failed")
             });
 
@@ -86,7 +102,10 @@ pub(super) extern "system" fn hooked_reset(
     let hwnd = unsafe { &*param }.hDeviceWindow;
     if !hwnd.is_invalid() {
         Backends::with_backend(hwnd, |backend| {
-            backend.renderer.dx9.take();
+            let Some(Renderer::Dx9(ref mut renderer)) = backend.renderer else {
+                return;
+            };
+            renderer.take();
             if let Some(mut reader) = backend.cx.fallback_reader.take() {
                 if let Some(handle) = reader.take_texture() {
                     backend.pending_handle = Some(UpdateSharedHandle {

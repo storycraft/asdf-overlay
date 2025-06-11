@@ -16,9 +16,7 @@ use windows::{
                 Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
-            Dxgi::{
-                Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource, IDXGISwapChain,
-            },
+            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource},
         },
     },
     core::{BOOL, Interface, s},
@@ -259,7 +257,6 @@ impl Dx11Renderer {
         &mut self,
         device: &ID3D11Device,
         cx: &ID3D11DeviceContext,
-        swapchain: &IDXGISwapChain,
         position: (f32, f32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
@@ -297,15 +294,6 @@ impl Dx11Renderer {
                 cx.Unmap(&self.constant_buffer, 0);
             }
 
-            let render_target = {
-                let back_buffer = swapchain.GetBuffer::<ID3D11Texture2D>(0)?;
-
-                let mut render_target = None;
-                device.CreateRenderTargetView(&back_buffer, None, Some(&mut render_target))?;
-                render_target.context("cannot create render target")?
-            };
-
-            cx.OMSetRenderTargets(Some(&[Some(render_target)]), None);
             cx.OMSetBlendState(&self.blend_state, None, 0x00ffffff);
             cx.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 TopLeftX: 0.0,

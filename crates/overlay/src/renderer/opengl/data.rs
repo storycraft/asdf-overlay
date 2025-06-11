@@ -11,7 +11,7 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
 
     macro_rules! is_gl_enabled {
         ($name:ident = $expr:expr) => {
-            let $name = gl::IsEnabled($expr) != 0;
+            let $name = gl::IsEnabled($expr) == gl::TRUE;
         };
     }
 
@@ -25,10 +25,6 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
         get_gl_int!(last_program = gl::CURRENT_PROGRAM);
         get_gl_int!(last_texture = gl::TEXTURE_BINDING_2D);
         get_gl_int!(last_array_buffer = gl::ARRAY_BUFFER_BINDING);
-        get_gl_int!(last_polygon_mode = gl::POLYGON_MODE);
-        if last_polygon_mode != gl::FILL {
-            gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
-        }
 
         // vao
         get_gl_int!(last_vertex_array_object = gl::VERTEX_ARRAY_BINDING);
@@ -89,16 +85,14 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
                 gl::Enable(gl::SCISSOR_TEST);
             }
 
-            if last_polygon_mode != gl::FILL {
-                gl::PolygonMode(gl::FRONT_AND_BACK, last_polygon_mode);
+            if last_viewport[2] != 0 || last_viewport[3] != 0 {
+                gl::Viewport(
+                    last_viewport[0],
+                    last_viewport[1],
+                    last_viewport[2],
+                    last_viewport[3],
+                );
             }
-
-            gl::Viewport(
-                last_viewport[0],
-                last_viewport[1],
-                last_viewport[2],
-                last_viewport[3],
-            );
         });
         f()
     }

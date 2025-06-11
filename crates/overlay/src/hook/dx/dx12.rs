@@ -1,6 +1,7 @@
 use core::ffi::c_void;
 
 use anyhow::Context;
+use asdf_overlay_common::request::UpdateSharedHandle;
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 use windows::{
@@ -10,11 +11,15 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
         },
+        Dxgi::IDXGISwapChain1,
     },
     core::Interface,
 };
 
-use crate::types::IntDashMap;
+use crate::{
+    backend::{Backends, renderers::Renderer},
+    types::IntDashMap,
+};
 
 use super::HOOK;
 
@@ -28,8 +33,30 @@ pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
 }
 
 #[tracing::instrument]
-pub fn clear() {
-    QUEUE_MAP.clear();
+pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
+    debug!("dx12 renderer cleanup");
+
+    let hwnd = unsafe { swapchain.GetHwnd() }.ok();
+
+    let Some(hwnd) = hwnd else {
+        return;
+    };
+
+    // We don't know if they are trying clean up entire device, so cleanup everything
+    _ = Backends::with_backend(hwnd, |backend| {
+        let Some(Renderer::Dx12(ref mut renderer)) = backend.renderer else {
+            return;
+        };
+
+        if let Some(mut renderer) = renderer.take() {
+            if let Some(handle) = renderer.take_texture() {
+                backend.pending_handle = Some(UpdateSharedHandle {
+                    handle: Some(handle),
+                });
+            }
+        }
+        backend.cx.dx12.take();
+    });
 }
 
 #[tracing::instrument]
