@@ -5,7 +5,7 @@ use windows::Win32::Graphics::Dxgi::IDXGISwapChain1;
 use crate::backend::{Backends, renderers::Renderer};
 
 #[tracing::instrument]
-pub fn cleanup_dx11_swapchain(swapchain: &IDXGISwapChain1) {
+pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
     debug!("dx11 renderer cleanup");
     let hwnd = unsafe { swapchain.GetHwnd() }.ok();
 

@@ -33,10 +33,9 @@ use windows::{
 use crate::{
     app::Overlay,
     backend::{
-        Backends, WindowBackend, cx::callback::register_swapchain_destruction_callback,
-        renderers::Renderer,
+        cx::callback::register_swapchain_destruction_callback, renderers::Renderer, Backends, WindowBackend
     },
-    hook::dx::dx11,
+    hook::dx::{dx11, dx12},
     renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
 };
 
@@ -73,6 +72,7 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
         if let Some(queue) = get_queue_for(&device) {
             let renderer = renderer.get_or_insert_with(|| {
                 debug!("initializing dx12 renderer");
+                register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
                 Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
             });
 
@@ -147,7 +147,7 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
         trace!("using dx11 renderer");
         let renderer = renderer.get_or_insert_with(|| {
             debug!("initializing dx11 renderer");
-            register_swapchain_destruction_callback(swapchain, dx11::cleanup_dx11_swapchain);
+            register_swapchain_destruction_callback(swapchain, dx11::cleanup_swapchain);
             Dx11Renderer::new(&device).expect("renderer creation failed")
         });
 
