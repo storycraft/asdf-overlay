@@ -112,13 +112,12 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
     }
 
     if !hwnd.is_invalid() {
-        Backends::with_backend(hwnd, |backend| {
+        _ = Backends::with_backend(hwnd, |backend| {
             let Some(Renderer::Dx9(ref mut renderer)) = backend.renderer else {
                 return;
             };
             renderer.take();
-        })
-        .expect("Backends::with_backend failed");
+        });
     }
 }
 
