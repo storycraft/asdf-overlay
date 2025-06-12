@@ -1,4 +1,4 @@
-use core::{num::NonZeroU32, ptr};
+use core::ptr;
 
 use asdf_overlay_common::request::UpdateSharedHandle;
 use scopeguard::defer;
@@ -8,7 +8,7 @@ use windows::{
         Graphics::{
             Direct3D::D3D_DRIVER_TYPE_HARDWARE,
             Direct3D11::*,
-            Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGIKeyedMutex, IDXGIResource},
+            Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGIKeyedMutex},
         },
     },
     core::Interface,
@@ -51,17 +51,6 @@ impl SharedHandleReader {
 
     pub fn update_shared(&mut self, shared: UpdateSharedHandle) {
         self.state.update(shared);
-    }
-
-    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
-        self.state.take_handle(|tex| unsafe {
-            tex.src
-                .cast::<IDXGIResource>()
-                .unwrap()
-                .GetSharedHandle()
-                .ok()
-                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
-        })
     }
 
     pub fn with_mapped<R>(

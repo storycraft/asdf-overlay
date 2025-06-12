@@ -56,6 +56,11 @@ impl Dx9Renderer {
         self.size
     }
 
+    #[inline]
+    pub fn reset_texture(&mut self) {
+        self.texture.take();
+    }
+
     pub fn update_texture(
         &mut self,
         device: &IDirect3DDevice9,
@@ -63,7 +68,7 @@ impl Dx9Renderer {
         mapped: &D3D11_MAPPED_SUBRESOURCE,
     ) -> anyhow::Result<()> {
         if self.size != size {
-            self.texture.take();
+            self.reset_texture();
         }
 
         let texture = match self.texture {
