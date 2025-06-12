@@ -6,9 +6,9 @@ use windows::{
     Win32::{
         Foundation::HWND,
         Graphics::Direct3D9::{
-            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-            D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS,
-            D3DSWAPEFFECT_DISCARD, Direct3DCreate9, IDirect3DDevice9,
+            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
+            D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX, D3DPRESENT_PARAMETERS,
+            D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3DDevice9,
         },
     },
     core::{BOOL, HRESULT, Interface},
@@ -25,6 +25,11 @@ use super::HOOK;
 
 pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
 pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
+pub type ResetExFn = unsafe extern "system" fn(
+    *mut c_void,
+    *mut D3DPRESENT_PARAMETERS,
+    *mut D3DDISPLAYMODEEX,
+) -> HRESULT;
 
 #[tracing::instrument]
 pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
@@ -97,17 +102,10 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     unsafe { end_scene.original_fn()(this) }
 }
 
-#[tracing::instrument]
-pub(super) extern "system" fn hooked_reset(
-    this: *mut c_void,
-    param: *mut D3DPRESENT_PARAMETERS,
-) -> HRESULT {
-    trace!("Reset called");
-
+fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
     let mut hwnd = unsafe { &*param }.hDeviceWindow;
     // hwnd is hDeviceWindow of new param or focus window
     if hwnd.is_invalid() {
-        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
         let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
         _ = unsafe { device.GetCreationParameters(&mut params) };
         hwnd = params.hFocusWindow;
@@ -122,38 +120,73 @@ pub(super) extern "system" fn hooked_reset(
         })
         .expect("Backends::with_backend failed");
     }
+}
+
+#[tracing::instrument]
+pub(super) extern "system" fn hooked_reset(
+    this: *mut c_void,
+    param: *mut D3DPRESENT_PARAMETERS,
+) -> HRESULT {
+    trace!("Reset called");
+    handle_reset(
+        unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap(),
+        param,
+    );
 
     let reset = HOOK.reset.get().unwrap();
     unsafe { reset.original_fn()(this, param) }
 }
 
+#[tracing::instrument]
+pub(super) extern "system" fn hooked_reset_ex(
+    this: *mut c_void,
+    param: *mut D3DPRESENT_PARAMETERS,
+    fullscreen_display_mode: *mut D3DDISPLAYMODEEX,
+) -> HRESULT {
+    trace!("ResetEx called");
+    handle_reset(
+        unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap(),
+        param,
+    );
+
+    let reset_ex = HOOK.reset_ex.get().unwrap();
+    unsafe { reset_ex.original_fn()(this, param, fullscreen_display_mode) }
+}
+
 /// Get pointer to IDirect3DDevice9::EndScene, IDirect3DDevice9::Reset by creating dummy device
-pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn)> {
+pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn, ResetExFn)> {
     let device = unsafe {
-        let dx9 = Direct3DCreate9(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
+        let dx9ex = Direct3DCreate9Ex(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
 
         let mut device = None;
-        dx9.CreateDevice(
+        dx9ex.CreateDeviceEx(
             D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_NULLREF,
+            D3DDEVTYPE_HAL,
             HWND(ptr::null_mut()),
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING as _,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING as _,
             &mut D3DPRESENT_PARAMETERS {
                 Windowed: BOOL(1),
                 SwapEffect: D3DSWAPEFFECT_DISCARD,
                 hDeviceWindow: dummy_hwnd,
                 ..Default::default()
             },
+            0 as _,
             &mut device,
         )?;
 
         device.context("cannot create IDirect3DDevice9")?
     };
-    let end_scene = Interface::vtable(&device).EndScene;
+
+    let dx9_vtable = Interface::vtable(&*device);
+    let end_scene = dx9_vtable.EndScene;
     debug!("IDirect3DDevice9::EndScene found: {:p}", end_scene);
 
-    let reset = Interface::vtable(&device).Reset;
+    let reset = dx9_vtable.Reset;
     debug!("IDirect3DDevice9::Reset found: {:p}", reset);
 
-    Ok((end_scene, reset))
+    let dx9ex_vtable = Interface::vtable(&device);
+    let reset_ex = dx9ex_vtable.ResetEx;
+    debug!("IDirect3DDevice9Ex::ResetEx found: {:p}", reset_ex);
+
+    Ok((end_scene, reset, reset_ex))
 }
