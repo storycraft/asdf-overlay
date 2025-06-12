@@ -1,15 +1,14 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::HWND,
         Graphics::Direct3D9::{
             D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-            D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9,
-            IDirect3DDevice9,
+            D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_NULLREF, D3DPRESENT_PARAMETERS,
+            D3DSWAPEFFECT_DISCARD, Direct3DCreate9, IDirect3DDevice9,
         },
     },
     core::{BOOL, HRESULT, Interface},
@@ -33,12 +32,10 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
 
     _ = Overlay::with(|overlay| {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-
         let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
 
         let mut params = D3DPRESENT_PARAMETERS::default();
         unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
-
         if params.hDeviceWindow.is_invalid() {
             return;
         }
@@ -76,13 +73,19 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
             let size = renderer.size();
             let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
 
-            _ = reader.with_mapped(|size, mapped| {
-                renderer.update_texture(device, size, mapped)?;
-
-                Ok(())
-            });
-
-            _ = renderer.draw(device, position, screen);
+            match reader.with_mapped(|size, mapped| renderer.update_texture(device, size, mapped)) {
+                Ok(Some(_)) => {
+                    let _res = renderer.draw(device, position, screen);
+                    trace!("dx9 render: {:?}", _res);
+                }
+                Ok(None) => {
+                    renderer.reset_texture();
+                    trace!("skipping dx9 render");
+                }
+                Err(err) => {
+                    error!("failed to copy shtex to dx9 texture. err: {err:?}");
+                }
+            }
         });
 
         if let Err(_err) = res {
@@ -99,20 +102,23 @@ pub(super) extern "system" fn hooked_reset(
     this: *mut c_void,
     param: *mut D3DPRESENT_PARAMETERS,
 ) -> HRESULT {
-    let hwnd = unsafe { &*param }.hDeviceWindow;
+    trace!("Reset called");
+
+    let mut hwnd = unsafe { &*param }.hDeviceWindow;
+    // hwnd is hDeviceWindow of new param or focus window
+    if hwnd.is_invalid() {
+        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+        let mut params = D3DDEVICE_CREATION_PARAMETERS::default();
+        _ = unsafe { device.GetCreationParameters(&mut params) };
+        hwnd = params.hFocusWindow;
+    }
+
     if !hwnd.is_invalid() {
         Backends::with_backend(hwnd, |backend| {
             let Some(Renderer::Dx9(ref mut renderer)) = backend.renderer else {
                 return;
             };
             renderer.take();
-            if let Some(mut reader) = backend.cx.fallback_reader.take() {
-                if let Some(handle) = reader.take_texture() {
-                    backend.pending_handle = Some(UpdateSharedHandle {
-                        handle: Some(handle),
-                    });
-                }
-            }
         })
         .expect("Backends::with_backend failed");
     }

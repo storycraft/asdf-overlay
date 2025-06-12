@@ -36,7 +36,7 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
         HOOK.execute_command_lists.get_or_try_init(|| unsafe {
             debug!("hooking ID3D12CommandQueue::ExecuteCommandLists");
             DetourHook::attach(
-                execute_command_lists as _,
+                execute_command_lists,
                 dx12::hooked_execute_command_lists as _,
             )
         })?;
@@ -46,25 +46,24 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     let dxgi_functions = dxgi::get_dxgi_addr(dummy_hwnd)?;
     debug!("hooking IDXGISwapChain::Present");
     HOOK.present.get_or_try_init(|| unsafe {
-        DetourHook::attach(dxgi_functions.present as _, dxgi::hooked_present as _)
+        DetourHook::attach(dxgi_functions.present, dxgi::hooked_present as _)
     })?;
 
     if let Some(present1) = dxgi_functions.present1 {
         debug!("hooking IDXGISwapChain1::Present1");
         HOOK.present1.get_or_try_init(|| unsafe {
-            DetourHook::attach(present1 as _, dxgi::hooked_present1 as _)
+            DetourHook::attach(present1, dxgi::hooked_present1 as _)
         })?;
     }
 
     // dx9
     let (end_scene, reset) = dx9::get_dx9_addr(dummy_hwnd)?;
     debug!("hooking IDirect3DDevice9::EndScene");
-    HOOK.end_scene.get_or_try_init(|| unsafe {
-        DetourHook::attach(end_scene as _, dx9::hooked_end_scene as _)
-    })?;
+    HOOK.end_scene
+        .get_or_try_init(|| unsafe { DetourHook::attach(end_scene, dx9::hooked_end_scene as _) })?;
     debug!("hooking IDirect3DDevice9::Reset");
     HOOK.reset
-        .get_or_try_init(|| unsafe { DetourHook::attach(reset as _, dx9::hooked_reset as _) })?;
+        .get_or_try_init(|| unsafe { DetourHook::attach(reset, dx9::hooked_reset as _) })?;
 
     Ok(())
 }
