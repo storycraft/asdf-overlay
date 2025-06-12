@@ -138,9 +138,7 @@ impl WindowBackend {
     #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
         trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
-        mem::take(&mut self.cx);
-        self.renderer.take();
-        self.pending_handle.take();
+        self.pending_handle = Some(UpdateSharedHandle { handle: None });
         self.listen_input = ListenInputFlags::empty();
         self.blocking_state.change(false);
         self.blocking_cursor = Some(Cursor::Default);

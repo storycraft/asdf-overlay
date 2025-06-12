@@ -87,6 +87,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 }
 
 #[tracing::instrument]
+#[inline]
 fn cleanup_renderer(hglrc: HGLRC) {
     let Some((_, (hwnd, mut renderer))) = MAP.remove(&(hglrc.0 as u32)) else {
         return;
@@ -120,18 +121,18 @@ fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
 #[inline]
 fn draw_overlay(hdc: HDC) {
     fn inner(overlay: &Overlay, hglrc: HGLRC, hwnd: HWND) {
-        let should_cleanup = Backends::with_or_init_backend(hwnd, |backend| {
+        let res = Backends::with_or_init_backend(hwnd, |backend| {
             match backend.renderer {
                 Some(Renderer::Opengl) => {}
                 Some(_) => {
                     trace!("ignoring opengl rendering");
-                    return false;
+                    return;
                 }
                 None => {
                     debug!("Found opengl window");
                     backend.renderer = Some(Renderer::Opengl);
                     // wait next swap for possible dxgi swapchain check
-                    return false;
+                    return;
                 }
             }
 
@@ -139,13 +140,13 @@ fn draw_overlay(hdc: HDC) {
                 debug!("setting up opengl");
                 if let Err(err) = setup_gl() {
                     error!("opengl setup failed. err: {:?}", err);
-                    return true;
+                    return;
                 }
             }
 
             if !wgl::DXOpenDeviceNV::is_loaded() {
                 error!("WGL_NV_DX_interop2 is not supported");
-                return true;
+                return;
             }
 
             trace!("using opengl renderer");
@@ -164,7 +165,7 @@ fn draw_overlay(hdc: HDC) {
                         Ok(renderer) => renderer,
                         Err(err) => {
                             error!("renderer setup failed. err: {:?}", err);
-                            return true;
+                            return;
                         }
                     };
 
@@ -177,14 +178,10 @@ fn draw_overlay(hdc: HDC) {
                 let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
                 let _res = renderer.draw(position, screen);
                 trace!("opengl render: {:?}", _res);
-                false
             })
         });
 
-        match should_cleanup {
-            Ok(true) => {
-                cleanup_renderer(hglrc);
-            }
+        match res {
             Ok(_) => {}
             Err(_err) => {
                 error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -202,14 +199,9 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    let enabled = Overlay::with(|overlay| {
+    _ = Overlay::with(|overlay| {
         inner(overlay, hglrc, hwnd);
-    })
-    .is_some();
-
-    if !enabled {
-        cleanup_renderer(hglrc);
-    }
+    });
 }
 
 #[tracing::instrument]
