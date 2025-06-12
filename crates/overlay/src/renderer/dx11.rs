@@ -6,7 +6,6 @@ use core::{
 
 use anyhow::Context;
 use asdf_overlay_common::request::UpdateSharedHandle;
-use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -309,12 +308,6 @@ impl Dx11Renderer {
             cx.VSSetShader(&self.vertex_shader, None);
             cx.PSSetShader(&self.pixel_shader, None);
 
-            mutex.AcquireSync(0, u32::MAX)?;
-            defer!({
-                _ = mutex.ReleaseSync(0);
-            });
-
-            cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
             cx.PSSetSamplers(0, Some(&[Some(self.sampler_state.clone())]));
 
             cx.IASetVertexBuffers(
@@ -327,7 +320,11 @@ impl Dx11Renderer {
             cx.VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
 
             cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+            mutex.AcquireSync(0, u32::MAX)?;
+            cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
             cx.Draw(4, 0);
+            _ = mutex.ReleaseSync(0);
         }
 
         Ok(())
