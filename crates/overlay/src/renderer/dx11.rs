@@ -1,7 +1,6 @@
 use core::{
     mem,
     num::NonZeroU32,
-    slice::{self},
 };
 
 use anyhow::Context;
@@ -12,7 +11,6 @@ use windows::{
         Graphics::{
             Direct3D::{
                 D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D,
-                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
             },
             Direct3D11::*,
             Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource},
@@ -21,9 +19,7 @@ use windows::{
     core::{BOOL, Interface, s},
 };
 
-use crate::texture::OverlayTextureState;
-
-use super::dx::TEXTURE_SHADER;
+use crate::{renderer::dx::shaders, texture::OverlayTextureState};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -84,64 +80,22 @@ impl Dx11Renderer {
     #[tracing::instrument]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
-            let mut vs_blob = None;
-            D3DCompile(
-                TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.len(),
-                None,
-                None,
-                None,
-                s!("vs_main"),
-                s!("vs_5_0"),
-                D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
-                0,
-                &mut vs_blob,
-                None,
-            )
-            .context("vertex shader failed to build")?;
-            let vs_blob = vs_blob.unwrap();
-
-            let vs_blob_slice = slice::from_raw_parts::<u8>(
-                vs_blob.GetBufferPointer() as _,
-                vs_blob.GetBufferSize(),
-            );
-
             let mut input_layout = None;
             device
-                .CreateInputLayout(&INPUT_DESC, vs_blob_slice, Some(&mut input_layout))
+                .CreateInputLayout(&INPUT_DESC, shaders::VERTEX_SHADER, Some(&mut input_layout))
                 .context("failed to create input layout")?;
             let input_layout = input_layout.unwrap();
 
             let mut vertex_shader = None;
             device
-                .CreateVertexShader(vs_blob_slice, None, Some(&mut vertex_shader))
+                .CreateVertexShader(shaders::VERTEX_SHADER, None, Some(&mut vertex_shader))
                 .context("vertex shader failed to link")?;
             let vertex_shader = vertex_shader.unwrap();
-
-            let mut ps_blob = None;
-            D3DCompile(
-                TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.len(),
-                None,
-                None,
-                None,
-                s!("ps_main"),
-                s!("ps_5_0"),
-                D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
-                0,
-                &mut ps_blob,
-                None,
-            )
-            .context("vertex shader failed to build")?;
-            let ps_blob = ps_blob.unwrap();
 
             let mut pixel_shader = None;
             device
                 .CreatePixelShader(
-                    slice::from_raw_parts::<u8>(
-                        ps_blob.GetBufferPointer() as _,
-                        ps_blob.GetBufferSize(),
-                    ),
+                    shaders::PIXEL_SHADER,
                     None,
                     Some(&mut pixel_shader),
                 )

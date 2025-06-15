@@ -14,10 +14,7 @@ use windows::{
     Win32::{
         Foundation::{HANDLE, RECT},
         Graphics::{
-            Direct3D::{
-                D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-                Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCOMPILE_WARNINGS_ARE_ERRORS, D3DCompile},
-            },
+            Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             Direct3D12::*,
             Dxgi::{
                 Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
@@ -29,11 +26,9 @@ use windows::{
 };
 
 use crate::{
-    hook::call_original_execute_command_lists, texture::OverlayTextureState,
+    hook::call_original_execute_command_lists, renderer::dx::shaders, texture::OverlayTextureState,
     util::wrap_com_manually_drop,
 };
-
-use super::dx::TEXTURE_SHADER;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -181,47 +176,15 @@ impl Dx12Renderer {
                 slice::from_raw_parts(sig.GetBufferPointer().cast::<u8>(), sig.GetBufferSize()),
             )?;
 
-            let mut vs_blob = None;
-            D3DCompile(
-                TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.len(),
-                None,
-                None,
-                None,
-                s!("vs_main"),
-                s!("vs_5_0"),
-                D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
-                0,
-                &mut vs_blob,
-                None,
-            )?;
-            let vs_blob = vs_blob.context("vertex shader failed to build")?;
-
-            let mut ps_blob = None;
-            D3DCompile(
-                TEXTURE_SHADER.as_ptr() as _,
-                TEXTURE_SHADER.len(),
-                None,
-                None,
-                None,
-                s!("ps_main"),
-                s!("ps_5_0"),
-                D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_WARNINGS_ARE_ERRORS,
-                0,
-                &mut ps_blob,
-                None,
-            )?;
-            let ps_blob = ps_blob.context("pixel shader failed to build")?;
-
             let mut pipeline_desc = D3D12_GRAPHICS_PIPELINE_STATE_DESC {
                 pRootSignature: wrap_com_manually_drop(&sig),
                 VS: D3D12_SHADER_BYTECODE {
-                    pShaderBytecode: vs_blob.GetBufferPointer(),
-                    BytecodeLength: vs_blob.GetBufferSize(),
+                    pShaderBytecode: shaders::VERTEX_SHADER.as_ptr().cast(),
+                    BytecodeLength: shaders::VERTEX_SHADER.len(),
                 },
                 PS: D3D12_SHADER_BYTECODE {
-                    pShaderBytecode: ps_blob.GetBufferPointer(),
-                    BytecodeLength: ps_blob.GetBufferSize(),
+                    pShaderBytecode: shaders::PIXEL_SHADER.as_ptr().cast(),
+                    BytecodeLength: shaders::PIXEL_SHADER.len(),
                 },
                 BlendState: D3D12_BLEND_DESC {
                     AlphaToCoverageEnable: BOOL(0),
