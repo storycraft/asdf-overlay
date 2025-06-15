@@ -1,7 +1,4 @@
-use core::{
-    mem,
-    num::NonZeroU32,
-};
+use core::{mem, num::NonZeroU32};
 
 use anyhow::Context;
 use asdf_overlay_common::request::UpdateSharedHandle;
@@ -9,9 +6,7 @@ use windows::{
     Win32::{
         Foundation::HANDLE,
         Graphics::{
-            Direct3D::{
-                D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D,
-            },
+            Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D},
             Direct3D11::*,
             Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource},
         },
@@ -94,11 +89,7 @@ impl Dx11Renderer {
 
             let mut pixel_shader = None;
             device
-                .CreatePixelShader(
-                    shaders::PIXEL_SHADER,
-                    None,
-                    Some(&mut pixel_shader),
-                )
+                .CreatePixelShader(shaders::PIXEL_SHADER, None, Some(&mut pixel_shader))
                 .context("pixel shader failed to link")?;
             let pixel_shader = pixel_shader.unwrap();
 
