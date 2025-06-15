@@ -19,6 +19,8 @@ pub struct DetourHook<F> {
 }
 
 impl<F: Copy> DetourHook<F> {
+    /// # Safety
+    /// func and detour should be valid function pointers with same signature
     #[tracing::instrument]
     pub unsafe fn attach(mut func: F, detour: *mut ()) -> DetourResult<Self>
     where
