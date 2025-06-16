@@ -144,7 +144,6 @@ pub async fn app(
     mut create_server: impl FnMut() -> anyhow::Result<NamedPipeServer>,
 ) {
     async fn inner(server: NamedPipeServer) -> anyhow::Result<()> {
-        server.connect().await?;
         let conn = IpcServerConn::new(server).await?;
         debug!("ipc client connected");
 

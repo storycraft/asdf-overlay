@@ -96,17 +96,14 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     };
     let _guard = rt.enter();
 
-    let create_server = {
-        let pid = unsafe { GetCurrentProcessId() };
-        let module_handle = dll_module.0 as u32;
-        move || create_ipc_server(create_ipc_addr(pid, module_handle))
-    };
-
-    // setup ipc server
-    let Ok(server) = create_server() else {
+    let pid = unsafe { GetCurrentProcessId() };
+    let module_handle = dll_module.0 as u32;
+    // setup first ipc server
+    let Ok(server) = create_ipc_server(create_ipc_addr(pid, module_handle), true) else {
         error!("cannot open ipc server");
         return false;
     };
+    let create_server = move || create_ipc_server(create_ipc_addr(pid, module_handle), false);
 
     thread::spawn(move || {
         // setup hook
@@ -121,12 +118,10 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     true
 }
 
-fn create_ipc_server(addr: impl AsRef<OsStr>) -> anyhow::Result<NamedPipeServer> {
+fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<NamedPipeServer> {
     Ok(unsafe {
         ServerOptions::new()
-            .first_pipe_instance(true)
-            .write_owner(true)
-            .write_dac(true)
+            .first_pipe_instance(first)
             .create_with_security_attributes_raw(
                 addr,
                 &mut SECURITY_ATTRIBUTES {
