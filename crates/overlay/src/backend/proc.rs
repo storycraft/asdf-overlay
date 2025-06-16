@@ -103,10 +103,16 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
     }
 
     match msg {
-        msg::WM_LBUTTONDOWN => emit_cursor_action!(CursorAction::Left, InputState::Pressed),
-        msg::WM_MBUTTONDOWN => emit_cursor_action!(CursorAction::Middle, InputState::Pressed),
-        msg::WM_RBUTTONDOWN => emit_cursor_action!(CursorAction::Right, InputState::Pressed),
-        msg::WM_XBUTTONDOWN => {
+        msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
+            emit_cursor_action!(CursorAction::Left, InputState::Pressed)
+        }
+        msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
+            emit_cursor_action!(CursorAction::Middle, InputState::Pressed)
+        }
+        msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
+            emit_cursor_action!(CursorAction::Right, InputState::Pressed)
+        }
+        msg::WM_XBUTTONDOWN | msg::WM_XBUTTONDBLCLK => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
             emit_cursor_action!(
                 if button == XBUTTON1 {
