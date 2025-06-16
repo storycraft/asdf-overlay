@@ -34,7 +34,7 @@ use tokio::runtime::Runtime;
 use util::{try_with_ipc, with_rt};
 
 struct Overlay {
-    surface: tokio::sync::Mutex<OverlaySurface>,
+    surface: DashMap<u32, tokio::sync::Mutex<OverlaySurface>, FxBuildHasher>,
     ipc: tokio::sync::Mutex<IpcClientConn>,
     event: tokio::sync::Mutex<IpcClientEventStream>,
 }
@@ -58,7 +58,6 @@ impl Manager {
         pid: u32,
         timeout: Option<Duration>,
     ) -> anyhow::Result<u32> {
-        let surface = OverlaySurface::new().context("cannot create dx11 device")?;
         let (ipc, stream) = inject(
             pid,
             OverlayDll {
@@ -75,7 +74,7 @@ impl Manager {
         self.map.insert(
             id,
             Overlay {
-                surface: tokio::sync::Mutex::new(surface),
+                surface: DashMap::default(),
                 ipc: tokio::sync::Mutex::new(ipc),
                 event: tokio::sync::Mutex::new(stream),
             },
@@ -210,7 +209,14 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(&mut cx, async move {
         MANAGER
             .with(id, async move |overlay| {
-                if let Some(shared) = overlay.surface.lock().await.update_bitmap(width, &data)? {
+                if let Some(shared) = overlay
+                    .surface
+                    .entry(hwnd)
+                    .or_try_insert_with(|| OverlaySurface::new().map(tokio::sync::Mutex::new))?
+                    .lock()
+                    .await
+                    .update_bitmap(width, &data)?
+                {
                     overlay
                         .ipc
                         .lock()
@@ -245,12 +251,14 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(&mut cx, async move {
         MANAGER
             .with(id, async move |overlay| {
-                if let Some(shared) = overlay.surface.lock().await.update_from_nt_shared(
-                    width,
-                    height,
-                    handle as _,
-                    rect,
-                )? {
+                if let Some(shared) = overlay
+                    .surface
+                    .entry(hwnd)
+                    .or_try_insert_with(|| OverlaySurface::new().map(tokio::sync::Mutex::new))?
+                    .lock()
+                    .await
+                    .update_from_nt_shared(width, height, handle as _, rect)?
+                {
                     overlay
                         .ipc
                         .lock()
@@ -275,14 +283,15 @@ fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(&mut cx, async move {
         MANAGER
             .with(id, async move |overlay| {
-                overlay.surface.lock().await.clear();
-                overlay
-                    .ipc
-                    .lock()
-                    .await
-                    .window(hwnd)
-                    .request(UpdateSharedHandle { handle: None })
-                    .await?;
+                if overlay.surface.remove(&hwnd).is_some() {
+                    overlay
+                        .ipc
+                        .lock()
+                        .await
+                        .window(hwnd)
+                        .request(UpdateSharedHandle { handle: None })
+                        .await?;
+                }
 
                 Ok::<_, anyhow::Error>(())
             })
