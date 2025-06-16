@@ -6,7 +6,6 @@ import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
 
 async function createOverlayWindow(pid: number) {
   const overlay = await Overlay.attach(
-    'electron-overlay',
     defaultDllDir().replace('app.asar', 'app.asar.unpacked'),
     pid,
   );

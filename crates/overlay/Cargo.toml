@@ -28,7 +28,6 @@ dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 tracing-subscriber = "0.3"
 ash = "0.38.0"
-dll-syringe = { workspace = true, features = ["payload-utils"] }
 array-util = "1.0.2"
 windows-link = "0.1.1"
 bytemuck = "1.22.0"
@@ -45,6 +44,8 @@ workspace = true
 features = [
     "Win32_System_Threading",
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Controls",

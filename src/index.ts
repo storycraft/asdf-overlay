@@ -172,14 +172,13 @@ export class Overlay {
    * Attach overlay to target process
    * 
    * Name must be unique or it will fail if there is a connection with same name
-   * @param name name of ipc pipe and overlay thread
    * @param dllDir path to dlls
    * @param pid target process pid
    * @param timeout Timeout for injection, in milliseconds. Will wait indefinitely if not provided.
    * @returns new {@link Overlay} object
    */
-  static async attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<Overlay> {
-    return new Overlay(await addon.attach(name, dllDir, pid, timeout));
+  static async attach(dllDir: string, pid: number, timeout?: number): Promise<Overlay> {
+    return new Overlay(await addon.attach(dllDir, pid, timeout));
   }
 }
 

@@ -1,36 +1,29 @@
-use std::env::{self, current_exe};
+use std::env;
 
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
+    OverlayDll,
     common::{
         event::{ClientEvent, WindowEvent},
         request::BlockInput,
     },
     inject,
-    process::OwnedProcess,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let name = env::args()
-        .nth(1)
-        .context("processs name is not provided")?;
+    let pid = env::args().nth(1).context("processs pid is not provided")?;
 
-    // find process from first argument
-    let process = OwnedProcess::find_first_by_name(name).context("process not found")?;
+    let dll_dir = env::current_dir().expect("cannot find pwd");
 
     // inject overlay dll into target process
     let (mut conn, mut event) = inject(
-        "asdf-overlay-example".to_string(),
-        process,
-        Some({
-            // Find built dll
-            let mut current = current_exe().unwrap();
-            current.pop();
-            current.push("asdf_overlay.dll");
-
-            current
-        }),
+        pid.parse::<u32>().context("invalid pid")?,
+        OverlayDll {
+            x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
+            x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
+            arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
+        },
         None,
     )
     .await?;

@@ -2,7 +2,7 @@ import { OverlayEventEmitter } from './index.js';
 import { CopyRect, Cursor, PercentLength } from './types.js';
 
 export type Addon = {
-  attach(name: string, dllDir: string, pid: number, timeout?: number): Promise<number>,
+  attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
 
   overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
   overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,

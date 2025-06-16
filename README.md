@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/d7f0db58-cb11-437f-9990-50d095c7c575
 ### Rust
 1. Run
 ```bash
-cargo build && cargo run -p noise-rectangle <process_name>
+pnpm build && cargo run -p noise-rectangle <pid>
 ```
 Glitching squares appear and disappear on target process
 
@@ -54,7 +54,7 @@ https://github.com/user-attachments/assets/069d1cc1-f95d-4a44-899c-7f538c0f5a69
 
 2. Run
 ```bash
-cargo build && cargo run -p input-capture <process_name>
+pnpm build && cargo run -p input-capture <pid>
 ```
 It will listen and block inputs from target process until process exit
 
