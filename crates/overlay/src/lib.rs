@@ -17,6 +17,7 @@ mod util;
 
 #[cfg(debug_assertions)]
 mod dbg;
+mod layout;
 
 use anyhow::Context;
 use app::app;

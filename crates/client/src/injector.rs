@@ -11,7 +11,8 @@ use ntapi::{
 };
 use scopeguard::defer;
 use windows::{
-    core::PCSTR, Wdk::Foundation::OBJECT_ATTRIBUTES, Win32::{
+    Wdk::Foundation::OBJECT_ATTRIBUTES,
+    Win32::{
         Foundation::{CloseHandle, HANDLE, HMODULE, MAX_PATH, NTSTATUS, WAIT_TIMEOUT},
         System::{
             Memory::{MEM_COMMIT, MEM_RELEASE, PAGE_EXECUTE_READWRITE},
@@ -21,10 +22,13 @@ use windows::{
                 IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
             },
             Threading::{
-                GetCurrentProcess, GetExitCodeThread, IsWow64Process2, WaitForSingleObject, PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE
+                GetCurrentProcess, GetExitCodeThread, IsWow64Process2, PROCESS_CREATE_THREAD,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ,
+                PROCESS_VM_WRITE, WaitForSingleObject,
             },
         },
-    }
+    },
+    core::PCSTR,
 };
 
 #[link(name = "kernel32.dll", kind = "raw-dylib", modifiers = "+verbatim")]

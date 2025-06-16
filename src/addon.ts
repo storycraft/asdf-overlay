@@ -4,10 +4,11 @@ import { CopyRect, Cursor, PercentLength } from './types.js';
 export type Addon = {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
 
-  overlaySetPosition(id: number, x: PercentLength, y: PercentLength): Promise<void>,
-  overlaySetAnchor(id: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetPosition(id: number, hwnd: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetAnchor(id: number, hwnd: number, x: PercentLength, y: PercentLength): Promise<void>,
   overlaySetMargin(
     id: number,
+    hwnd: number,
     top: PercentLength,
     right: PercentLength,
     bottom: PercentLength,
@@ -32,9 +33,9 @@ export type Addon = {
     cursor?: Cursor,
   ): Promise<void>,
 
-  overlayUpdateBitmap(id: number, width: number, data: Buffer): Promise<void>,
-  overlayUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
-  overlayClearSurface(id: number): Promise<void>,
+  overlayUpdateBitmap(id: number, hwnd: number, width: number, data: Buffer): Promise<void>,
+  overlayUpdateShtex(id: number, hwnd: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
+  overlayClearSurface(id: number, hwnd: number): Promise<void>,
 
   overlayCallNextEvent(
     id: number,

@@ -13,10 +13,7 @@ use tokio::{
 use crate::{
     event::ClientEvent,
     ipc::ClientToServerPacket,
-    request::{
-        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
-        UpdateSharedHandle,
-    },
+    request::{Request, WindowRequestItem},
 };
 
 use super::{Frame, ServerRequest};
@@ -76,6 +73,11 @@ impl IpcClientConn {
         Ok((conn, stream))
     }
 
+    #[inline]
+    pub const fn window(&mut self, hwnd: u32) -> IpcClientConnWindow {
+        IpcClientConnWindow { inner: self, hwnd }
+    }
+
     async fn request<Response: Decode<()>>(&mut self, req: Request) -> anyhow::Result<Response> {
         let data = self
             .send(req)
@@ -129,63 +131,27 @@ impl IpcClientConn {
     }
 }
 
-macro_rules! request_method {
-    (
-        $(#[$meta:meta])*
-        $name:ident($req:ident) -> $res:ty
-    ) => {
-        $(#[$meta])*
-        #[inline(always)]
-        pub async fn $name(&mut self, req: $req) -> anyhow::Result<$res> {
-            self.request(Request::$req(req)).await
-        }
-    };
-}
-
-macro_rules! requests {
-    (
-        $(
-            $(#[$meta:meta])*
-            $name:ident($req:ident) -> $res:ty
-        );* $(;)?
-    ) => {
-        impl IpcClientConn {
-            $(
-                request_method!(
-                    $(#[$meta])*
-                    $name($req) -> $res
-                );
-            )*
-        }
-    };
-}
-
-requests! {
-    /// Set overlay position
-    set_position(SetPosition) -> ();
-
-    /// Set overlay positioning anchor
-    set_anchor(SetAnchor) -> ();
-
-    /// Set overlay margin
-    set_margin(SetMargin) -> ();
-
-    /// Listen input events
-    listen_input(ListenInput) -> bool;
-
-    /// Block input events from reaching window and listen all input events
-    block_input(BlockInput) -> bool;
-
-    /// Set cursor of a window being input captured
-    set_blocking_cursor(SetBlockingCursor) -> bool;
-
-    /// Update overlay surface
-    update_shtex(UpdateSharedHandle) -> ();
-}
-
 impl Drop for IpcClientConn {
     fn drop(&mut self) {
         self.read_task.abort();
+    }
+}
+
+pub struct IpcClientConnWindow<'a> {
+    inner: &'a mut IpcClientConn,
+    hwnd: u32,
+}
+
+impl IpcClientConnWindow<'_> {
+    /// Request any [`WindowRequestItem`].
+    /// Returns true if window is valid and applied
+    pub async fn request(&mut self, req: impl WindowRequestItem) -> anyhow::Result<bool> {
+        self.inner
+            .request(Request::Window {
+                hwnd: self.hwnd,
+                request: req.into(),
+            })
+            .await
     }
 }
 

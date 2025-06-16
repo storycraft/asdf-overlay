@@ -14,7 +14,7 @@ use asdf_overlay_common::{
     request::UpdateSharedHandle,
 };
 use cx::DrawContext;
-use dashmap::mapref::multiple::{RefMulti, RefMutMulti};
+use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use proc::hooked_wnd_proc;
 use renderers::Renderer;
@@ -24,7 +24,7 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, WNDPROC},
 };
 
-use crate::{app::Overlay, types::IntDashMap, util::get_client_size};
+use crate::{app::OverlayIpc, layout::OverlayLayout, types::IntDashMap, util::get_client_size};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: IntDashMap::default(),
@@ -37,10 +37,6 @@ pub struct Backends {
 impl Backends {
     pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, u32, WindowBackend>> {
         BACKENDS.map.iter()
-    }
-
-    pub fn iter_mut<'a>() -> impl Iterator<Item = RefMutMulti<'a, u32, WindowBackend>> {
-        BACKENDS.map.iter_mut()
     }
 
     #[must_use]
@@ -73,7 +69,7 @@ impl Backends {
 
             let size = get_client_size(hwnd)?;
 
-            Overlay::emit_event(ClientEvent::Window {
+            OverlayIpc::emit_event(ClientEvent::Window {
                 hwnd: key,
                 event: WindowEvent::Added {
                     width: size.0,
@@ -84,6 +80,8 @@ impl Backends {
             BACKENDS.map.entry(key).insert(WindowBackend {
                 hwnd: key,
                 original_proc,
+
+                layout: OverlayLayout::new(),
 
                 listen_input: ListenInputFlags::empty(),
                 blocking_state: BlockingState::None,
@@ -105,7 +103,7 @@ impl Backends {
         let key = hwnd.0 as u32;
         BACKENDS.map.remove(&key);
 
-        Overlay::emit_event(ClientEvent::Window {
+        OverlayIpc::emit_event(ClientEvent::Window {
             hwnd: key,
             event: WindowEvent::Destroyed,
         });
@@ -121,6 +119,8 @@ impl Backends {
 pub struct WindowBackend {
     hwnd: u32,
     original_proc: WNDPROC,
+
+    pub layout: OverlayLayout,
 
     pub listen_input: ListenInputFlags,
     blocking_state: BlockingState,
@@ -138,6 +138,7 @@ impl WindowBackend {
     #[tracing::instrument(skip(self))]
     fn cleanup(&mut self) {
         trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
+        self.layout = OverlayLayout::new();
         self.pending_handle = Some(UpdateSharedHandle { handle: None });
         self.listen_input = ListenInputFlags::empty();
         self.blocking_state.change(false);
@@ -169,7 +170,7 @@ impl WindowBackend {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
-                Overlay::emit_event(ClientEvent::Window {
+                OverlayIpc::emit_event(ClientEvent::Window {
                     hwnd: self.hwnd,
                     event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                         event: CursorEvent::Leave,
@@ -179,7 +180,7 @@ impl WindowBackend {
                 });
             }
 
-            Overlay::emit_event(ClientEvent::Window {
+            OverlayIpc::emit_event(ClientEvent::Window {
                 hwnd: self.hwnd,
                 event: WindowEvent::InputBlockingEnded,
             });

@@ -20,7 +20,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
+    app::OverlayIpc,
     backend::{Backends, renderers::Renderer},
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
@@ -120,7 +120,7 @@ fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
 
 #[inline]
 fn draw_overlay(hdc: HDC) {
-    fn inner(overlay: &Overlay, hglrc: HGLRC, hwnd: HWND) {
+    fn inner(hglrc: HGLRC, hwnd: HWND) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
             match backend.renderer {
                 Some(Renderer::Opengl) => {}
@@ -175,7 +175,9 @@ fn draw_overlay(hdc: HDC) {
                 }
 
                 let size = renderer.size();
-                let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+                let position = backend
+                    .layout
+                    .calc_position((size.0 as _, size.1 as _), screen);
                 let _res = renderer.draw(position, screen);
                 trace!("opengl render: {:?}", _res);
             })
@@ -189,6 +191,10 @@ fn draw_overlay(hdc: HDC) {
         }
     }
 
+    if !OverlayIpc::connected() {
+        return;
+    }
+
     let hglrc = unsafe { wglGetCurrentContext() };
     if hglrc.is_invalid() {
         return;
@@ -199,9 +205,7 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    _ = Overlay::with(|overlay| {
-        inner(overlay, hglrc, hwnd);
-    });
+    inner(hglrc, hwnd);
 }
 
 #[tracing::instrument]

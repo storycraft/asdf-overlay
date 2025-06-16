@@ -36,7 +36,9 @@ async fn main() -> anyhow::Result<()> {
         bail!("failed to receive main window");
     };
 
-    conn.block_input(BlockInput { hwnd, block: true }).await?;
+    conn.window(hwnd)
+        .request(BlockInput { block: true })
+        .await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);
