@@ -29,7 +29,7 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
+    app::OverlayIpc,
     backend::{
         Backends, WindowBackend,
         cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
@@ -41,8 +41,8 @@ use crate::{
 
 use super::{HOOK, dx12::get_queue_for};
 
-#[tracing::instrument(skip(overlay, backend))]
-fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
+#[tracing::instrument(skip(backend))]
+fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
     let screen = backend.size;
@@ -84,7 +84,9 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
             }
 
             let size = renderer.size();
-            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+            let position = backend
+                .layout
+                .calc_position((size.0 as _, size.1 as _), screen);
             trace!("using dx12 renderer");
             let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
             let _res =
@@ -171,7 +173,9 @@ fn draw_overlay(overlay: &Overlay, backend: &mut WindowBackend, swapchain: &IDXG
         }
 
         let size = renderer.size();
-        let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
+        let position = backend
+            .layout
+            .calc_position((size.0 as _, size.1 as _), screen);
         {
             let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
                 .expect("failed to get dx11 backbuffer");
@@ -196,17 +200,15 @@ pub(super) extern "system" fn hooked_present(
 ) -> HRESULT {
     trace!("Present called");
 
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        _ = Overlay::with(|overlay| {
-            let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-            if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-                if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
-                    draw_overlay(overlay, backend, swapchain);
-                }) {
-                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-                }
+    if OverlayIpc::connected() && flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            }) {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
             }
-        });
+        }
     }
 
     let present = HOOK.present.get().unwrap();
@@ -222,17 +224,15 @@ pub(super) extern "system" fn hooked_present1(
 ) -> HRESULT {
     trace!("Present1 called");
 
-    if flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
-        _ = Overlay::with(|overlay| {
-            let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-            if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-                if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
-                    draw_overlay(overlay, backend, swapchain);
-                }) {
-                    error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-                }
+    if OverlayIpc::connected() && flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+            if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+                draw_overlay(backend, swapchain);
+            }) {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
             }
-        });
+        }
     }
 
     let present1 = HOOK.present1.get().unwrap();

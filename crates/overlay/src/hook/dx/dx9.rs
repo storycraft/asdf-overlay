@@ -15,7 +15,6 @@ use windows::{
 };
 
 use crate::{
-    app::Overlay,
     backend::{Backends, renderers::Renderer},
     reader::SharedHandleReader,
     renderer::dx9::Dx9Renderer,
@@ -35,71 +34,73 @@ pub type ResetExFn = unsafe extern "system" fn(
 pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
     trace!("EndScene called");
 
-    _ = Overlay::with(|overlay| {
-        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+    let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
 
-        let mut params = D3DPRESENT_PARAMETERS::default();
-        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
-        if params.hDeviceWindow.is_invalid() {
-            return;
-        }
-
-        let res = Backends::with_or_init_backend(params.hDeviceWindow, |backend| {
-            let renderer = match backend.renderer {
-                Some(Renderer::Dx9(ref mut renderer)) => renderer,
-                Some(_) => {
-                    trace!("ignoring dx9 rendering");
-                    return;
-                }
-                None => {
-                    debug!("Found dx9 window");
-                    backend.renderer = Some(Renderer::Dx9(None));
-                    // wait next swap for possible remaining renderer check
-                    return;
-                }
-            };
-
-            let reader = backend
-                .cx
-                .fallback_reader
-                .get_or_insert_with(|| SharedHandleReader::new().unwrap());
-            let screen = backend.size;
-
-            trace!("using dx9 renderer");
-            let renderer = renderer.get_or_insert_with(|| {
-                Dx9Renderer::new(device).expect("Dx9Renderer creation failed")
-            });
-
-            if let Some(shared) = backend.pending_handle.take() {
-                reader.update_shared(shared);
-            }
-
-            let size = renderer.size();
-            let position = overlay.calc_overlay_position((size.0 as _, size.1 as _), screen);
-
-            match reader.with_mapped(|size, mapped| renderer.update_texture(device, size, mapped)) {
-                Ok(Some(_)) => {
-                    let _res = renderer.draw(device, position, screen);
-                    trace!("dx9 render: {:?}", _res);
-                }
-                Ok(None) => {
-                    renderer.reset_texture();
-                    trace!("skipping dx9 render");
-                }
-                Err(err) => {
-                    error!("failed to copy shtex to dx9 texture. err: {err:?}");
-                }
-            }
-        });
-
-        if let Err(_err) = res {
-            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-        }
-    });
+    let mut params = D3DPRESENT_PARAMETERS::default();
+    unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+    if !params.hDeviceWindow.is_invalid() {
+        draw_overlay(params.hDeviceWindow, device);
+    }
 
     let end_scene = HOOK.end_scene.get().unwrap();
     unsafe { end_scene.original_fn()(this) }
+}
+
+#[inline]
+fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
+    let res = Backends::with_or_init_backend(hwnd, |backend| {
+        let renderer = match backend.renderer {
+            Some(Renderer::Dx9(ref mut renderer)) => renderer,
+            Some(_) => {
+                trace!("ignoring dx9 rendering");
+                return;
+            }
+            None => {
+                debug!("Found dx9 window");
+                backend.renderer = Some(Renderer::Dx9(None));
+                // wait next swap for possible remaining renderer check
+                return;
+            }
+        };
+
+        let reader = backend
+            .cx
+            .fallback_reader
+            .get_or_insert_with(|| SharedHandleReader::new().unwrap());
+        let screen = backend.size;
+
+        trace!("using dx9 renderer");
+        let renderer = renderer
+            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
+
+        if let Some(shared) = backend.pending_handle.take() {
+            reader.update_shared(shared);
+        }
+
+        let size = renderer.size();
+        let position = backend
+            .layout
+            .calc_position((size.0 as _, size.1 as _), screen);
+
+        match reader.with_mapped(|size, mapped| renderer.update_texture(device, size, mapped)) {
+            Ok(Some(_)) => {
+                let _res = renderer.draw(device, position, screen);
+                trace!("dx9 render: {:?}", _res);
+            }
+            Ok(None) => {
+                renderer.reset_texture();
+                trace!("skipping dx9 render");
+            }
+            Err(err) => {
+                error!("failed to copy shtex to dx9 texture. err: {err:?}");
+            }
+        }
+    });
+
+    if let Err(_err) = res {
+        error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+    }
 }
 
 fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {

@@ -27,7 +27,8 @@ pub async fn inject(
     dll: OverlayDll<'_>,
     timeout: Option<Duration>,
 ) -> anyhow::Result<(IpcClientConn, IpcClientEventStream)> {
-    let module_handle = injector::inject(pid, dll, timeout).context("failed to inject overlay DLL")?;
+    let module_handle =
+        injector::inject(pid, dll, timeout).context("failed to inject overlay DLL")?;
     let ipc_addr = create_ipc_addr(pid, module_handle);
 
     let connect = IpcClientConn::new(ClientOptions::new().open(ipc_addr)?);

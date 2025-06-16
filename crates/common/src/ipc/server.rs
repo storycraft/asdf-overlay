@@ -86,6 +86,7 @@ impl IpcServerConn {
     }
 }
 
+#[derive(Clone)]
 pub struct IpcClientEventEmitter {
     inner: UnboundedSender<ClientToServerPacket>,
 }

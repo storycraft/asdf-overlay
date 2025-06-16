@@ -2,7 +2,7 @@ mod cursor;
 
 use super::WindowBackend;
 use crate::{
-    app::Overlay,
+    app::OverlayIpc,
     backend::{BACKENDS, Backends, BlockingState, CursorState},
     util::get_client_size,
 };
@@ -91,7 +91,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
     // emit cursor action
     macro_rules! emit_cursor_action {
         ($action:expr, $state:expr $(,)?) => {{
-            Overlay::emit_event(cursor_input(
+            OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
                 lparam,
                 CursorEvent::Action {
@@ -135,7 +135,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
         Controls::WM_MOUSELEAVE => {
             backend.cursor_state = CursorState::Outside;
-            Overlay::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Leave));
+            OverlayIpc::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Leave));
         }
 
         msg::WM_MOUSEMOVE => {
@@ -148,7 +148,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
                 }
                 CursorState::Outside => {
                     backend.cursor_state = CursorState::Inside(x, y);
-                    Overlay::emit_event(ClientEvent::Window {
+                    OverlayIpc::emit_event(ClientEvent::Window {
                         hwnd: backend.hwnd,
                         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                             event: CursorEvent::Enter,
@@ -169,7 +169,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
                 }
             }
 
-            Overlay::emit_event(ClientEvent::Window {
+            OverlayIpc::emit_event(ClientEvent::Window {
                 hwnd: backend.hwnd,
                 event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                     event: CursorEvent::Move,
@@ -181,7 +181,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            Overlay::emit_event(cursor_input(
+            OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
                 lparam,
                 CursorEvent::Scroll {
@@ -193,7 +193,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
         msg::WM_MOUSEHWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            Overlay::emit_event(cursor_input(
+            OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
                 lparam,
                 CursorEvent::Scroll {
@@ -230,7 +230,7 @@ pub(super) extern "system" fn hooked_wnd_proc(
         let new_size = get_client_size(hwnd).unwrap();
         if backend.size != new_size {
             backend.size = new_size;
-            Overlay::emit_event(ClientEvent::Window {
+            OverlayIpc::emit_event(ClientEvent::Window {
                 hwnd: backend.hwnd,
                 event: WindowEvent::Resized {
                     width: backend.size.0,
@@ -282,7 +282,7 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
         state: InputState,
     ) -> Option<LRESULT> {
         if let Some(key) = to_key(msg.wParam, msg.lParam) {
-            Overlay::emit_event(keyboard_input(
+            OverlayIpc::emit_event(keyboard_input(
                 backend.hwnd,
                 KeyboardInput::Key { key, state },
             ));
@@ -316,13 +316,13 @@ fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRE
         // unicode characters are handled in WM_IME_COMPOSITION
         msg::WM_CHAR | msg::WM_SYSCHAR => {
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
             }
         }
         msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
             if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
                 for ch in str.chars() {
-                    Overlay::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                    OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                 }
             }
         }

@@ -1,10 +1,14 @@
 use core::time::Duration;
 use std::env;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
-    common::{request::SetPosition, size::PercentLength},
+    common::{
+        event::{ClientEvent, WindowEvent},
+        request::SetPosition,
+        size::PercentLength,
+    },
     inject,
     surface::OverlaySurface,
 };
@@ -17,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let dll_dir = env::current_dir().expect("cannot find pwd");
 
     // inject overlay dll into target process
-    let (mut conn, _) = inject(
+    let (mut conn, mut event) = inject(
         pid.parse::<u32>().context("invalid pid")?,
         OverlayDll {
             x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
@@ -28,14 +32,23 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
+    let Some(ClientEvent::Window {
+        hwnd,
+        event: WindowEvent::Added { .. },
+    }) = event.recv().await
+    else {
+        bail!("failed to receive main window");
+    };
+
     sleep(Duration::from_secs(1)).await;
 
     // set initial position
-    conn.set_position(SetPosition {
-        x: PercentLength::Length(100.0),
-        y: PercentLength::Length(100.0),
-    })
-    .await?;
+    conn.window(hwnd)
+        .request(SetPosition {
+            x: PercentLength::Length(100.0),
+            y: PercentLength::Length(100.0),
+        })
+        .await?;
 
     let mut surface: OverlaySurface = OverlaySurface::new()?;
     let mut data = Vec::new();
@@ -46,18 +59,19 @@ async fn main() -> anyhow::Result<()> {
 
         let update = surface.update_bitmap(i as _, &data)?;
         if let Some(shared) = update {
-            conn.update_shtex(shared).await?;
+            conn.window(hwnd).request(shared).await?;
         }
 
         sleep(Duration::from_millis(10)).await;
     }
 
     // move rectangle
-    conn.set_position(SetPosition {
-        x: PercentLength::Length(200.0),
-        y: PercentLength::Length(200.0),
-    })
-    .await?;
+    conn.window(hwnd)
+        .request(SetPosition {
+            x: PercentLength::Length(200.0),
+            y: PercentLength::Length(200.0),
+        })
+        .await?;
 
     // sleep for 1 secs and remove overlay (dropped)
     sleep(Duration::from_secs(1)).await;

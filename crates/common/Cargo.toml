@@ -18,7 +18,7 @@ dashmap = "6.1.0"
 async-stream = "0.3.6"
 rustc-hash = "2.1.1"
 scopeguard = "1.2.0"
-derive_more = { version = "2", features = ["debug"] }
+derive_more = { version = "2", features = ["debug", "from"] }
 num-traits = "0.2.19"
 num-derive = "0.4.2"
 
