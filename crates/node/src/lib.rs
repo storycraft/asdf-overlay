@@ -5,21 +5,21 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
-use std::{os::windows::io::AsRawHandle, path::PathBuf, sync::LazyLock};
+use std::{path::PathBuf, sync::LazyLock};
 
-use anyhow::{Context as AnyhowContext, bail};
+use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
+    OverlayDll,
     common::{
         cursor::Cursor,
         event::ClientEvent,
-        ipc::server::{IpcServerConn, IpcServerEventStream},
+        ipc::client::{IpcClientConn, IpcClientEventStream},
         request::{
             BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
             UpdateSharedHandle,
         },
     },
     inject,
-    process::OwnedProcess,
     surface::OverlaySurface,
 };
 use bytemuck::pod_read_unaligned;
@@ -31,18 +31,12 @@ use num::FromPrimitive;
 use once_cell::sync::OnceCell;
 use rustc_hash::FxBuildHasher;
 use tokio::runtime::Runtime;
-use util::{get_process_arch, try_with_ipc, with_rt};
-use windows::Win32::{
-    Foundation::HANDLE,
-    System::SystemInformation::{
-        IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386,
-    },
-};
+use util::{try_with_ipc, with_rt};
 
 struct Overlay {
     surface: tokio::sync::Mutex<OverlaySurface>,
-    ipc: tokio::sync::Mutex<IpcServerConn>,
-    event: tokio::sync::Mutex<IpcServerEventStream>,
+    ipc: tokio::sync::Mutex<IpcClientConn>,
+    event: tokio::sync::Mutex<IpcClientEventStream>,
 }
 
 struct Manager {
@@ -60,30 +54,18 @@ impl Manager {
 
     async fn attach(
         &self,
-        name: String,
         dll_dir: PathBuf,
         pid: u32,
         timeout: Option<Duration>,
     ) -> anyhow::Result<u32> {
-        let process = OwnedProcess::from_pid(pid)
-            .with_context(|| format!("cannot find process pid: {pid}"))?;
-
-        let dll_path = match get_process_arch(HANDLE(process.as_raw_handle())) {
-            IMAGE_FILE_MACHINE_AMD64 => "asdf_overlay-x64.dll",
-            IMAGE_FILE_MACHINE_I386 => "asdf_overlay-x86.dll",
-            IMAGE_FILE_MACHINE_ARM64 => "asdf_overlay-aarch64.dll",
-            arch => bail!("Unsupported arch: {}", arch.0),
-        };
-
         let surface = OverlaySurface::new().context("cannot create dx11 device")?;
         let (ipc, stream) = inject(
-            name,
-            process,
-            Some({
-                let mut dll = dll_dir;
-                dll.push(dll_path);
-                dll
-            }),
+            pid,
+            OverlayDll {
+                x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
+                x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
+                arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
+            },
             timeout,
         )
         .await
@@ -123,9 +105,8 @@ fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let name = cx.argument::<JsString>(0)?.value(&mut cx);
-    let dll_dir = cx.argument::<JsString>(1)?.value(&mut cx);
-    let pid = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
+    let dll_dir = cx.argument::<JsString>(0)?.value(&mut cx);
+    let pid = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let timeout = cx
         .argument_opt(2)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
@@ -138,9 +119,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = MANAGER
-            .attach(name, PathBuf::from(dll_dir), pid, timeout)
-            .await;
+        let res = MANAGER.attach(PathBuf::from(dll_dir), pid, timeout).await;
 
         deferred.settle_with(&channel, move |mut cx| match res {
             Ok(id) => Ok(JsNumber::new(&mut cx, id)),
@@ -257,7 +236,7 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
                 if let Some(shared) = overlay.surface.lock().await.update_from_nt_shared(
                     width,
                     height,
-                    HANDLE(handle as _),
+                    handle as _,
                     rect,
                 )? {
                     overlay.ipc.lock().await.update_shtex(shared).await?;

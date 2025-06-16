@@ -26,12 +26,5 @@ bytemuck = "1.22.0"
 futures = "0.3.31"
 num = "0.4.3"
 
-[dependencies.windows]
-version = "0.61.1"
-features = [
-    "Win32_System_SystemInformation",
-    "Win32_System_Threading"
-]
-
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

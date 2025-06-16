@@ -64,11 +64,12 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         &mut self,
         width: u32,
         height: u32,
-        handle: HANDLE,
+        handle: u32,
         rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let device1 = self.device.cast::<ID3D11Device1>()?;
-        let src_texture = unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(handle)? };
+        let src_texture =
+            unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _))? };
         self.update_surface_from(width, height, &src_texture, rect)
     }
 
@@ -76,13 +77,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         &mut self,
         width: u32,
         height: u32,
-        handle: HANDLE,
+        handle: u32,
         rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let mut src_texture = None;
         unsafe {
             self.device
-                .OpenSharedResource::<ID3D11Texture2D>(handle, &mut src_texture)?
+                .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut src_texture)?
         };
         let src_texture = src_texture.unwrap();
 

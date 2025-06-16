@@ -1,6 +1,6 @@
 [package]
 name = "asdf-overlay-client"
-description = "Asdf Overlay Injector & Client"
+description = "Asdf Overlay Client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,23 +12,26 @@ readme = "../../README.md"
 asdf-overlay-common = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 
+ntapi = "0.4.1"
+dynasmrt = "3.2.0"
 anyhow = "1.0.97"
-dll-syringe = { workspace = true, features = [
-    "into-x86-from-x64",
-    "syringe",
-    "rpc-payload",
-] }
 scopeguard = "1.2.0"
+bytemuck = "1.23.1"
 
 [dependencies.windows]
-version = "0.61.1"
+workspace = true
 features = [
     "Win32_Foundation",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
+    "Wdk_Foundation",
     "Win32_Security",
+    "Win32_System_Threading",
     "Win32_Security_Authorization",
     "Win32_System_SystemServices",
+    "Win32_System_SystemInformation",
+    "Win32_System_Memory",
+    "Win32_Graphics",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11"
 ]

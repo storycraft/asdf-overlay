@@ -1,22 +1,18 @@
-use std::sync::Once;
+use core::{mem, time::Duration};
 
-use anyhow::bail;
 use asdf_overlay_common::{
     event::{ClientEvent, WindowEvent},
-    ipc::client::{IpcClientConn, IpcClientEventEmitter},
+    ipc::server::{IpcClientEventEmitter, IpcServerConn},
     request::{Request, SetAnchor, SetMargin, SetPosition},
     size::PercentLength,
 };
 use parking_lot::RwLock;
 use scopeguard::defer;
-use tracing::{debug, error, trace};
+use tokio::{net::windows::named_pipe::NamedPipeServer, time::sleep};
+use tracing::{debug, error, trace, warn};
 use windows::Win32::Foundation::HWND;
 
-use crate::{
-    backend::{Backends, ListenInputFlags},
-    hook,
-    util::with_dummy_hwnd,
-};
+use crate::backend::{Backends, ListenInputFlags};
 
 static CURRENT: RwLock<OverlayState> = RwLock::new(OverlayState::Disabled);
 
@@ -75,30 +71,30 @@ impl Overlay {
     }
 }
 
-#[tracing::instrument(skip(client))]
-async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
+#[tracing::instrument(skip(server))]
+async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
     loop {
-        let (id, req) = client.recv().await?;
+        let (id, req) = server.recv().await?;
         trace!("recv id: {id} req: {req:?}");
 
         match req {
             Request::SetPosition(position) => {
                 Overlay::with_mut(|overlay| overlay.position = position);
-                client.reply(id, ())?;
+                server.reply(id, ())?;
             }
 
             Request::SetAnchor(anchor) => {
                 Overlay::with_mut(|overlay| overlay.anchor = anchor);
-                client.reply(id, ())?;
+                server.reply(id, ())?;
             }
 
             Request::SetMargin(margin) => {
                 Overlay::with_mut(|overlay| overlay.margin = margin);
-                client.reply(id, ())?;
+                server.reply(id, ())?;
             }
 
             Request::ListenInput(cmd) => {
-                client.reply(
+                server.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
                         let mut flags = ListenInputFlags::empty();
@@ -112,7 +108,7 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
             }
 
             Request::BlockInput(cmd) => {
-                client.reply(
+                server.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
                         backend.block_input(cmd.block);
@@ -122,7 +118,7 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
             }
 
             Request::SetBlockingCursor(cmd) => {
-                client.reply(
+                server.reply(
                     id,
                     Backends::with_backend(HWND(cmd.hwnd as _), |backend| {
                         backend.blocking_cursor = cmd.cursor;
@@ -136,61 +132,53 @@ async fn run_client(mut client: IpcClientConn) -> anyhow::Result<()> {
                     backend.pending_handle = Some(shared.clone());
                 }
 
-                client.reply(id, ())?;
+                server.reply(id, ())?;
             }
         }
     }
 }
 
-#[tracing::instrument]
-pub async fn app(addr: &str) {
-    pub async fn inner(addr: &str) -> anyhow::Result<()> {
-        defer!({
-            debug!("exiting");
-        });
-
-        debug!("connecting ipc");
-        let client = IpcClientConn::connect(addr).await?;
+#[tracing::instrument(skip(create_server))]
+pub async fn app(
+    mut server: NamedPipeServer,
+    mut create_server: impl FnMut() -> anyhow::Result<NamedPipeServer>,
+) {
+    async fn inner(server: NamedPipeServer) -> anyhow::Result<()> {
+        server.connect().await?;
+        let conn = IpcServerConn::new(server).await?;
         debug!("ipc client connected");
 
-        {
-            let mut state = CURRENT.write();
-            if let OverlayState::Enabled(_) = *state {
-                bail!("overlay is already running");
-            }
-
-            debug!("sending initial data");
-            let emitter = client.create_emitter();
-            // send existing windows
-            for backend in Backends::iter() {
-                _ = emitter.emit(ClientEvent::Window {
-                    hwnd: *backend.key() as _,
-                    event: WindowEvent::Added {
-                        width: backend.size.0,
-                        height: backend.size.1,
-                    },
-                });
-            }
-            debug!("initial data sent");
-
-            *state = OverlayState::Enabled(Overlay {
-                emitter,
-                position: SetPosition {
-                    x: PercentLength::ZERO,
-                    y: PercentLength::ZERO,
-                },
-                anchor: SetAnchor {
-                    x: PercentLength::ZERO,
-                    y: PercentLength::ZERO,
-                },
-                margin: SetMargin {
-                    top: PercentLength::ZERO,
-                    right: PercentLength::ZERO,
-                    bottom: PercentLength::ZERO,
-                    left: PercentLength::ZERO,
+        debug!("sending initial data");
+        let emitter = conn.create_emitter();
+        // send existing windows
+        for backend in Backends::iter() {
+            _ = emitter.emit(ClientEvent::Window {
+                hwnd: *backend.key() as _,
+                event: WindowEvent::Added {
+                    width: backend.size.0,
+                    height: backend.size.1,
                 },
             });
         }
+        debug!("initial data sent");
+
+        *CURRENT.write() = OverlayState::Enabled(Overlay {
+            emitter,
+            position: SetPosition {
+                x: PercentLength::ZERO,
+                y: PercentLength::ZERO,
+            },
+            anchor: SetAnchor {
+                x: PercentLength::ZERO,
+                y: PercentLength::ZERO,
+            },
+            margin: SetMargin {
+                top: PercentLength::ZERO,
+                right: PercentLength::ZERO,
+                bottom: PercentLength::ZERO,
+                left: PercentLength::ZERO,
+            },
+        });
 
         defer!({
             debug!("cleanup start");
@@ -198,40 +186,33 @@ pub async fn app(addr: &str) {
             *CURRENT.write() = OverlayState::Disabled;
         });
 
-        _ = run_client(client).await;
+        run(conn).await?;
+
         Ok(())
     }
 
-    setup_once();
-    if let Err(err) = inner(addr).await {
-        error!("{:?}", err);
+    loop {
+        debug!("waiting ipc client...");
+        let res = server.connect().await;
+        let new_server = loop {
+            match create_server() {
+                Ok(server) => break server,
+                Err(err) => {
+                    error!("failed to create server. retrying after 5 seconds. err: {err:?}");
+                    sleep(Duration::from_secs(5)).await;
+                }
+            }
+        };
+
+        match res {
+            Ok(_) => {
+                if let Err(err) = inner(mem::replace(&mut server, new_server)).await {
+                    warn!("client connection ended unexpectedly. err: {:?}", err);
+                }
+            }
+            Err(err) => {
+                error!("failed to connect to client. err: {err:?}");
+            }
+        }
     }
-}
-
-fn setup_once() {
-    #[cfg(debug_assertions)]
-    fn setup_tracing() {
-        use tracing::level_filters::LevelFilter;
-
-        use crate::dbg::WinDbgMakeWriter;
-
-        tracing_subscriber::fmt::fmt()
-            .with_ansi(false)
-            .with_thread_ids(true)
-            .with_max_level(LevelFilter::TRACE)
-            .with_writer(WinDbgMakeWriter::new())
-            .init();
-    }
-
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        #[cfg(debug_assertions)]
-        setup_tracing();
-
-        with_dummy_hwnd(|dummy_hwnd| {
-            hook::install(dummy_hwnd).expect("hook initialization failed");
-            debug!("hook installed");
-        })
-        .expect("failed to create dummy window");
-    });
 }

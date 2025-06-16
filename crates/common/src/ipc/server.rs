@@ -1,202 +1,99 @@
-use std::sync::{Arc, Weak};
-
-use anyhow::{Context as AnyhowContext, bail};
-use bincode::Decode;
-use dashmap::DashMap;
+use bincode::Encode;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
-    sync::{mpsc, oneshot},
+    sync::mpsc::{UnboundedSender, unbounded_channel},
     task::JoinHandle,
 };
 
-use crate::{
-    event::ClientEvent,
-    ipc::ClientToServerPacket,
-    request::{
-        BlockInput, ListenInput, Request, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
-        UpdateSharedHandle,
-    },
-};
-
-use super::{Frame, ServerRequest};
+use super::{ClientResponse, ClientToServerPacket, Frame, ServerRequest};
+use crate::{event::ClientEvent, request::Request};
 
 pub struct IpcServerConn {
-    next_id: u32,
-    tx: WriteHalf<NamedPipeServer>,
+    rx: ReadHalf<NamedPipeServer>,
     buf: Vec<u8>,
-    map: Weak<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
-    read_task: JoinHandle<anyhow::Result<()>>,
+    chan: UnboundedSender<ClientToServerPacket>,
+    write_task: JoinHandle<anyhow::Result<()>>,
 }
 
 impl IpcServerConn {
-    pub async fn connect(server: NamedPipeServer) -> anyhow::Result<(Self, IpcServerEventStream)> {
-        server.connect().await?;
+    pub async fn new(server: NamedPipeServer) -> anyhow::Result<Self> {
+        let (rx, mut tx) = split(server);
+        let (chan_tx, mut chan_rx) = unbounded_channel();
 
-        let (mut rx, tx) = split(server);
-        let map = Arc::new(DashMap::<u32, oneshot::Sender<Vec<u8>>>::new());
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
-
-        let read_task = tokio::spawn({
-            let map = map.clone();
-
+        let write_task = tokio::spawn({
             async move {
-                let mut body = Vec::new();
-                loop {
-                    let frame = Frame::read(&mut rx).await?;
-                    body.resize(frame.size as usize, 0_u8);
-                    rx.read_exact(&mut body).await?;
+                let mut buf = Vec::new();
+                while let Some(packet) = chan_rx.recv().await {
+                    bincode::encode_into_std_write(packet, &mut buf, bincode::config::standard())?;
 
-                    let packet: ClientToServerPacket =
-                        bincode::decode_from_slice(&body, bincode::config::standard())?.0;
-
-                    match packet {
-                        ClientToServerPacket::Response(res) => {
-                            if let Some((_, sender)) = map.remove(&res.id) {
-                                _ = sender.send(res.data);
-                            }
-                        }
-                        ClientToServerPacket::Event(event) => {
-                            let _ = event_tx.send(event);
-                        }
+                    Frame {
+                        size: buf.len() as u32,
                     }
+                    .write(&mut tx)
+                    .await?;
+                    tx.write_all(&buf).await?;
+
+                    tx.flush().await?;
+
+                    buf.clear();
                 }
+
+                Ok(())
             }
         });
 
-        let conn = IpcServerConn {
-            next_id: 0,
-            tx,
+        Ok(Self {
+            rx,
             buf: Vec::new(),
-            map: Arc::downgrade(&map),
-            read_task,
-        };
-
-        let stream = IpcServerEventStream { inner: event_rx };
-
-        Ok((conn, stream))
+            chan: chan_tx,
+            write_task,
+        })
     }
 
-    async fn request<Response: Decode<()>>(&mut self, req: Request) -> anyhow::Result<Response> {
-        let data = self
-            .send(req)
-            .await
-            .context("failed to send request")?
-            .await
-            .context("failed to receive response")?;
-
-        let (response, read) =
-            bincode::decode_from_slice::<Response, _>(&data, bincode::config::standard())?;
-        let remaining = data.len() - read;
-        if remaining != 0 {
-            bail!(
-                "Response is {} bytes but only {read} bytes read",
-                data.len()
-            );
+    pub fn create_emitter(&self) -> IpcClientEventEmitter {
+        IpcClientEventEmitter {
+            inner: self.chan.clone(),
         }
-
-        Ok(response)
     }
 
-    async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Vec<u8>>> {
-        let Some(map) = self.map.upgrade() else {
-            bail!("connection closed");
-        };
+    pub async fn recv(&mut self) -> anyhow::Result<(u32, Request)> {
+        let frame = Frame::read(&mut self.rx).await?;
+        self.buf.resize(frame.size as usize, 0_u8);
+        self.rx.read_exact(&mut self.buf).await?;
 
-        let id = self.next_id;
-        self.next_id += 1;
+        let packet: ServerRequest =
+            bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
+        Ok((packet.id, packet.req))
+    }
 
-        bincode::encode_into_std_write(
-            ServerRequest { id, req },
-            &mut self.buf,
-            bincode::config::standard(),
-        )?;
+    pub fn reply(&mut self, id: u32, data: impl Encode) -> anyhow::Result<()> {
+        _ = self
+            .chan
+            .send(ClientToServerPacket::Response(ClientResponse {
+                id,
+                data: bincode::encode_to_vec(data, bincode::config::standard())?,
+            }));
 
-        Frame {
-            size: self.buf.len() as _,
-        }
-        .write(&mut self.tx)
-        .await?;
+        Ok(())
+    }
 
-        let (tx, rx) = oneshot::channel();
-        map.insert(id, tx);
-        self.tx.write_all(&self.buf).await?;
+    pub async fn close(self) -> anyhow::Result<()> {
+        drop(self.chan);
+        self.write_task.await??;
 
-        self.tx.flush().await?;
-
-        self.buf.clear();
-
-        Ok(rx)
+        Ok(())
     }
 }
 
-macro_rules! request_method {
-    (
-        $(#[$meta:meta])*
-        $name:ident($req:ident) -> $res:ty
-    ) => {
-        $(#[$meta])*
-        #[inline(always)]
-        pub async fn $name(&mut self, req: $req) -> anyhow::Result<$res> {
-            self.request(Request::$req(req)).await
-        }
-    };
+pub struct IpcClientEventEmitter {
+    inner: UnboundedSender<ClientToServerPacket>,
 }
 
-macro_rules! requests {
-    (
-        $(
-            $(#[$meta:meta])*
-            $name:ident($req:ident) -> $res:ty
-        );* $(;)?
-    ) => {
-        impl IpcServerConn {
-            $(
-                request_method!(
-                    $(#[$meta])*
-                    $name($req) -> $res
-                );
-            )*
-        }
-    };
-}
+impl IpcClientEventEmitter {
+    pub fn emit(&self, event: ClientEvent) -> anyhow::Result<()> {
+        self.inner.send(ClientToServerPacket::Event(event))?;
 
-requests! {
-    /// Set overlay position
-    set_position(SetPosition) -> ();
-
-    /// Set overlay positioning anchor
-    set_anchor(SetAnchor) -> ();
-
-    /// Set overlay margin
-    set_margin(SetMargin) -> ();
-
-    /// Listen input events
-    listen_input(ListenInput) -> bool;
-
-    /// Block input events from reaching window and listen all input events
-    block_input(BlockInput) -> bool;
-
-    /// Set cursor of a window being input captured
-    set_blocking_cursor(SetBlockingCursor) -> bool;
-
-    /// Update overlay surface
-    update_shtex(UpdateSharedHandle) -> ();
-}
-
-impl Drop for IpcServerConn {
-    fn drop(&mut self) {
-        self.read_task.abort();
-    }
-}
-
-pub struct IpcServerEventStream {
-    inner: mpsc::UnboundedReceiver<ClientEvent>,
-}
-
-impl IpcServerEventStream {
-    #[inline]
-    pub async fn recv(&mut self) -> Option<ClientEvent> {
-        self.inner.recv().await
+        Ok(())
     }
 }
