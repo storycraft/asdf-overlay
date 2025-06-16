@@ -232,9 +232,9 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
     let height = cx.argument::<JsNumber>(3)?.value(&mut cx) as u32;
-    let handle = pod_read_unaligned::<usize>(cx.argument::<JsBuffer>(3)?.as_slice(&cx));
+    let handle = pod_read_unaligned::<usize>(cx.argument::<JsBuffer>(4)?.as_slice(&cx));
     let rect = cx
-        .argument_opt(4)
+        .argument_opt(5)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
         .map(|v| {
             let obj = v.downcast_or_throw::<JsObject, _>(&mut cx)?;

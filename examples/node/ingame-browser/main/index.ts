@@ -31,6 +31,7 @@ async function createOverlayWindow(pid: number) {
     try {
       // update only changed part
       await overlay.updateShtex(
+        hwnd,
         info.codedSize.width,
         info.codedSize.height,
         e.texture.textureInfo.sharedTextureHandle,
@@ -111,7 +112,7 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    overlay.clearSurface();
+    overlay.clearSurface(hwnd);
   });
 
   mainWindow.webContents.stopPainting();
