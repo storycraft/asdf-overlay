@@ -17,6 +17,11 @@ dynasmrt = "3.2.0"
 anyhow = "1.0.97"
 scopeguard = "1.2.0"
 bytemuck = "1.23.1"
+goblin = { version = "0.10.0", default-features = false, features = [
+    "std",
+    "pe32",
+    "pe64",
+] }
 
 [dependencies.windows]
 workspace = true
@@ -25,6 +30,8 @@ features = [
     "Wdk_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
+    "Win32_System_LibraryLoader",
+    "Win32_System_ProcessStatus",
     "Win32_Security_Authorization",
     "Win32_System_SystemServices",
     "Win32_System_SystemInformation",
@@ -33,7 +40,7 @@ features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Direct3D",
-    "Win32_Graphics_Direct3D11"
+    "Win32_Graphics_Direct3D11",
 ]
 
 [package.metadata.docs.rs]
