@@ -1,4 +1,4 @@
-use core::mem;
+use core::{mem, time::Duration};
 use std::{ffi::OsStr, fs, os::windows::ffi::OsStrExt, path::PathBuf};
 
 use anyhow::{Context, bail};
@@ -11,9 +11,8 @@ use ntapi::{
 };
 use scopeguard::defer;
 use windows::{
-    Wdk::Foundation::OBJECT_ATTRIBUTES,
-    Win32::{
-        Foundation::{CloseHandle, HANDLE, HMODULE, MAX_PATH, NTSTATUS},
+    core::PCSTR, Wdk::Foundation::OBJECT_ATTRIBUTES, Win32::{
+        Foundation::{CloseHandle, HANDLE, HMODULE, MAX_PATH, NTSTATUS, WAIT_TIMEOUT},
         System::{
             Memory::{MEM_COMMIT, MEM_RELEASE, PAGE_EXECUTE_READWRITE},
             ProcessStatus::{EnumProcessModulesEx, GetModuleBaseNameA, LIST_MODULES_ALL},
@@ -22,13 +21,10 @@ use windows::{
                 IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_UNKNOWN,
             },
             Threading::{
-                GetCurrentProcess, GetExitCodeThread, IsWow64Process2, PROCESS_CREATE_THREAD,
-                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ,
-                PROCESS_VM_WRITE, WaitForSingleObject,
+                GetCurrentProcess, GetExitCodeThread, IsWow64Process2, WaitForSingleObject, PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE
             },
         },
-    },
-    core::PCSTR,
+    }
 };
 
 #[link(name = "kernel32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
@@ -38,8 +34,7 @@ unsafe extern "system" {
 
 use crate::OverlayDll;
 
-#[inline]
-pub fn inject(pid: u32, dll: OverlayDll) -> anyhow::Result<u32> {
+pub fn inject(pid: u32, dll: OverlayDll, timeout: Option<Duration>) -> anyhow::Result<u32> {
     let mut handle = HANDLE(0 as _);
     unsafe {
         let mut attr = OBJECT_ATTRIBUTES {
@@ -84,6 +79,7 @@ pub fn inject(pid: u32, dll: OverlayDll) -> anyhow::Result<u32> {
         load_library_w_for(handle, target_arch, current_arch)
             .context("cannot find LoadLibraryW")?,
         path.as_os_str(),
+        timeout,
     )
 }
 
@@ -182,7 +178,12 @@ fn load_library_w_for(
     }
 }
 
-fn execute_remote_fn(process: HANDLE, f: usize, param: &OsStr) -> anyhow::Result<u32> {
+fn execute_remote_fn(
+    process: HANDLE,
+    f: usize,
+    param: &OsStr,
+    timeout: Option<Duration>,
+) -> anyhow::Result<u32> {
     let param_encoded = param.encode_wide().collect::<Vec<u16>>();
     let param_encoded = bytemuck::cast_slice::<_, u8>(&param_encoded);
 
@@ -241,7 +242,15 @@ fn execute_remote_fn(process: HANDLE, f: usize, param: &OsStr) -> anyhow::Result
         });
 
         // wait for overlay dll to start
-        WaitForSingleObject(thread_handle, u32::MAX);
+        let res = WaitForSingleObject(
+            thread_handle,
+            timeout
+                .map(|duration| duration.as_millis() as u32)
+                .unwrap_or(u32::MAX),
+        );
+        if res == WAIT_TIMEOUT {
+            bail!("remote thread wait timeout");
+        }
 
         let mut module_handle = 0_u32;
         // Get loaded module handle
