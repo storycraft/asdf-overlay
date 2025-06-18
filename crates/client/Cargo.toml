@@ -13,7 +13,6 @@ asdf-overlay-common = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 
 ntapi = "0.4.1"
-dynasmrt = "3.2.0"
 anyhow = "1.0.97"
 scopeguard = "1.2.0"
 bytemuck = "1.23.1"
