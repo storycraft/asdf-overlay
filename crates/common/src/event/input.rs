@@ -61,6 +61,6 @@ pub enum InputState {
 
 #[derive(Debug, Encode, Decode, Clone, Copy)]
 pub struct InputPosition {
-    pub x: f32,
-    pub y: f32,
+    pub x: i32,
+    pub y: i32,
 }

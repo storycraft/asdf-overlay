@@ -117,7 +117,7 @@ impl Dx9Renderer {
     pub fn draw(
         &mut self,
         device: &IDirect3DDevice9,
-        position: (f32, f32),
+        position: (i32, i32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
         if screen.0 == 0 || screen.1 == 0 {
@@ -130,8 +130,8 @@ impl Dx9Renderer {
 
         let vertices = {
             let pos = (
-                (position.0 / screen.0 as f32) * 2.0 - 1.0,
-                -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+                (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0,
+                -(position.1 as f32 / screen.1 as f32) * 2.0 + 1.0,
             );
             let size = (
                 (self.size.0 as f32 / screen.0 as f32) * 2.0,

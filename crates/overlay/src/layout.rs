@@ -44,7 +44,7 @@ impl OverlayLayout {
         self.margin = (top, right, bottom, left);
     }
 
-    pub fn get_or_calc(&mut self, size: (u32, u32), screen: (u32, u32)) -> (f32, f32) {
+    pub fn get_or_calc(&mut self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
         if let Some(ref cache) = self.cache {
             if let Some(position) = cache.resolve(size, screen) {
                 return position;
@@ -60,7 +60,7 @@ impl OverlayLayout {
         final_position
     }
 
-    fn calc_position(&self, size: (u32, u32), screen: (u32, u32)) -> (f32, f32) {
+    fn calc_position(&self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
         let size = (size.0 as f32, size.1 as f32);
         let screen = (screen.0 as f32, screen.1 as f32);
         let (x, y) = self.position;
@@ -76,7 +76,7 @@ impl OverlayLayout {
         let x = x.resolve(screen.0) - anchor_x.resolve(outer_width) + margin_left;
         let y = y.resolve(screen.1) - anchor_y.resolve(outer_height) + margin_top;
 
-        (x, y)
+        (x.round() as i32, y.round() as i32)
     }
 }
 
@@ -90,11 +90,11 @@ impl Default for OverlayLayout {
 struct LayoutCache {
     pub size: (u32, u32),
     pub screen: (u32, u32),
-    pub final_position: (f32, f32),
+    pub final_position: (i32, i32),
 }
 
 impl LayoutCache {
-    pub fn resolve(&self, size: (u32, u32), screen: (u32, u32)) -> Option<(f32, f32)> {
+    pub fn resolve(&self, size: (u32, u32), screen: (u32, u32)) -> Option<(i32, i32)> {
         if size == self.size && self.screen == screen {
             Some(self.final_position)
         } else {

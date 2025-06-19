@@ -184,7 +184,7 @@ impl Dx11Renderer {
         &mut self,
         device: &ID3D11Device,
         cx: &ID3D11DeviceContext,
-        position: (f32, f32),
+        position: (i32, i32),
         size: (u32, u32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
@@ -200,8 +200,8 @@ impl Dx11Renderer {
         };
 
         let rect = [
-            (position.0 / screen.0 as f32) * 2.0 - 1.0,
-            -(position.1 / screen.1 as f32) * 2.0 + 1.0,
+            (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0,
+            -(position.1 as f32 / screen.1 as f32) * 2.0 + 1.0,
             (size.0 as f32 / screen.0 as f32) * 2.0,
             -(size.1 as f32 / screen.1 as f32) * 2.0,
         ];

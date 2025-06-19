@@ -371,7 +371,7 @@ pub(crate) fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
 #[inline]
 fn cursor_input(
     hwnd: u32,
-    position: (f32, f32),
+    position: (i32, i32),
     lparam: LPARAM,
     event: CursorEvent,
 ) -> ClientEvent {

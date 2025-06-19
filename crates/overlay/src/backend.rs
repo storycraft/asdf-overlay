@@ -206,7 +206,7 @@ impl WindowBackend {
         Ok(())
     }
 
-    pub fn position(&mut self) -> (f32, f32) {
+    pub fn position(&mut self) -> (i32, i32) {
         self.layout.get_or_calc(
             self.surface
                 .get()
