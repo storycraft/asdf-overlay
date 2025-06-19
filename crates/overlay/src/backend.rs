@@ -9,7 +9,7 @@ use asdf_overlay_common::{
     cursor::Cursor,
     event::{
         ClientEvent, WindowEvent,
-        input::{CursorEvent, CursorInput, InputEvent},
+        input::{CursorEvent, CursorInput, InputEvent, InputPosition},
     },
     request::UpdateSharedHandle,
 };
@@ -174,12 +174,21 @@ impl WindowBackend {
             if let CursorState::Inside(x, y) = self.cursor_state {
                 self.cursor_state = CursorState::Outside;
 
+                let window = InputPosition {
+                    x: x as _,
+                    y: y as _,
+                };
+                let position = self.position();
+                let surface = InputPosition {
+                    x: window.x - position.0,
+                    y: window.y - position.1,
+                };
                 OverlayIpc::emit_event(ClientEvent::Window {
                     hwnd: self.hwnd,
                     event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                         event: CursorEvent::Leave,
-                        x,
-                        y,
+                        window,
+                        client: surface,
                     })),
                 });
             }
@@ -196,6 +205,16 @@ impl WindowBackend {
     pub fn update_surface(&mut self, handle: Option<NonZeroU32>) -> anyhow::Result<()> {
         self.surface.update(&self.interop.device, handle)?;
         Ok(())
+    }
+
+    pub fn position(&mut self) -> (f32, f32) {
+        self.layout.get_or_calc(
+            self.surface
+                .get()
+                .map(|surface| surface.size())
+                .unwrap_or((0, 0)),
+            self.size,
+        )
     }
 }
 

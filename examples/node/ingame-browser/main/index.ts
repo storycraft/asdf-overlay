@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay } from 'asdf-overlay-node';
+import { defaultDllDir, Overlay, percent } from 'asdf-overlay-node';
 import { InputState } from 'asdf-overlay-node/input';
 import find from 'find-process';
 import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
@@ -47,6 +47,10 @@ async function createOverlayWindow(pid: number) {
   });
 
   const hwnd = await new Promise<number>((resolve) => overlay.event.once('added', resolve));
+
+  // centre layout
+  overlay.setPosition(hwnd, percent(0.5), percent(0.5));
+  overlay.setAnchor(hwnd, percent(0.5), percent(0.5));
 
   // always listen keyboard events
   await overlay.listenInput(hwnd, false, true);

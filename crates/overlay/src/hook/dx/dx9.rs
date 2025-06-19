@@ -83,7 +83,7 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
         let size = surface.size();
         let position = backend
             .layout
-            .calc_position((size.0 as _, size.1 as _), screen);
+            .get_or_calc((size.0 as _, size.1 as _), screen);
 
         let interop = &mut backend.interop;
         match reader.with_mapped(

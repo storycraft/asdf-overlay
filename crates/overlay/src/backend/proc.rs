@@ -10,8 +10,8 @@ use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
         input::{
-            CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
-            ScrollAxis,
+            CursorAction, CursorEvent, CursorInput, InputEvent, InputPosition, InputState,
+            KeyboardInput, ScrollAxis,
         },
     },
     key::Key,
@@ -89,59 +89,60 @@ fn block_proc_input(
 #[inline]
 fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, lparam: LPARAM) {
     // emit cursor action
-    macro_rules! emit_cursor_action {
-        ($action:expr, $state:expr $(,)?) => {{
-            OverlayIpc::emit_event(cursor_input(
-                backend.hwnd,
-                lparam,
-                CursorEvent::Action {
-                    state: $state,
-                    action: $action,
-                },
-            ));
-        }};
-    }
+    let mut emit_cursor_action = |action: CursorAction, state: InputState| {
+        OverlayIpc::emit_event(cursor_input(
+            backend.hwnd,
+            backend.position(),
+            lparam,
+            CursorEvent::Action { action, state },
+        ));
+    };
 
     match msg {
         msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
-            emit_cursor_action!(CursorAction::Left, InputState::Pressed)
+            emit_cursor_action(CursorAction::Left, InputState::Pressed)
         }
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
-            emit_cursor_action!(CursorAction::Middle, InputState::Pressed)
+            emit_cursor_action(CursorAction::Middle, InputState::Pressed)
         }
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
-            emit_cursor_action!(CursorAction::Right, InputState::Pressed)
+            emit_cursor_action(CursorAction::Right, InputState::Pressed)
         }
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONDBLCLK => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-            emit_cursor_action!(
+            emit_cursor_action(
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
                     CursorAction::Forward
                 },
-                InputState::Pressed
+                InputState::Pressed,
             );
         }
 
-        msg::WM_LBUTTONUP => emit_cursor_action!(CursorAction::Left, InputState::Released),
-        msg::WM_MBUTTONUP => emit_cursor_action!(CursorAction::Middle, InputState::Released),
-        msg::WM_RBUTTONUP => emit_cursor_action!(CursorAction::Right, InputState::Released),
+        msg::WM_LBUTTONUP => emit_cursor_action(CursorAction::Left, InputState::Released),
+        msg::WM_MBUTTONUP => emit_cursor_action(CursorAction::Middle, InputState::Released),
+        msg::WM_RBUTTONUP => emit_cursor_action(CursorAction::Right, InputState::Released),
         msg::WM_XBUTTONUP => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-            emit_cursor_action!(
+            emit_cursor_action(
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
                     CursorAction::Forward
                 },
-                InputState::Pressed
+                InputState::Pressed,
             );
         }
 
         Controls::WM_MOUSELEAVE => {
             backend.cursor_state = CursorState::Outside;
-            OverlayIpc::emit_event(cursor_input(backend.hwnd, lparam, CursorEvent::Leave));
+            OverlayIpc::emit_event(cursor_input(
+                backend.hwnd,
+                backend.position(),
+                lparam,
+                CursorEvent::Leave,
+            ));
         }
 
         msg::WM_MOUSEMOVE => {
@@ -154,14 +155,12 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
                 }
                 CursorState::Outside => {
                     backend.cursor_state = CursorState::Inside(x, y);
-                    OverlayIpc::emit_event(ClientEvent::Window {
-                        hwnd: backend.hwnd,
-                        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                            event: CursorEvent::Enter,
-                            x,
-                            y,
-                        })),
-                    });
+                    OverlayIpc::emit_event(cursor_input(
+                        backend.hwnd,
+                        backend.position(),
+                        lparam,
+                        CursorEvent::Enter,
+                    ));
 
                     // track for leave event
                     _ = unsafe {
@@ -175,20 +174,19 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
                 }
             }
 
-            OverlayIpc::emit_event(ClientEvent::Window {
-                hwnd: backend.hwnd,
-                event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                    event: CursorEvent::Move,
-                    x,
-                    y,
-                })),
-            });
+            OverlayIpc::emit_event(cursor_input(
+                backend.hwnd,
+                backend.position(),
+                lparam,
+                CursorEvent::Move,
+            ));
         }
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
+                backend.position(),
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
@@ -201,6 +199,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
+                backend.position(),
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::X,
@@ -369,13 +368,30 @@ pub(crate) fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
     None
 }
 
-#[inline(always)]
-fn cursor_input(hwnd: u32, lparam: LPARAM, event: CursorEvent) -> ClientEvent {
+#[inline]
+fn cursor_input(
+    hwnd: u32,
+    position: (f32, f32),
+    lparam: LPARAM,
+    event: CursorEvent,
+) -> ClientEvent {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
+    let window = InputPosition {
+        x: x as _,
+        y: y as _,
+    };
+    let surface = InputPosition {
+        x: window.x - position.0,
+        y: window.y - position.1,
+    };
     ClientEvent::Window {
         hwnd,
-        event: WindowEvent::Input(InputEvent::Cursor(CursorInput { event, x, y })),
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            event,
+            client: surface,
+            window,
+        })),
     }
 }
 

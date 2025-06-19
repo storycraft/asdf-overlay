@@ -40,15 +40,17 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
     fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
         let res = Backends::with_backend(HWND(hwnd as _), |backend| match req {
             WindowRequest::SetPosition(position) => {
-                backend.layout.position = position;
+                backend.layout.set_position(position.x, position.y);
             }
 
             WindowRequest::SetAnchor(anchor) => {
-                backend.layout.anchor = anchor;
+                backend.layout.set_anchor(anchor.x, anchor.y);
             }
 
             WindowRequest::SetMargin(margin) => {
-                backend.layout.margin = margin;
+                backend
+                    .layout
+                    .set_margin(margin.top, margin.right, margin.bottom, margin.left);
             }
 
             WindowRequest::ListenInput(cmd) => {
