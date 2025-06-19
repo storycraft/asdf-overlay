@@ -1,8 +1,10 @@
 import { Key } from './index.js';
 
 export type CursorInput = {
-  x: number,
-  y: number,
+  clientX: number,
+  clientY: number,
+  windowX: number,
+  windowY: number,
 } & ({
   kind: 'Enter'
 } | {

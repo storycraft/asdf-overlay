@@ -11,8 +11,10 @@ pub enum InputEvent {
 #[derive(Debug, Encode, Decode, Clone)]
 pub struct CursorInput {
     pub event: CursorEvent,
-    pub x: i16,
-    pub y: i16,
+    /// Position relative to overlay surface
+    pub client: InputPosition,
+    /// Position relative to window
+    pub window: InputPosition,
 }
 
 #[derive(Debug, Encode, Decode, Clone)]
@@ -55,4 +57,11 @@ pub enum ScrollAxis {
 pub enum InputState {
     Pressed,
     Released,
+}
+
+
+#[derive(Debug, Encode, Decode, Clone, Copy)]
+pub struct InputPosition {
+    pub x: f32,
+    pub y: f32,
 }

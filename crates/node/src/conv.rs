@@ -109,11 +109,17 @@ fn serialize_cursor_input<'a>(
 ) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
-    let x = cx.number(input.x);
-    obj.set(cx, "x", x)?;
+    let client_x = cx.number(input.client.x);
+    obj.set(cx, "clientX", client_x)?;
 
-    let y = cx.number(input.y);
-    obj.set(cx, "y", y)?;
+    let client_y = cx.number(input.client.y);
+    obj.set(cx, "clientY", client_y)?;
+
+    let window_x = cx.number(input.client.x);
+    obj.set(cx, "windowX", window_x)?;
+
+    let window_y = cx.number(input.client.y);
+    obj.set(cx, "windowY", window_y)?;
 
     match input.event {
         CursorEvent::Enter => {

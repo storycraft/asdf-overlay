@@ -89,7 +89,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
             let size = surface.size();
             let position = backend
                 .layout
-                .calc_position((size.0 as _, size.1 as _), screen);
+                .get_or_calc((size.0 as _, size.1 as _), screen);
             trace!("using dx12 renderer");
             let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
             let _res =
@@ -183,7 +183,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
         let size = surface.size();
         let position = backend
             .layout
-            .calc_position((size.0 as _, size.1 as _), screen);
+            .get_or_calc((size.0 as _, size.1 as _), screen);
         {
             let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
                 .expect("failed to get dx11 backbuffer");

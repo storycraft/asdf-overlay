@@ -165,7 +165,7 @@ fn draw_overlay(hdc: HDC) {
                 let size = surface.size();
                 let position = backend
                     .layout
-                    .calc_position((size.0 as _, size.1 as _), screen);
+                    .get_or_calc((size.0 as _, size.1 as _), screen);
                 let _res = renderer.draw(position, size, screen);
                 trace!("opengl render: {:?}", _res);
             })
