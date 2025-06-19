@@ -12,12 +12,17 @@ use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::Win32::Foundation::HWND;
 
-use crate::hook::dx::dx9::ResetExFn;
+use crate::hook::dx::{
+    dx9::ResetExFn,
+    dxgi::{ResizeBuffers1Fn, ResizeBuffersFn},
+};
 
 #[derive(Default)]
 struct Hook {
     present: OnceCell<DetourHook<PresentFn>>,
     present1: OnceCell<DetourHook<Present1Fn>>,
+    resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
+    resize_buffers1: OnceCell<DetourHook<ResizeBuffers1Fn>>,
     execute_command_lists: OnceCell<DetourHook<ExecuteCommandListsFn>>,
     end_scene: OnceCell<DetourHook<EndSceneFn>>,
     reset: OnceCell<DetourHook<ResetFn>>,
@@ -27,6 +32,8 @@ struct Hook {
 static HOOK: Hook = Hook {
     present: OnceCell::new(),
     present1: OnceCell::new(),
+    resize_buffers: OnceCell::new(),
+    resize_buffers1: OnceCell::new(),
     execute_command_lists: OnceCell::new(),
     end_scene: OnceCell::new(),
     reset: OnceCell::new(),
@@ -57,6 +64,21 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
         debug!("hooking IDXGISwapChain1::Present1");
         HOOK.present1.get_or_try_init(|| unsafe {
             DetourHook::attach(present1, dxgi::hooked_present1 as _)
+        })?;
+    }
+
+    debug!("hooking IDXGISwapChain::ResizeBuffers");
+    HOOK.resize_buffers.get_or_try_init(|| unsafe {
+        DetourHook::attach(
+            dxgi_functions.resize_buffers,
+            dxgi::hooked_resize_buffers as _,
+        )
+    })?;
+
+    if let Some(resize_buffers1) = dxgi_functions.resize_buffers1 {
+        debug!("hooking IDXGISwapChain3::ResizeBuffers1");
+        HOOK.resize_buffers1.get_or_try_init(|| unsafe {
+            DetourHook::attach(resize_buffers1, dxgi::hooked_resize_buffers1 as _)
         })?;
     }
 
