@@ -59,7 +59,6 @@ pub enum InputState {
     Released,
 }
 
-
 #[derive(Debug, Encode, Decode, Clone, Copy)]
 pub struct InputPosition {
     pub x: f32,
