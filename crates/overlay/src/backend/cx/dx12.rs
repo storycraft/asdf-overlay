@@ -3,6 +3,7 @@ use windows::Win32::Graphics::{Direct3D12::*, Dxgi::IDXGISwapChain};
 #[derive(Debug)]
 pub struct RtvDescriptors {
     rtv_descriptor_heap: ID3D12DescriptorHeap,
+    flags: u32,
     descriptor_size: usize,
 }
 
@@ -21,21 +22,29 @@ impl RtvDescriptors {
                 device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
             Ok(Self {
                 rtv_descriptor_heap,
+                flags: 0,
                 descriptor_size,
             })
         }
     }
 
+    pub fn reset(&mut self) {
+        self.flags = 0;
+    }
+
     pub fn with_next_swapchain<R>(
-        &self,
+        &mut self,
         device: &ID3D12Device,
         swapchain: &IDXGISwapChain,
         index: usize,
         f: impl FnOnce(D3D12_CPU_DESCRIPTOR_HANDLE) -> R,
     ) -> anyhow::Result<R> {
-        let backbuffer = unsafe { swapchain.GetBuffer::<ID3D12Resource>(index as _)? };
         let desc = self.desc_for(index);
-        unsafe { device.CreateRenderTargetView(&backbuffer, None, desc) };
+        if (self.flags >> index) & 1 != 1 {
+            self.flags |= 1 << index;
+            let backbuffer = unsafe { swapchain.GetBuffer::<ID3D12Resource>(index as _)? };
+            unsafe { device.CreateRenderTargetView(&backbuffer, None, desc) };
+        }
         Ok(f(desc))
     }
 
