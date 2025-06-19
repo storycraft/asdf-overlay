@@ -145,7 +145,7 @@ pub struct Dx12Renderer {
 
     pipeline: ID3D12PipelineState,
     vertex_buffer: ID3D12Resource,
-    texture: OverlayTextureState<()>,
+    texture: OverlayTextureState<ID3D12Resource>,
     texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
@@ -335,7 +335,7 @@ impl Dx12Renderer {
                     );
                 }
 
-                Ok(Some(()))
+                Ok(Some(texture))
             })?
             .is_none()
         {
