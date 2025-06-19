@@ -80,7 +80,7 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
         };
 
         let screen = backend.size;
-        let size = renderer.size();
+        let size = surface.size();
         let position = backend
             .layout
             .calc_position((size.0 as _, size.1 as _), screen);

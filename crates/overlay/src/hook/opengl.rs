@@ -139,8 +139,8 @@ fn draw_overlay(hdc: HDC) {
                     debug!("initializing opengl renderer");
 
                     OpenglRenderer::new(&backend.interop.device)
-                            .context("failed to create OpenglRenderer")
-                            .context("failed to create WglContextWrapped")
+                        .context("failed to create OpenglRenderer")
+                        .context("failed to create WglContextWrapped")
                 }) {
                     Ok(renderer) => renderer,
                     Err(err) => {
