@@ -74,7 +74,7 @@ impl IpcClientConn {
     }
 
     #[inline]
-    pub const fn window(&mut self, hwnd: u32) -> IpcClientConnWindow {
+    pub const fn window(&mut self, hwnd: u32) -> IpcClientConnWindow<'_> {
         IpcClientConnWindow { inner: self, hwnd }
     }
 
