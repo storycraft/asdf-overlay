@@ -14,7 +14,7 @@ use asdf_overlay_common::{
     request::UpdateSharedHandle,
 };
 use cx::DrawContext;
-use dashmap::mapref::multiple::RefMulti;
+use dashmap::{Entry, mapref::multiple::RefMulti};
 use once_cell::sync::Lazy;
 use proc::hooked_wnd_proc;
 use renderers::Renderer;
@@ -54,10 +54,10 @@ impl Backends {
         f: impl FnOnce(&mut WindowBackend) -> R,
     ) -> anyhow::Result<R> {
         let key = hwnd.0 as u32;
-
-        if let Some(mut backend) = BACKENDS.map.get_mut(&key) {
-            return Ok(f(&mut backend));
-        }
+        let entry = match BACKENDS.map.entry(key) {
+            Entry::Occupied(ref mut occupied) => return Ok(f(occupied.get_mut())),
+            Entry::Vacant(vacant) => vacant,
+        };
 
         let original_proc: WNDPROC = unsafe {
             mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
@@ -79,7 +79,7 @@ impl Backends {
             },
         });
 
-        let mut backend = BACKENDS.map.entry(key).insert(WindowBackend {
+        Ok(f(&mut entry.insert(WindowBackend {
             hwnd: key,
             original_proc,
 
@@ -97,8 +97,7 @@ impl Backends {
             size,
             renderer: None,
             cx: DrawContext::new(),
-        });
-        Ok(f(&mut backend))
+        })))
     }
 
     fn remove_backend(hwnd: HWND) {
