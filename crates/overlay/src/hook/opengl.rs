@@ -2,7 +2,6 @@ use core::{cell::Cell, ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
@@ -42,7 +41,7 @@ struct Hook {
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
 // HGLRC -> (HWND, OpenglRenderer)
-static MAP: Lazy<IntDashMap<u32, (u32, OpenglRenderer)>> = Lazy::new(IntDashMap::default);
+static MAP: Lazy<IntDashMap<u32, OpenglRenderer>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
@@ -80,27 +79,12 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    cleanup_renderer(hglrc);
+    if MAP.remove(&(hglrc.0 as u32)).is_some() {
+        debug!("gl renderer cleanup");
+    }
 
     let hook = HOOK.get().unwrap();
     unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
-}
-
-#[tracing::instrument]
-#[inline]
-fn cleanup_renderer(hglrc: HGLRC) {
-    let Some((_, (hwnd, mut renderer))) = MAP.remove(&(hglrc.0 as u32)) else {
-        return;
-    };
-    debug!("gl renderer cleanup");
-
-    _ = Backends::with_backend(HWND(hwnd as _), |backend| {
-        if let Some(handle) = renderer.take_texture() {
-            backend.pending_handle = Some(UpdateSharedHandle {
-                handle: Some(handle),
-            });
-        }
-    });
 }
 
 #[inline]
@@ -151,34 +135,38 @@ fn draw_overlay(hdc: HDC) {
 
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                let (_, ref mut renderer) =
-                    *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
-                        debug!("initializing opengl renderer");
+                let renderer = &mut (*match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
+                    debug!("initializing opengl renderer");
 
-                        Ok::<_, anyhow::Error>((
-                            hwnd.0 as u32,
-                            OpenglRenderer::new()
-                                .context("failed to create OpenglRenderer")
-                                .context("failed to create WglContextWrapped")?,
-                        ))
-                    }) {
-                        Ok(renderer) => renderer,
-                        Err(err) => {
-                            error!("renderer setup failed. err: {:?}", err);
-                            return;
-                        }
-                    };
+                    OpenglRenderer::new(&backend.interop.device)
+                            .context("failed to create OpenglRenderer")
+                            .context("failed to create WglContextWrapped")
+                }) {
+                    Ok(renderer) => renderer,
+                    Err(err) => {
+                        error!("renderer setup failed. err: {:?}", err);
+                        return;
+                    }
+                });
+
+                if backend.surface.invalidate_update() {
+                    if let Err(err) = renderer
+                        .update_texture(backend.surface.get().map(|surface| surface.texture()))
+                    {
+                        error!("failed to update opengl texture. err: {err:?}");
+                        return;
+                    }
+                }
+                let Some(surface) = backend.surface.get() else {
+                    return;
+                };
 
                 let screen = backend.size;
-                if let Some(shared) = backend.pending_handle.take() {
-                    renderer.update_texture(shared);
-                }
-
-                let size = renderer.size();
+                let size = surface.size();
                 let position = backend
                     .layout
                     .calc_position((size.0 as _, size.1 as _), screen);
-                let _res = renderer.draw(position, screen);
+                let _res = renderer.draw(position, size, screen);
                 trace!("opengl render: {:?}", _res);
             })
         });

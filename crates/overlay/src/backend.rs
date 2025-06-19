@@ -2,9 +2,9 @@ pub mod cx;
 pub mod proc;
 pub mod renderers;
 
-use core::mem;
+use core::{mem, num::NonZeroU32};
 
-use anyhow::bail;
+use anyhow::Context;
 use asdf_overlay_common::{
     cursor::Cursor,
     event::{
@@ -21,10 +21,14 @@ use renderers::Renderer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{GWLP_WNDPROC, GetWindowThreadProcessId, SetWindowLongPtrA, WNDPROC},
+    Graphics::Direct3D11::ID3D11Device,
+    UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
 };
 
-use crate::{app::OverlayIpc, layout::OverlayLayout, types::IntDashMap, util::get_client_size};
+use crate::{
+    app::OverlayIpc, interop::DxInterop, layout::OverlayLayout, surface::OverlaySurface,
+    types::IntDashMap, util::get_client_size,
+};
 
 static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: IntDashMap::default(),
@@ -51,51 +55,49 @@ impl Backends {
     ) -> anyhow::Result<R> {
         let key = hwnd.0 as u32;
 
-        let mut backend = if let Some(backend) = BACKENDS.map.get_mut(&key) {
-            backend
-        } else {
-            let hwnd_thread = unsafe { GetWindowThreadProcessId(hwnd, None) };
-            if hwnd_thread == 0 {
-                bail!("GetWindowThreadProcessId failed");
-            }
+        if let Some(mut backend) = BACKENDS.map.get_mut(&key) {
+            return Ok(f(&mut backend));
+        }
 
-            let original_proc: WNDPROC = unsafe {
-                mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
-                    hwnd,
-                    GWLP_WNDPROC,
-                    hooked_wnd_proc as usize as _,
-                ) as _)
-            };
-
-            let size = get_client_size(hwnd)?;
-
-            OverlayIpc::emit_event(ClientEvent::Window {
-                hwnd: key,
-                event: WindowEvent::Added {
-                    width: size.0,
-                    height: size.1,
-                },
-            });
-
-            BACKENDS.map.entry(key).insert(WindowBackend {
-                hwnd: key,
-                original_proc,
-
-                layout: OverlayLayout::new(),
-
-                listen_input: ListenInputFlags::empty(),
-                blocking_state: BlockingState::None,
-                blocking_cursor: Some(Cursor::Default),
-
-                cursor_state: CursorState::Outside,
-
-                pending_handle: None,
-                size,
-                renderer: None,
-                cx: DrawContext::new(),
-            })
+        let original_proc: WNDPROC = unsafe {
+            mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
+                hwnd,
+                GWLP_WNDPROC,
+                hooked_wnd_proc as usize as _,
+            ) as _)
         };
 
+        let interop = DxInterop::create().context("failed to create backend interop dxdevice")?;
+
+        let size = get_client_size(hwnd)?;
+
+        OverlayIpc::emit_event(ClientEvent::Window {
+            hwnd: key,
+            event: WindowEvent::Added {
+                width: size.0,
+                height: size.1,
+            },
+        });
+
+        let mut backend = BACKENDS.map.entry(key).insert(WindowBackend {
+            hwnd: key,
+            original_proc,
+
+            interop,
+
+            layout: OverlayLayout::new(),
+
+            listen_input: ListenInputFlags::empty(),
+            blocking_state: BlockingState::None,
+            blocking_cursor: Some(Cursor::Default),
+
+            cursor_state: CursorState::Outside,
+
+            surface: SurfaceState::new(),
+            size,
+            renderer: None,
+            cx: DrawContext::new(),
+        });
         Ok(f(&mut backend))
     }
 
@@ -111,7 +113,7 @@ impl Backends {
 
     pub fn cleanup_backends() {
         for mut backend in BACKENDS.map.iter_mut() {
-            backend.cleanup();
+            backend.reset();
         }
     }
 }
@@ -119,6 +121,8 @@ impl Backends {
 pub struct WindowBackend {
     hwnd: u32,
     original_proc: WNDPROC,
+
+    pub interop: DxInterop,
 
     pub layout: OverlayLayout,
 
@@ -129,17 +133,17 @@ pub struct WindowBackend {
     cursor_state: CursorState,
 
     pub size: (u32, u32),
-    pub pending_handle: Option<UpdateSharedHandle>,
+    pub surface: SurfaceState,
     pub renderer: Option<Renderer>,
     pub cx: DrawContext,
 }
 
 impl WindowBackend {
     #[tracing::instrument(skip(self))]
-    fn cleanup(&mut self) {
-        trace!("backend hwnd: {:?} cleanup", HWND(self.hwnd as _));
+    fn reset(&mut self) {
+        trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
         self.layout = OverlayLayout::new();
-        self.pending_handle = Some(UpdateSharedHandle { handle: None });
+        self.surface = SurfaceState::new();
         self.listen_input = ListenInputFlags::empty();
         self.blocking_state.change(false);
         self.blocking_cursor = Some(Cursor::Default);
@@ -186,6 +190,64 @@ impl WindowBackend {
             });
 
             self.blocking_cursor = Some(Cursor::Default);
+        }
+    }
+
+    pub fn update_surface(&mut self, handle: Option<NonZeroU32>) -> anyhow::Result<()> {
+        self.surface.update(&self.interop.device, handle)?;
+        Ok(())
+    }
+}
+
+pub struct SurfaceState {
+    inner: Option<OverlaySurface>,
+    updated: bool,
+}
+
+impl SurfaceState {
+    const fn new() -> Self {
+        Self {
+            inner: None,
+            updated: false,
+        }
+    }
+
+    #[inline]
+    pub const fn get(&self) -> Option<&OverlaySurface> {
+        self.inner.as_ref()
+    }
+
+    fn update(&mut self, device: &ID3D11Device, handle: Option<NonZeroU32>) -> anyhow::Result<()> {
+        self.updated = true;
+        self.inner.take();
+
+        let Some(handle) = handle else {
+            return Ok(());
+        };
+
+        self.inner = Some(OverlaySurface::open_shared(device, handle.get())?);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn take_update(&mut self) -> Option<UpdateSharedHandle> {
+        if self.updated {
+            self.updated = false;
+            Some(UpdateSharedHandle {
+                handle: self.get().map(|surface| surface.shared_handle()),
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn invalidate_update(&mut self) -> bool {
+        if self.updated {
+            self.updated = false;
+            true
+        } else {
+            false
         }
     }
 }
