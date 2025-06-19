@@ -45,7 +45,6 @@ use super::{HOOK, dx12::get_queue_for};
 fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
 
-    let screen = backend.size;
     if let Ok(device) = device.cast::<ID3D12Device>() {
         let renderer = match backend.renderer {
             Some(Renderer::Dx12(ref mut renderer)) => renderer,
@@ -79,11 +78,15 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
                 RtvDescriptors::new(&device).expect("failed to create dx12 rtv")
             });
 
-            if let Some(shared) = backend.pending_handle.take() {
-                renderer.update_texture(shared);
+            if let Some(update) = backend.surface.take_update() {
+                renderer.update_texture(update);
             }
 
-            let size = renderer.size();
+            let Some(surface) = backend.surface.get() else {
+                return;
+            };
+            let screen = backend.size;
+            let size = surface.size();
             let position = backend
                 .layout
                 .calc_position((size.0 as _, size.1 as _), screen);
@@ -98,6 +101,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
                         desc,
                         &queue,
                         position,
+                        size,
                         screen,
                     )
                 });
@@ -168,11 +172,15 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
             Dx11Renderer::new(&device).expect("renderer creation failed")
         });
 
-        if let Some(shared) = backend.pending_handle.take() {
-            renderer.update_texture(shared);
+        if let Some(update) = backend.surface.take_update() {
+            renderer.update_texture(update);
         }
 
-        let size = renderer.size();
+        let Some(surface) = backend.surface.get() else {
+            return;
+        };
+        let screen = backend.size;
+        let size = surface.size();
         let position = backend
             .layout
             .calc_position((size.0 as _, size.1 as _), screen);
@@ -186,7 +194,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
 
             unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
             defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-            let _res = renderer.draw(&device, &cx, position, screen);
+            let _res = renderer.draw(&device, &cx, position, size, screen);
             trace!("dx11 render: {:?}", _res);
         }
     }

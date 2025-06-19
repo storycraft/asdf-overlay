@@ -8,7 +8,7 @@ use windows::{
         Graphics::{
             Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D},
             Direct3D11::*,
-            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex, IDXGIResource},
+            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex},
         },
     },
     core::{BOOL, Interface, s},
@@ -53,8 +53,6 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
 };
 
 struct Dx11Tex {
-    size: (u32, u32),
-    texture: ID3D11Texture2D,
     mutex: IDXGIKeyedMutex,
     view: ID3D11ShaderResourceView,
 }
@@ -177,23 +175,8 @@ impl Dx11Renderer {
         }
     }
 
-    pub fn size(&self) -> (u32, u32) {
-        self.texture.map(|tex| tex.size).unwrap_or((0, 0))
-    }
-
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         self.texture.update(shared);
-    }
-
-    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
-        self.texture.take_handle(|tex| unsafe {
-            tex.texture
-                .cast::<IDXGIResource>()
-                .unwrap()
-                .GetSharedHandle()
-                .ok()
-                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
-        })
     }
 
     #[tracing::instrument(skip(self))]
@@ -202,15 +185,14 @@ impl Dx11Renderer {
         device: &ID3D11Device,
         cx: &ID3D11DeviceContext,
         position: (f32, f32),
+        size: (u32, u32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
         if screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
 
-        let Some(Dx11Tex {
-            size, view, mutex, ..
-        }) = self
+        let Some(Dx11Tex { view, mutex, .. }) = self
             .texture
             .get_or_create(|handle| open_shared_texture(device, handle))?
         else {
@@ -321,10 +303,5 @@ fn open_shared_texture(
     }
     let view = view.context("cannot create texture view")?;
 
-    Ok(Some(Dx11Tex {
-        size,
-        texture,
-        mutex,
-        view,
-    }))
+    Ok(Some(Dx11Tex { mutex, view }))
 }

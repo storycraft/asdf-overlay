@@ -1,7 +1,6 @@
 use core::ffi::c_void;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 use windows::{
@@ -47,14 +46,7 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
         let Some(Renderer::Dx12(ref mut renderer)) = backend.renderer else {
             return;
         };
-
-        if let Some(mut renderer) = renderer.take() {
-            if let Some(handle) = renderer.take_texture() {
-                backend.pending_handle = Some(UpdateSharedHandle {
-                    handle: Some(handle),
-                });
-            }
-        }
+        renderer.take();
         backend.cx.dx12.take();
     });
 }

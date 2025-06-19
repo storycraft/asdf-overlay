@@ -68,7 +68,9 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
             }
 
             WindowRequest::UpdateSharedHandle(shared) => {
-                backend.pending_handle = Some(shared);
+                if let Err(err) = backend.update_surface(shared.handle) {
+                    error!("failed to open shared surface. err: {:?}", err);
+                }
             }
         });
 

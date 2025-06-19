@@ -1,27 +1,16 @@
 pub mod data;
 
 use anyhow::bail;
-use asdf_overlay_common::request::UpdateSharedHandle;
-use core::{ffi::c_void, mem, num::NonZeroU32, ptr};
+use core::{ffi::c_void, mem, ptr};
 use gl::types::{GLint, GLuint};
 use scopeguard::defer;
 use tracing::trace;
 use windows::{
-    Win32::{
-        Foundation::{HANDLE, HMODULE},
-        Graphics::{
-            Direct3D::D3D_DRIVER_TYPE_HARDWARE,
-            Direct3D11::{
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
-                D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
-            },
-            Dxgi::IDXGIResource,
-        },
-    },
+    Win32::Graphics::Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
     core::Interface,
 };
 
-use crate::{texture::OverlayTextureState, wgl};
+use crate::wgl;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -40,12 +29,9 @@ static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
-    dx_device_handle: *mut c_void,
-    dx_device: ID3D11Device,
-    _dx_cx: ID3D11DeviceContext,
+    dx_device_handle: *const c_void,
 
-    state: OverlayTextureState<Tex>,
-
+    interop_texture: Option<InteropTexture>,
     vertex_buffer: GLuint,
     vao: GLuint,
     texture: GLuint,
@@ -56,28 +42,12 @@ pub struct OpenglRenderer {
 
 impl OpenglRenderer {
     #[tracing::instrument]
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
-            let mut dx_device = None;
-            let mut dx_cx = None;
-            D3D11CreateDevice(
-                None,
-                D3D_DRIVER_TYPE_HARDWARE,
-                HMODULE(ptr::null_mut()),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                None,
-                D3D11_SDK_VERSION,
-                Some(&mut dx_device),
-                None,
-                Some(&mut dx_cx),
-            )?;
-            let dx_device = dx_device.unwrap();
-            let dx_device_handle = wgl::DXOpenDeviceNV(dx_device.as_raw()).cast_mut();
+            let dx_device_handle = wgl::DXOpenDeviceNV(device.as_raw());
             if dx_device_handle.is_null() {
                 bail!("DXOpenDeviceNV failed");
             }
-
-            let dx_cx = dx_cx.unwrap();
 
             let mut vertex_buffer = 0;
             gl::GenBuffers(1, &mut vertex_buffer);
@@ -140,10 +110,8 @@ impl OpenglRenderer {
 
             Ok(Self {
                 dx_device_handle,
-                dx_device,
-                _dx_cx: dx_cx,
 
-                state: OverlayTextureState::new(),
+                interop_texture: None,
 
                 vertex_buffer,
                 vao,
@@ -155,71 +123,39 @@ impl OpenglRenderer {
         }
     }
 
-    pub fn size(&self) -> (u32, u32) {
-        self.state.map(|tex| tex.size).unwrap_or((0, 0))
-    }
+    pub fn update_texture(&mut self, texture: Option<&ID3D11Texture2D>) -> anyhow::Result<()> {
+        let Some(texture) = texture else {
+            self.interop_texture.take();
+            return Ok(());
+        };
 
-    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
-        self.state.update(shared);
-    }
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe { texture.GetDesc(&mut desc) };
+        let size = (desc.Width, desc.Height);
+        if size.0 == 0 || size.1 == 0 {
+            return Ok(());
+        }
 
-    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
-        self.state.take_handle(|tex| unsafe {
-            tex.d3d11_texture
-                .cast::<IDXGIResource>()
-                .unwrap()
-                .GetSharedHandle()
-                .ok()
-                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
-        })
+        self.interop_texture = Some(InteropTexture::open_from(
+            self.dx_device_handle,
+            texture,
+            self.texture,
+        )?);
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn draw(&mut self, position: (f32, f32), screen: (u32, u32)) -> anyhow::Result<()> {
+    pub fn draw(
+        &mut self,
+        position: (f32, f32),
+        size: (u32, u32),
+        screen: (u32, u32),
+    ) -> anyhow::Result<()> {
         if screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
 
-        let Some(Tex {
-            size,
-            dx11_tex_handle,
-            ..
-        }) = self.state.get_or_create(|handle| {
-            let mut texture = None;
-            unsafe {
-                self.dx_device.OpenSharedResource::<ID3D11Texture2D>(
-                    HANDLE(handle.get() as _),
-                    &mut texture,
-                )?;
-                let texture = texture.unwrap();
-
-                let mut desc = D3D11_TEXTURE2D_DESC::default();
-                texture.GetDesc(&mut desc);
-                let size = (desc.Width, desc.Height);
-                if size.0 == 0 || size.1 == 0 {
-                    return Ok(None);
-                }
-
-                let dx11_tex_handle = wgl::DXRegisterObjectNV(
-                    self.dx_device_handle,
-                    texture.as_raw(),
-                    self.texture,
-                    gl::TEXTURE_2D,
-                    wgl::ACCESS_READ_ONLY_NV,
-                );
-                if dx11_tex_handle.is_null() {
-                    bail!("DXRegisterObjectNV failed");
-                }
-
-                Ok(Some(Tex {
-                    size,
-                    d3d11_texture: texture,
-                    owned_device_handle: self.dx_device_handle,
-                    dx11_tex_handle,
-                }))
-            }
-        })?
-        else {
+        let Some(ref interop_texture) = self.interop_texture else {
             return Ok(());
         };
 
@@ -255,9 +191,17 @@ impl OpenglRenderer {
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, self.texture);
 
-            wgl::DXLockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+            wgl::DXLockObjectsNV(
+                dx_device_handle,
+                1,
+                &interop_texture.dx11_tex_handle as *const _ as _,
+            );
             defer!({
-                wgl::DXUnlockObjectsNV(dx_device_handle, 1, dx11_tex_handle as *mut _);
+                wgl::DXUnlockObjectsNV(
+                    dx_device_handle,
+                    1,
+                    &interop_texture.dx11_tex_handle as *const _ as _,
+                );
             });
             gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         }
@@ -269,8 +213,7 @@ impl OpenglRenderer {
 impl Drop for OpenglRenderer {
     #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
-        self.state = OverlayTextureState::None;
-
+        self.interop_texture.take();
         unsafe {
             wgl::DXCloseDeviceNV(self.dx_device_handle as _);
 
@@ -286,14 +229,38 @@ impl Drop for OpenglRenderer {
 unsafe impl Send for OpenglRenderer {}
 unsafe impl Sync for OpenglRenderer {}
 
-struct Tex {
-    size: (u32, u32),
-    d3d11_texture: ID3D11Texture2D,
-    owned_device_handle: *mut c_void,
+struct InteropTexture {
+    owned_device_handle: *const c_void,
     dx11_tex_handle: *const c_void,
 }
 
-impl Drop for Tex {
+impl InteropTexture {
+    fn open_from(
+        dx_device_handle: *const c_void,
+        texture: &ID3D11Texture2D,
+        gl_texture: GLuint,
+    ) -> anyhow::Result<Self> {
+        unsafe {
+            let dx11_tex_handle = wgl::DXRegisterObjectNV(
+                dx_device_handle,
+                texture.as_raw(),
+                gl_texture,
+                gl::TEXTURE_2D,
+                wgl::ACCESS_READ_ONLY_NV,
+            );
+            if dx11_tex_handle.is_null() {
+                bail!("DXRegisterObjectNV failed");
+            }
+
+            Ok(InteropTexture {
+                owned_device_handle: dx_device_handle,
+                dx11_tex_handle,
+            })
+        }
+    }
+}
+
+impl Drop for InteropTexture {
     fn drop(&mut self) {
         unsafe {
             wgl::DXUnregisterObjectNV(self.owned_device_handle, self.dx11_tex_handle);
@@ -301,4 +268,4 @@ impl Drop for Tex {
     }
 }
 
-unsafe impl Send for Tex {}
+unsafe impl Send for InteropTexture {}

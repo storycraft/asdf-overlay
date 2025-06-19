@@ -52,10 +52,6 @@ impl Dx9Renderer {
         }
     }
 
-    pub fn size(&self) -> (u32, u32) {
-        self.size
-    }
-
     #[inline]
     pub fn reset_texture(&mut self) {
         self.texture.take();

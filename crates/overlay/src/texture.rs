@@ -1,4 +1,4 @@
-use core::{mem, num::NonZeroU32};
+use core::num::NonZeroU32;
 
 use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -13,14 +13,6 @@ pub enum OverlayTextureState<T> {
 impl<T> OverlayTextureState<T> {
     pub const fn new() -> Self {
         Self::None
-    }
-
-    pub fn map<R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
-        if let Self::Created(ref created) = *self {
-            Some(f(created))
-        } else {
-            None
-        }
     }
 
     pub fn update(&mut self, shared: UpdateSharedHandle) {
@@ -53,17 +45,6 @@ impl<T> OverlayTextureState<T> {
 
             Self::Created(ref mut created) => Some(created),
         })
-    }
-
-    pub fn take_handle(
-        &mut self,
-        f: impl FnOnce(&mut T) -> Option<NonZeroU32>,
-    ) -> Option<NonZeroU32> {
-        match mem::replace(self, Self::None) {
-            Self::None => None,
-            Self::Handle(handle) => Some(handle),
-            Self::Created(ref mut val) => f(val),
-        }
     }
 }
 

@@ -63,35 +63,42 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
                 return;
             }
         };
+        trace!("using dx9 renderer");
+        let renderer = renderer
+            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
 
         let reader = backend
             .cx
             .fallback_reader
             .get_or_insert_with(|| SharedHandleReader::new().unwrap());
-        let screen = backend.size;
 
-        trace!("using dx9 renderer");
-        let renderer = renderer
-            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
-
-        if let Some(shared) = backend.pending_handle.take() {
-            reader.update_shared(shared);
+        if backend.surface.invalidate_update() && backend.surface.get().is_none() {
+            renderer.reset_texture();
         }
+        let Some(surface) = backend.surface.get() else {
+            return;
+        };
 
-        let size = renderer.size();
+        let screen = backend.size;
+        let size = surface.size();
         let position = backend
             .layout
             .calc_position((size.0 as _, size.1 as _), screen);
 
-        match reader.with_mapped(|size, mapped| renderer.update_texture(device, size, mapped)) {
+        let interop = &mut backend.interop;
+        match reader.with_mapped(
+            &interop.device,
+            surface.mutex(),
+            interop.cx.get_mut(),
+            surface.texture(),
+            size,
+            |mapped| renderer.update_texture(device, size, mapped),
+        ) {
             Ok(Some(_)) => {
                 let _res = renderer.draw(device, position, screen);
                 trace!("dx9 render: {:?}", _res);
             }
-            Ok(None) => {
-                renderer.reset_texture();
-                trace!("skipping dx9 render");
-            }
+            Ok(None) => {}
             Err(err) => {
                 error!("failed to copy shtex to dx9 texture. err: {err:?}");
             }

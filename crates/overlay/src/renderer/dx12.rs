@@ -6,7 +6,6 @@ use asdf_overlay_common::request::UpdateSharedHandle;
 use buffer::UploadBuffer;
 use core::{
     mem::{self, ManuallyDrop},
-    num::NonZeroU32,
     slice::{self},
 };
 use sync::RendererFence;
@@ -18,11 +17,11 @@ use windows::{
             Direct3D12::*,
             Dxgi::{
                 Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
-                IDXGIResource, IDXGISwapChain, IDXGISwapChain3,
+                IDXGISwapChain, IDXGISwapChain3,
             },
         },
     },
-    core::{BOOL, Interface, s},
+    core::{BOOL, s},
 };
 
 use crate::{
@@ -42,11 +41,6 @@ const VERTICES: VertexArray = [
     Vertex { pos: (1.0, 1.0) }, // bottom right
     Vertex { pos: (1.0, 0.0) }, // top right
 ];
-
-struct Dx12Tex {
-    size: (u32, u32),
-    resource: ID3D12Resource,
-}
 
 const INPUT_DESC: [D3D12_INPUT_ELEMENT_DESC; 1] = [D3D12_INPUT_ELEMENT_DESC {
     SemanticName: s!("POSITION"),
@@ -151,7 +145,7 @@ pub struct Dx12Renderer {
 
     pipeline: ID3D12PipelineState,
     vertex_buffer: ID3D12Resource,
-    texture: OverlayTextureState<Dx12Tex>,
+    texture: OverlayTextureState<()>,
     texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
@@ -284,24 +278,9 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn size(&self) -> (u32, u32) {
-        self.texture.map(|tex| tex.size).unwrap_or((0, 0))
-    }
-
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
-    }
-
-    pub fn take_texture(&mut self) -> Option<NonZeroU32> {
-        self.texture.take_handle(|tex| unsafe {
-            tex.resource
-                .cast::<IDXGIResource>()
-                .unwrap()
-                .GetSharedHandle()
-                .ok()
-                .and_then(|handle| NonZeroU32::new(handle.0 as u32))
-        })
     }
 
     #[tracing::instrument(skip(self))]
@@ -314,49 +293,52 @@ impl Dx12Renderer {
         render_target: D3D12_CPU_DESCRIPTOR_HANDLE,
         queue: &ID3D12CommandQueue,
         position: (f32, f32),
+        size: (u32, u32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
         if screen.0 == 0 || screen.1 == 0 {
             return Ok(());
         }
 
-        let Some(Dx12Tex { size, .. }) = self.texture.get_or_create(|handle| {
-            let mut texture = None;
-            unsafe {
-                device
-                    .OpenSharedHandle::<ID3D12Resource>(HANDLE(handle.get() as _), &mut texture)?;
-            }
-            let texture = texture.context("cannot open shared texture")?;
+        if self
+            .texture
+            .get_or_create(|handle| {
+                let mut texture = None;
+                unsafe {
+                    device.OpenSharedHandle::<ID3D12Resource>(
+                        HANDLE(handle.get() as _),
+                        &mut texture,
+                    )?;
+                }
+                let texture = texture.context("cannot open shared texture")?;
 
-            let desc = unsafe { texture.GetDesc() };
-            if desc.Width == 0 || desc.Height == 0 {
-                return Ok(None);
-            }
+                let desc = unsafe { texture.GetDesc() };
+                if desc.Width == 0 || desc.Height == 0 {
+                    return Ok(None);
+                }
 
-            unsafe {
-                device.CreateShaderResourceView(
-                    &texture,
-                    Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
-                        Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                        Format: desc.Format,
-                        ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
-                        Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                            Texture2D: D3D12_TEX2D_SRV {
-                                MipLevels: 1,
-                                ..Default::default()
+                unsafe {
+                    device.CreateShaderResourceView(
+                        &texture,
+                        Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                            Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                            Format: desc.Format,
+                            ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                            Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                                Texture2D: D3D12_TEX2D_SRV {
+                                    MipLevels: 1,
+                                    ..Default::default()
+                                },
                             },
-                        },
-                    }),
-                    self.texture_descriptor.GetCPUDescriptorHandleForHeapStart(),
-                );
-            }
+                        }),
+                        self.texture_descriptor.GetCPUDescriptorHandleForHeapStart(),
+                    );
+                }
 
-            Ok(Some(Dx12Tex {
-                size: (desc.Width as u32, desc.Height),
-                resource: texture,
-            }))
-        })?
-        else {
+                Ok(Some(()))
+            })?
+            .is_none()
+        {
             return Ok(());
         };
 
