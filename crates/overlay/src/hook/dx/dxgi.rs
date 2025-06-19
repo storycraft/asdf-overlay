@@ -250,14 +250,11 @@ fn resize_swapchain(backend: &mut WindowBackend) {
         return;
     };
 
-    match *renderer {
-        Renderer::Dx12(_) => {
-            if let Some(ref mut rtv) = backend.cx.dx12 {
-                // invalidate old rtv descriptors
-                rtv.reset();
-            }
+    if let Renderer::Dx12(_) = *renderer {
+        if let Some(ref mut rtv) = backend.cx.dx12 {
+            // invalidate old rtv descriptors
+            rtv.reset();
         }
-        _ => {}
     }
 }
 
