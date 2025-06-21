@@ -1,11 +1,9 @@
-mod buffer;
 mod sync;
 
 use anyhow::Context;
 use asdf_overlay_common::request::UpdateSharedHandle;
-use buffer::UploadBuffer;
 use core::{
-    mem::{self, ManuallyDrop},
+    mem::ManuallyDrop,
     slice::{self},
 };
 use sync::RendererFence;
@@ -15,42 +13,16 @@ use windows::{
         Graphics::{
             Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             Direct3D12::*,
-            Dxgi::{
-                Common::{DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC},
-                IDXGISwapChain, IDXGISwapChain3,
-            },
+            Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGISwapChain, IDXGISwapChain3},
         },
     },
-    core::{BOOL, s},
+    core::BOOL,
 };
 
 use crate::{
     hook::call_original_execute_command_lists, renderer::dx::shaders, texture::OverlayTextureState,
     util::wrap_com_manually_drop,
 };
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct Vertex {
-    pub pos: (f32, f32),
-}
-type VertexArray = [Vertex; 4];
-const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 1.0) }, // bottom left
-    Vertex { pos: (0.0, 0.0) }, // top left
-    Vertex { pos: (1.0, 1.0) }, // bottom right
-    Vertex { pos: (1.0, 0.0) }, // top right
-];
-
-const INPUT_DESC: [D3D12_INPUT_ELEMENT_DESC; 1] = [D3D12_INPUT_ELEMENT_DESC {
-    SemanticName: s!("POSITION"),
-    SemanticIndex: 0,
-    Format: DXGI_FORMAT_R32G32_FLOAT,
-    InputSlot: 0,
-    AlignedByteOffset: 0,
-    InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-    InstanceDataStepRate: 0,
-}];
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
     BlendEnable: BOOL(1),
@@ -144,7 +116,6 @@ pub struct Dx12Renderer {
     sig: ID3D12RootSignature,
 
     pipeline: ID3D12PipelineState,
-    vertex_buffer: ID3D12Resource,
     texture: OverlayTextureState<ID3D12Resource>,
     texture_descriptor: ID3D12DescriptorHeap,
 
@@ -186,10 +157,6 @@ impl Dx12Renderer {
                     RenderTarget: [RENDER_TARGET_BLEND_DESC; 8],
                 },
                 RasterizerState: RASTERIZER_STATE,
-                InputLayout: D3D12_INPUT_LAYOUT_DESC {
-                    NumElements: INPUT_DESC.len() as _,
-                    pInputElementDescs: INPUT_DESC.as_ptr(),
-                },
                 PrimitiveTopologyType: D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
                 NumRenderTargets: 1,
                 SampleDesc: DXGI_SAMPLE_DESC {
@@ -220,41 +187,6 @@ impl Dx12Renderer {
                 Ok::<_, anyhow::Error>((command_list, command_alloc))
             })?;
 
-            let mut fence = RendererFence::new(device)?;
-
-            let mut vertex_buffer = None;
-            device.CreateCommittedResource::<ID3D12Resource>(
-                &D3D12_HEAP_PROPERTIES {
-                    Type: D3D12_HEAP_TYPE_DEFAULT,
-                    ..Default::default()
-                },
-                D3D12_HEAP_FLAG_NONE,
-                &D3D12_RESOURCE_DESC {
-                    Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-                    Width: mem::size_of::<VertexArray>() as _,
-                    Height: 1,
-                    DepthOrArraySize: 1,
-                    MipLevels: 1,
-                    Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                    SampleDesc: DXGI_SAMPLE_DESC {
-                        Count: 1,
-                        Quality: 0,
-                    },
-                    ..Default::default()
-                },
-                D3D12_RESOURCE_STATE_COMMON,
-                None,
-                &mut vertex_buffer,
-            )?;
-            let vertex_buffer = vertex_buffer.context("cannot create vertex buffer")?;
-
-            {
-                let (ref command_list, ref command_alloc) = command_list[0];
-                command_alloc.Reset()?;
-                command_list.Reset(command_alloc, None)?;
-                init_vertex_buffer(device, queue, &mut fence, command_list, &vertex_buffer)?;
-            }
-
             let texture_descriptor = device.CreateDescriptorHeap::<ID3D12DescriptorHeap>(
                 &D3D12_DESCRIPTOR_HEAP_DESC {
                     NumDescriptors: 1,
@@ -264,11 +196,12 @@ impl Dx12Renderer {
                 },
             )?;
 
+            let mut fence = RendererFence::new(device)?;
+            fence.register(queue)?;
             Ok(Self {
                 sig,
 
                 pipeline,
-                vertex_buffer,
                 texture: OverlayTextureState::new(),
                 texture_descriptor,
 
@@ -279,7 +212,7 @@ impl Dx12Renderer {
     }
 
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
-        _ = self.fence.wait_pending();
+        // _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
 
@@ -389,15 +322,6 @@ impl Dx12Renderer {
 
             command_list.OMSetRenderTargets(1, Some(&render_target), true, None);
             command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-            command_list.IASetVertexBuffers(
-                0,
-                Some(&[D3D12_VERTEX_BUFFER_VIEW {
-                    BufferLocation: self.vertex_buffer.GetGPUVirtualAddress(),
-                    SizeInBytes: mem::size_of::<VertexArray>() as _,
-                    StrideInBytes: mem::size_of::<Vertex>() as _,
-                }]),
-            );
-
             command_list.DrawInstanced(4, 1, 0, 0);
 
             command_list.ResourceBarrier(&[transition(
@@ -441,34 +365,4 @@ unsafe fn transition(
             }),
         },
     }
-}
-
-unsafe fn init_vertex_buffer(
-    device: &ID3D12Device,
-    queue: &ID3D12CommandQueue,
-    fence: &mut RendererFence,
-    command_list: &ID3D12GraphicsCommandList,
-    vertex_buffer: &ID3D12Resource,
-) -> anyhow::Result<()> {
-    unsafe {
-        let upload = UploadBuffer::new(device, mem::size_of::<VertexArray>() as _)?;
-        upload
-            .get_mapped_ptr()
-            .cast::<VertexArray>()
-            .write(VERTICES);
-
-        command_list.CopyResource(vertex_buffer, upload.buffer());
-        command_list.ResourceBarrier(&[transition(
-            vertex_buffer,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-        )]);
-
-        command_list.Close()?;
-        call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
-        fence.register(queue)?;
-        fence.wait_pending()?;
-    }
-
-    Ok(())
 }

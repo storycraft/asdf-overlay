@@ -1,8 +1,3 @@
-struct vs_in
-{
-	float2 position : POSITION;
-};
-
 struct vs_out
 {
 	float4 position : SV_POSITION;
@@ -14,11 +9,19 @@ cbuffer OverlayBuffer : register(b0)
 	float4 rect;
 }
 
-vs_out vs_main(vs_in input)
+vs_out vs_main(uint index: SV_VertexID)
 {
+	static const float2 VERTICES[4] = {
+        float2(0.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 1.0),
+        float2(1.0, 0.0)
+	};
+
 	vs_out output;
-	output.position = float4(rect.xy + rect.zw * input.position, 0.0, 1.0);
-	output.texCoord = input.position;
+	float2 pos = VERTICES[index];
+	output.position = float4(rect.xy + rect.zw * pos, 0.0, 1.0);
+	output.texCoord = pos;
 
 	return output;
 }

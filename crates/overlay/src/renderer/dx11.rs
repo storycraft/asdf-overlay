@@ -8,36 +8,13 @@ use windows::{
         Graphics::{
             Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D},
             Direct3D11::*,
-            Dxgi::{Common::DXGI_FORMAT_R32G32_FLOAT, IDXGIKeyedMutex},
+            Dxgi::IDXGIKeyedMutex,
         },
     },
-    core::{BOOL, Interface, s},
+    core::{BOOL, Interface},
 };
 
 use crate::{renderer::dx::shaders, texture::OverlayTextureState};
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct Vertex {
-    pub pos: (f32, f32),
-}
-type VertexArray = [Vertex; 4];
-const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 1.0) }, // bottom left
-    Vertex { pos: (0.0, 0.0) }, // top left
-    Vertex { pos: (1.0, 1.0) }, // bottom right
-    Vertex { pos: (1.0, 0.0) }, // top right
-];
-
-const INPUT_DESC: [D3D11_INPUT_ELEMENT_DESC; 1] = [D3D11_INPUT_ELEMENT_DESC {
-    SemanticName: s!("POSITION"),
-    SemanticIndex: 0,
-    Format: DXGI_FORMAT_R32G32_FLOAT,
-    InputSlot: 0,
-    AlignedByteOffset: 0,
-    InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-    InstanceDataStepRate: 0,
-}];
 
 const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
     Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
@@ -58,8 +35,6 @@ struct Dx11Tex {
 }
 
 pub struct Dx11Renderer {
-    input_layout: ID3D11InputLayout,
-    vertex_buffer: ID3D11Buffer,
     constant_buffer: ID3D11Buffer,
     texture: OverlayTextureState<Dx11Tex>,
 
@@ -73,12 +48,6 @@ impl Dx11Renderer {
     #[tracing::instrument]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
-            let mut input_layout = None;
-            device
-                .CreateInputLayout(&INPUT_DESC, shaders::VERTEX_SHADER, Some(&mut input_layout))
-                .context("failed to create input layout")?;
-            let input_layout = input_layout.unwrap();
-
             let mut vertex_shader = None;
             device
                 .CreateVertexShader(shaders::VERTEX_SHADER, None, Some(&mut vertex_shader))
@@ -91,27 +60,6 @@ impl Dx11Renderer {
                 .context("pixel shader failed to link")?;
             let pixel_shader = pixel_shader.unwrap();
 
-            let mut vertex_buffer = None;
-            device
-                .CreateBuffer(
-                    &D3D11_BUFFER_DESC {
-                        ByteWidth: mem::size_of::<VertexArray>() as _,
-                        Usage: D3D11_USAGE_DEFAULT,
-                        BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as _,
-                        CPUAccessFlags: 0,
-                        MiscFlags: 0,
-                        StructureByteStride: 0,
-                    },
-                    Some(&D3D11_SUBRESOURCE_DATA {
-                        pSysMem: &VERTICES as *const _ as _,
-                        SysMemPitch: 0,
-                        SysMemSlicePitch: 0,
-                    }),
-                    Some(&mut vertex_buffer),
-                )
-                .context("cannot create vertex buffer")?;
-            let vertex_buffer = vertex_buffer.unwrap();
-
             let mut constant_buffer = None;
             device
                 .CreateBuffer(
@@ -123,11 +71,7 @@ impl Dx11Renderer {
                         MiscFlags: 0,
                         StructureByteStride: 0,
                     },
-                    Some(&D3D11_SUBRESOURCE_DATA {
-                        pSysMem: &VERTICES as *const _ as _,
-                        SysMemPitch: 0,
-                        SysMemSlicePitch: 0,
-                    }),
+                    None,
                     Some(&mut constant_buffer),
                 )
                 .context("cannot create constant buffer")?;
@@ -162,8 +106,6 @@ impl Dx11Renderer {
             let sampler_state = sampler_state.unwrap();
 
             Ok(Self {
-                input_layout,
-                vertex_buffer,
                 constant_buffer,
                 texture: OverlayTextureState::new(),
 
@@ -230,20 +172,11 @@ impl Dx11Renderer {
                 MaxDepth: 1.0,
             }]));
 
-            cx.IASetInputLayout(&self.input_layout);
-
             cx.VSSetShader(&self.vertex_shader, None);
             cx.PSSetShader(&self.pixel_shader, None);
 
             cx.PSSetSamplers(0, Some(&[Some(self.sampler_state.clone())]));
 
-            cx.IASetVertexBuffers(
-                0,
-                1,
-                Some(&self.vertex_buffer as *const _ as _),
-                Some(&(mem::size_of::<Vertex>() as _)),
-                Some(&0),
-            );
             cx.VSSetConstantBuffers(0, Some(&[Some(self.constant_buffer.clone())]));
 
             cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
