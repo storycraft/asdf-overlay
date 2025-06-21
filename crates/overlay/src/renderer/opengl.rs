@@ -1,7 +1,7 @@
 pub mod data;
 
 use anyhow::bail;
-use core::{ffi::c_void, mem, ptr};
+use core::ffi::c_void;
 use gl::types::{GLint, GLuint};
 use scopeguard::defer;
 use tracing::trace;
@@ -12,19 +12,6 @@ use windows::{
 
 use crate::wgl;
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct Vertex {
-    pub pos: (f32, f32),
-}
-type VertexArray = [Vertex; 4];
-const VERTICES: VertexArray = [
-    Vertex { pos: (0.0, 1.0) }, // bottom left
-    Vertex { pos: (0.0, 0.0) }, // top left
-    Vertex { pos: (1.0, 1.0) }, // bottom right
-    Vertex { pos: (1.0, 0.0) }, // top right
-];
-
 static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
@@ -32,8 +19,6 @@ pub struct OpenglRenderer {
     dx_device_handle: *const c_void,
 
     interop_texture: Option<InteropTexture>,
-    vertex_buffer: GLuint,
-    vao: GLuint,
     texture: GLuint,
     program: GLuint,
     rect_loc: GLint,
@@ -48,29 +33,6 @@ impl OpenglRenderer {
             if dx_device_handle.is_null() {
                 bail!("DXOpenDeviceNV failed");
             }
-
-            let mut vertex_buffer = 0;
-            gl::GenBuffers(1, &mut vertex_buffer);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer);
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mem::size_of::<VertexArray>() as _,
-                &VERTICES as *const _ as _,
-                gl::STATIC_DRAW,
-            );
-
-            let mut vao = 0;
-            gl::GenVertexArrays(1, &mut vao);
-            gl::BindVertexArray(vao);
-            gl::VertexAttribPointer(
-                0,
-                2,
-                gl::FLOAT,
-                gl::FALSE,
-                mem::size_of::<Vertex>() as _,
-                ptr::null::<c_void>().with_addr(mem::offset_of!(Vertex, pos)),
-            );
-            gl::EnableVertexAttribArray(0);
 
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
@@ -113,8 +75,6 @@ impl OpenglRenderer {
 
                 interop_texture: None,
 
-                vertex_buffer,
-                vao,
                 texture,
                 program,
                 rect_loc,
@@ -182,8 +142,6 @@ impl OpenglRenderer {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
-            gl::BindVertexArray(self.vao);
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.vertex_buffer);
             gl::UseProgram(self.program);
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
@@ -217,8 +175,6 @@ impl Drop for OpenglRenderer {
         unsafe {
             wgl::DXCloseDeviceNV(self.dx_device_handle as _);
 
-            gl::DeleteVertexArrays(1, &self.vao);
-            gl::DeleteBuffers(1, &self.vertex_buffer);
             gl::DeleteTextures(1, &self.texture);
             gl::DeleteProgram(self.program);
         }

@@ -70,43 +70,45 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
         };
 
         let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
-        if let Some(queue) = get_queue_for(&device) {
-            let renderer = renderer.get_or_insert_with(|| {
-                debug!("initializing dx12 renderer");
-                register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
-                Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
-            });
-            let rtv = backend.cx.dx12.get_or_insert_with(|| {
-                RtvDescriptors::new(&device).expect("failed to create dx12 rtv")
-            });
+        let Some(queue) = get_queue_for(&device) else {
+            return;
+        };
 
-            if let Some(update) = backend.surface.take_update() {
-                renderer.update_texture(update);
-            }
+        let renderer = renderer.get_or_insert_with(|| {
+            debug!("initializing dx12 renderer");
+            register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
+            Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
+        });
+        let rtv = backend.cx.dx12.get_or_insert_with(|| {
+            RtvDescriptors::new(&device).expect("failed to create dx12 rtv")
+        });
 
-            let Some(surface) = backend.surface.get() else {
-                return;
-            };
-            let screen = backend.size;
-            let size = surface.size();
-            let position = backend.layout.get_or_calc(size, screen);
-            trace!("using dx12 renderer");
-            let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-            let _res =
-                rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
-                    renderer.draw(
-                        &device,
-                        &swapchain,
-                        backbuffer_index,
-                        desc,
-                        &queue,
-                        position,
-                        size,
-                        screen,
-                    )
-                });
-            trace!("dx12 render: {:?}", _res);
+        if let Some(update) = backend.surface.take_update() {
+            renderer.update_texture(update);
         }
+
+        let Some(surface) = backend.surface.get() else {
+            return;
+        };
+
+        let screen = backend.size;
+        let size = surface.size();
+        let position = backend.layout.get_or_calc(size, screen);
+        trace!("using dx12 renderer");
+        let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
+        let _res = rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
+            renderer.draw(
+                &device,
+                &swapchain,
+                backbuffer_index,
+                desc,
+                &queue,
+                position,
+                size,
+                screen,
+            )
+        });
+        trace!("dx12 render: {:?}", _res);
     } else if let Ok(device) = device.cast::<ID3D11Device1>() {
         let renderer = match backend.renderer {
             Some(Renderer::Dx11(ref mut renderer)) => renderer,
