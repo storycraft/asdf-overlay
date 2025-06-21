@@ -24,11 +24,19 @@ use super::HOOK;
 
 pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
-static QUEUE_MAP: Lazy<IntDashMap<usize, ID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
+struct WeakID3D12CommandQueue(*mut c_void);
+unsafe impl Send for WeakID3D12CommandQueue {}
+unsafe impl Sync for WeakID3D12CommandQueue {}
+
+static QUEUE_MAP: Lazy<IntDashMap<usize, WeakID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
-    Some(QUEUE_MAP.remove(&(device.as_raw() as _))?.1)
+    Some(unsafe {
+        ID3D12CommandQueue::from_raw_borrowed(&QUEUE_MAP.remove(&(device.as_raw() as _))?.1.0)
+            .unwrap()
+            .clone()
+    })
 }
 
 #[tracing::instrument]
@@ -46,6 +54,7 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
         let Some(Renderer::Dx12(ref mut renderer)) = backend.renderer else {
             return;
         };
+        QUEUE_MAP.clear();
         renderer.take();
         backend.cx.dx12.take();
     });
@@ -71,7 +80,7 @@ pub extern "system" fn hooked_execute_command_lists(
                 "found DIRECT command queue {:?} for device {:?}",
                 queue, device
             );
-            QUEUE_MAP.insert(device.as_raw() as _, queue.clone());
+            QUEUE_MAP.insert(device.as_raw() as _, WeakID3D12CommandQueue(queue.as_raw()));
         }
 
         let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
