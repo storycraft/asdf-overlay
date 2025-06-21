@@ -196,8 +196,6 @@ impl Dx12Renderer {
                 },
             )?;
 
-            let mut fence = RendererFence::new(device)?;
-            fence.register(queue)?;
             Ok(Self {
                 sig,
 
@@ -206,13 +204,12 @@ impl Dx12Renderer {
                 texture_descriptor,
 
                 command_list,
-                fence,
+                fence: RendererFence::new(device)?,
             })
         }
     }
 
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
-        // _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
 
