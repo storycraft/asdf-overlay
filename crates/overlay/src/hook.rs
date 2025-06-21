@@ -13,6 +13,7 @@ pub fn install(dummy_hwnd: HWND) -> anyhow::Result<()> {
     proc::hook().context("Proc hook failed")?;
     dx::hook(dummy_hwnd);
     opengl::hook(dummy_hwnd);
+    vulkan::hook();
 
     Ok(())
 }
