@@ -89,21 +89,22 @@ pub fn hook(dummy_hwnd: HWND) {
         }
         Ok(())
     }
-    
+
     fn hook_dx9(dummy_hwnd: HWND) -> anyhow::Result<()> {
-        let (end_scene, reset, reset_ex) = dx9::get_dx9_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
+        let (end_scene, reset, reset_ex) =
+            dx9::get_dx9_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
 
         debug!("hooking IDirect3DDevice9::EndScene");
-            HOOK.end_scene.get_or_try_init(|| unsafe {
-                DetourHook::attach(end_scene, dx9::hooked_end_scene as _)
-            })?;
-            debug!("hooking IDirect3DDevice9::Reset");
-            HOOK.reset
-                .get_or_try_init(|| unsafe { DetourHook::attach(reset, dx9::hooked_reset as _) })?;
-            debug!("hooking IDirect3DDevice9Ex::ResetEx");
-            HOOK.reset_ex.get_or_try_init(|| unsafe {
-                DetourHook::attach(reset_ex, dx9::hooked_reset_ex as _)
-            })?;
+        HOOK.end_scene.get_or_try_init(|| unsafe {
+            DetourHook::attach(end_scene, dx9::hooked_end_scene as _)
+        })?;
+        debug!("hooking IDirect3DDevice9::Reset");
+        HOOK.reset
+            .get_or_try_init(|| unsafe { DetourHook::attach(reset, dx9::hooked_reset as _) })?;
+        debug!("hooking IDirect3DDevice9Ex::ResetEx");
+        HOOK.reset_ex.get_or_try_init(|| unsafe {
+            DetourHook::attach(reset_ex, dx9::hooked_reset_ex as _)
+        })?;
 
         Ok(())
     }
