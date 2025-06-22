@@ -83,8 +83,7 @@ pub extern "system" fn hooked_execute_command_lists(
             QUEUE_MAP.insert(device.as_raw() as _, WeakID3D12CommandQueue(queue.as_raw()));
         }
 
-        let execute_command_lists = HOOK.execute_command_lists.get().unwrap();
-        execute_command_lists.original_fn()(this, num_command_lists, pp_commmand_lists)
+        HOOK.execute_command_lists.wait().original_fn()(this, num_command_lists, pp_commmand_lists)
     }
 }
 

@@ -62,8 +62,7 @@ extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
         return BOOL(1);
     }
 
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.get_keyboard_state.original_fn()(buf) }
+    unsafe { HOOK.wait().get_keyboard_state.original_fn()(buf) }
 }
 
 #[tracing::instrument]
@@ -74,8 +73,7 @@ extern "system" fn hooked_dispatch_message_a(msg: *const MSG) -> LRESULT {
         return ret;
     }
 
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.dispatch_message_a.original_fn()(msg) }
+    unsafe { HOOK.wait().dispatch_message_a.original_fn()(msg) }
 }
 
 #[tracing::instrument]
@@ -86,6 +84,5 @@ extern "system" fn hooked_dispatch_message_w(msg: *const MSG) -> LRESULT {
         return ret;
     }
 
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.dispatch_message_w.original_fn()(msg) }
+    unsafe { HOOK.wait().dispatch_message_w.original_fn()(msg) }
 }

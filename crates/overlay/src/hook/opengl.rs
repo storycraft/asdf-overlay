@@ -89,8 +89,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
         debug!("gl renderer cleanup");
     }
 
-    let hook = HOOK.get().unwrap();
-    unsafe { hook.wgl_delete_context.original_fn()(hglrc) }
+    unsafe { HOOK.wait().wgl_delete_context.original_fn()(hglrc) }
 }
 
 #[inline]
@@ -211,8 +210,7 @@ extern "system" fn hooked_swap_buffers(hdc: HDC) -> BOOL {
             draw_overlay(hdc);
         }
 
-        let hook = HOOK.get().unwrap();
-        unsafe { hook.swap_buffers.original_fn()(hdc) }
+        unsafe { HOOK.wait().swap_buffers.original_fn()(hdc) }
     })
 }
 
@@ -225,8 +223,7 @@ extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
             draw_overlay(hdc);
         }
 
-        let hook = HOOK.get().unwrap();
-        unsafe { hook.wgl_swap_buffers.original_fn()(hdc) }
+        unsafe { HOOK.wait().wgl_swap_buffers.original_fn()(hdc) }
     })
 }
 
@@ -239,8 +236,7 @@ extern "system" fn hooked_wgl_swap_layer_buffers(hdc: HDC, plane: u32) -> BOOL {
             draw_overlay(hdc);
         }
 
-        let hook = HOOK.get().unwrap();
-        unsafe { hook.wgl_swap_layer_buffers.original_fn()(hdc, plane) }
+        unsafe { HOOK.wait().wgl_swap_layer_buffers.original_fn()(hdc, plane) }
     })
 }
 
