@@ -219,8 +219,7 @@ pub(super) extern "system" fn hooked_present(
         }
     }
 
-    let present = HOOK.present.get().unwrap();
-    unsafe { present.original_fn()(this, sync_interval, flags) }
+    unsafe { HOOK.present.wait().original_fn()(this, sync_interval, flags) }
 }
 
 #[tracing::instrument]
@@ -243,8 +242,7 @@ pub(super) extern "system" fn hooked_present1(
         }
     }
 
-    let present1 = HOOK.present1.get().unwrap();
-    unsafe { present1.original_fn()(this, sync_interval, flags, present_params) }
+    unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }
 }
 
 fn resize_swapchain(backend: &mut WindowBackend) {
@@ -276,8 +274,9 @@ pub(super) extern "system" fn hooked_resize_buffers(
         _ = Backends::with_backend(hwnd, resize_swapchain);
     }
 
-    let resize_buffers = HOOK.resize_buffers.get().unwrap();
-    unsafe { resize_buffers.original_fn()(this, buffer_count, width, height, format, flags) }
+    unsafe {
+        HOOK.resize_buffers.wait().original_fn()(this, buffer_count, width, height, format, flags)
+    }
 }
 
 #[tracing::instrument]
@@ -298,9 +297,8 @@ pub(super) extern "system" fn hooked_resize_buffers1(
         _ = Backends::with_backend(hwnd, resize_swapchain);
     }
 
-    let resize_buffers1 = HOOK.resize_buffers1.get().unwrap();
     unsafe {
-        resize_buffers1.original_fn()(
+        HOOK.resize_buffers1.wait().original_fn()(
             this,
             buffer_count,
             width,

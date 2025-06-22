@@ -43,8 +43,7 @@ pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
         draw_overlay(params.hDeviceWindow, device);
     }
 
-    let end_scene = HOOK.end_scene.get().unwrap();
-    unsafe { end_scene.original_fn()(this) }
+    unsafe { HOOK.end_scene.wait().original_fn()(this) }
 }
 
 #[inline]
@@ -138,8 +137,7 @@ pub(super) extern "system" fn hooked_reset(
         param,
     );
 
-    let reset = HOOK.reset.get().unwrap();
-    unsafe { reset.original_fn()(this, param) }
+    unsafe { HOOK.reset.wait().original_fn()(this, param) }
 }
 
 #[tracing::instrument]
@@ -154,8 +152,7 @@ pub(super) extern "system" fn hooked_reset_ex(
         param,
     );
 
-    let reset_ex = HOOK.reset_ex.get().unwrap();
-    unsafe { reset_ex.original_fn()(this, param, fullscreen_display_mode) }
+    unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) }
 }
 
 /// Get pointer to IDirect3DDevice9::EndScene, IDirect3DDevice9::Reset by creating dummy device

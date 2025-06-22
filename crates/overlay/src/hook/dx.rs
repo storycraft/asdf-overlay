@@ -61,18 +61,6 @@ pub fn hook(dummy_hwnd: HWND) {
         let dxgi_functions =
             dxgi::get_dxgi_addr(dummy_hwnd).context("failed to load dxgi addrs")?;
 
-        debug!("hooking IDXGISwapChain::Present");
-        HOOK.present.get_or_try_init(|| unsafe {
-            DetourHook::attach(dxgi_functions.present, dxgi::hooked_present as _)
-        })?;
-
-        if let Some(present1) = dxgi_functions.present1 {
-            debug!("hooking IDXGISwapChain1::Present1");
-            HOOK.present1.get_or_try_init(|| unsafe {
-                DetourHook::attach(present1, dxgi::hooked_present1 as _)
-            })?;
-        }
-
         debug!("hooking IDXGISwapChain::ResizeBuffers");
         HOOK.resize_buffers.get_or_try_init(|| unsafe {
             DetourHook::attach(
@@ -87,6 +75,18 @@ pub fn hook(dummy_hwnd: HWND) {
                 DetourHook::attach(resize_buffers1, dxgi::hooked_resize_buffers1 as _)
             })?;
         }
+
+        debug!("hooking IDXGISwapChain::Present");
+        HOOK.present.get_or_try_init(|| unsafe {
+            DetourHook::attach(dxgi_functions.present, dxgi::hooked_present as _)
+        })?;
+
+        if let Some(present1) = dxgi_functions.present1 {
+            debug!("hooking IDXGISwapChain1::Present1");
+            HOOK.present1.get_or_try_init(|| unsafe {
+                DetourHook::attach(present1, dxgi::hooked_present1 as _)
+            })?;
+        }
         Ok(())
     }
 
@@ -94,16 +94,16 @@ pub fn hook(dummy_hwnd: HWND) {
         let (end_scene, reset, reset_ex) =
             dx9::get_dx9_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
 
-        debug!("hooking IDirect3DDevice9::EndScene");
-        HOOK.end_scene.get_or_try_init(|| unsafe {
-            DetourHook::attach(end_scene, dx9::hooked_end_scene as _)
-        })?;
         debug!("hooking IDirect3DDevice9::Reset");
         HOOK.reset
             .get_or_try_init(|| unsafe { DetourHook::attach(reset, dx9::hooked_reset as _) })?;
         debug!("hooking IDirect3DDevice9Ex::ResetEx");
         HOOK.reset_ex.get_or_try_init(|| unsafe {
             DetourHook::attach(reset_ex, dx9::hooked_reset_ex as _)
+        })?;
+        debug!("hooking IDirect3DDevice9::EndScene");
+        HOOK.end_scene.get_or_try_init(|| unsafe {
+            DetourHook::attach(end_scene, dx9::hooked_end_scene as _)
         })?;
 
         Ok(())

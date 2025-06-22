@@ -22,13 +22,18 @@ impl<F: Copy> DetourHook<F> {
     /// # Safety
     /// func and detour should be valid function pointers with same signature
     #[tracing::instrument]
-    pub unsafe fn attach(mut func: F, detour: *mut ()) -> DetourResult<Self>
+    pub unsafe fn attach(mut func: F, mut detour: F) -> DetourResult<Self>
     where
         F: Debug,
     {
         unsafe {
             wrap_detour_call(|| DetourTransactionBegin())?;
-            wrap_detour_call(|| DetourAttach((&raw mut func).cast(), detour.cast::<c_void>()))?;
+            wrap_detour_call(|| {
+                DetourAttach(
+                    (&raw mut func).cast(),
+                    *(&raw mut detour).cast::<*mut c_void>(),
+                )
+            })?;
             wrap_detour_call(|| DetourTransactionCommit())?;
         }
         debug!("hook attached");
