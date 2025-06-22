@@ -44,35 +44,41 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 static MAP: Lazy<IntDashMap<u32, OpenglRenderer>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
-pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
-    let addrs = get_wgl_addrs().expect("cannot get wgl fn addrs");
+pub fn hook(dummy_hwnd: HWND) {
+    fn inner() -> anyhow::Result<()> {
+        let addrs = get_wgl_addrs().context("failed to load opengl addrs")?;
 
-    HOOK.get_or_try_init(|| unsafe {
-        debug!("hooking WglDeleteContext");
-        let wgl_delete_context =
-            DetourHook::attach(addrs.delete_context, hooked_wgl_delete_context as _)?;
+        HOOK.get_or_try_init(|| unsafe {
+            debug!("hooking WglDeleteContext");
+            let wgl_delete_context =
+                DetourHook::attach(addrs.delete_context, hooked_wgl_delete_context as _)?;
 
-        debug!("hooking SwapBuffers");
-        let swap_buffers =
-            DetourHook::attach(SwapBuffers as SwapBuffersFn, hooked_swap_buffers as _)?;
+            debug!("hooking SwapBuffers");
+            let swap_buffers =
+                DetourHook::attach(SwapBuffers as SwapBuffersFn, hooked_swap_buffers as _)?;
 
-        debug!("hooking WglSwapBuffers");
-        let wgl_swap_buffers =
-            DetourHook::attach(addrs.swap_buffers, hooked_wgl_swap_buffers as _)?;
+            debug!("hooking WglSwapBuffers");
+            let wgl_swap_buffers =
+                DetourHook::attach(addrs.swap_buffers, hooked_wgl_swap_buffers as _)?;
 
-        debug!("hooking WglSwapLayerBuffers");
-        let wgl_swap_layer_buffers =
-            DetourHook::attach(addrs.swap_layer_buffers, hooked_wgl_swap_layer_buffers as _)?;
+            debug!("hooking WglSwapLayerBuffers");
+            let wgl_swap_layer_buffers =
+                DetourHook::attach(addrs.swap_layer_buffers, hooked_wgl_swap_layer_buffers as _)?;
 
-        Ok::<_, anyhow::Error>(Hook {
-            wgl_delete_context,
-            swap_buffers,
-            wgl_swap_buffers,
-            wgl_swap_layer_buffers,
-        })
-    })?;
+            Ok::<_, anyhow::Error>(Hook {
+                wgl_delete_context,
+                swap_buffers,
+                wgl_swap_buffers,
+                wgl_swap_layer_buffers,
+            })
+        })?;
 
-    Ok(())
+        Ok(())
+    }
+
+    if let Err(err) = inner() {
+        error!("failed to hook opengl. err: {err:?}");
+    }
 }
 
 #[tracing::instrument]
