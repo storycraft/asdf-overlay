@@ -7,5 +7,5 @@ pub enum Renderer {
     Dx11(Option<Dx11Renderer>),
     Dx9(Option<Dx9Renderer>),
     Opengl,
-    Vulkan(Option<VulkanRenderer>),
+    Vulkan(Option<Box<VulkanRenderer>>),
 }

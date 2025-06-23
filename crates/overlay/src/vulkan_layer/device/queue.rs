@@ -1,19 +1,24 @@
 use core::slice;
 
-use ash::vk::{self, Handle};
+use ash::{
+    Device,
+    vk::{self, Handle},
+};
 use tracing::{debug, error, trace};
 use windows::Win32::Foundation::HWND;
 
 use crate::{
     app::OverlayIpc,
     backend::{Backends, WindowBackend, renderers::Renderer},
-    vulkan_layer::device::{DISPATCH_TABLE, get_queue_device, swapchain::get_swapchain_data},
+    renderer::vulkan::VulkanRenderer,
+    vulkan_layer::device::{DISPATCH_TABLE, get_queue_data, swapchain::get_swapchain_data},
 };
 
 pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR) -> vk::Result {
     trace!("vkQueuePresentKHR called");
 
-    let device = get_queue_device(queue).unwrap();
+    let queue_data = get_queue_data(queue).unwrap();
+    let table = DISPATCH_TABLE.get(&queue_data.device.as_raw()).unwrap();
     if OverlayIpc::connected() {
         unsafe {
             let info = &*info;
@@ -25,7 +30,14 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
                 let data = get_swapchain_data(swapchain);
 
                 if let Err(err) = Backends::with_or_init_backend(HWND(data.hwnd as _), |backend| {
-                    draw_overlay(data.device, queue, index, backend)
+                    draw_overlay(
+                        &table.device,
+                        queue,
+                        queue_data.family_index,
+                        data.format,
+                        index,
+                        backend,
+                    )
                 }) {
                     error!("Backends::with_or_init_backend failed. err: {err:?}");
                 }
@@ -33,16 +45,18 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
         }
     }
 
-    unsafe {
-        (DISPATCH_TABLE
-            .get(&device.as_raw())
-            .unwrap()
-            .queue_present
-            .unwrap())(queue, info)
-    }
+    unsafe { (table.queue_present.unwrap())(queue, info) }
 }
 
-fn draw_overlay(device: vk::Device, queue: vk::Queue, index: u32, backend: &mut WindowBackend) {
+#[inline]
+fn draw_overlay(
+    device: &Device,
+    queue: vk::Queue,
+    queue_family_index: u32,
+    format: vk::Format,
+    index: u32,
+    backend: &mut WindowBackend,
+) {
     let renderer = match backend.renderer {
         Some(Renderer::Vulkan(ref mut renderer)) => renderer,
         Some(_) => {
@@ -56,4 +70,32 @@ fn draw_overlay(device: vk::Device, queue: vk::Queue, index: u32, backend: &mut 
             return;
         }
     };
+
+    let mut renderer = renderer.get_or_insert_with(|| {
+        debug!("initializing vulkan renderer");
+        Box::new(
+            VulkanRenderer::new(device.clone(), queue_family_index, format)
+                .expect("renderer creation failed"),
+        )
+    });
+
+    // if backend.surface.invalidate_update() {
+    //     if let Err(err) =
+    //         renderer.update_texture(backend.surface.get().map(|surface| surface.texture()))
+    //     {
+    //         error!("failed to update opengl texture. err: {err:?}");
+    //         return;
+    //     }
+    // }
+    let Some(surface) = backend.surface.get() else {
+        return;
+    };
+
+    let screen = backend.size;
+    let size = surface.size();
+    let position = backend
+        .layout
+        .get_or_calc((size.0 as _, size.1 as _), screen);
+
+    // renderer.draw();
 }

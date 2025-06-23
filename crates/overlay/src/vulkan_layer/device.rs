@@ -3,6 +3,7 @@ mod swapchain;
 
 use core::{
     ffi::{CStr, c_char, c_void},
+    mem,
     ptr::NonNull,
     slice,
 };
@@ -10,8 +11,10 @@ use core::{
 use crate::types::IntDashMap;
 
 use super::{proc_table, resolve_proc};
-use anyhow::Context;
-use ash::vk::{self, BaseInStructure, Handle};
+use ash::{
+    Device, DeviceFnV1_0, DeviceFnV1_1, DeviceFnV1_2, DeviceFnV1_3, khr,
+    vk::{self, BaseInStructure, Handle},
+};
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 
@@ -21,9 +24,8 @@ struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
     queues: Vec<vk::Queue>,
 
-    destroy_device: vk::PFN_vkDestroyDevice,
-    create_swapchain: Option<vk::PFN_vkCreateSwapchainKHR>,
-    destroy_swapchain: Option<vk::PFN_vkDestroySwapchainKHR>,
+    device: Device,
+    swapchain_fn: khr::swapchain::DeviceFn,
     queue_present: Option<vk::PFN_vkQueuePresentKHR>,
 }
 
@@ -32,32 +34,48 @@ impl DispatchTable {
         get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
         device: vk::Device,
         queues: Vec<vk::Queue>,
-    ) -> anyhow::Result<Self> {
+    ) -> Self {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
                 unsafe { resolve_proc!(get_proc_addr => device, $name : $ty) }
             };
         }
 
-        Ok(Self {
+        let loader = |name: &CStr| unsafe {
+            mem::transmute::<vk::PFN_vkVoidFunction, *const c_void>(get_proc_addr(
+                device,
+                name.as_ptr(),
+            ))
+        };
+        Self {
             queues,
 
-            destroy_device: proc!(c"vkDestroyDevice": vk::PFN_vkDestroyDevice)
-                .context("failed to resolve device fn vkDestroyDevice")?,
-            create_swapchain: proc!(c"vkCreateSwapchainKHR": vk::PFN_vkCreateSwapchainKHR),
-            destroy_swapchain: proc!(c"vkDestroySwapchainKHR": vk::PFN_vkDestroySwapchainKHR),
+            device: Device::from_parts_1_3(
+                device,
+                DeviceFnV1_0::load(loader),
+                DeviceFnV1_1::load(loader),
+                DeviceFnV1_2::load(loader),
+                DeviceFnV1_3::load(loader),
+            ),
+            swapchain_fn: khr::swapchain::DeviceFn::load(loader),
             queue_present: proc!(c"vkQueuePresentKHR": vk::PFN_vkQueuePresentKHR),
 
             get_proc_addr,
-        })
+        }
     }
 }
 
-// Queue -> Device
-static QUEUE_MAP: Lazy<IntDashMap<u64, vk::Device>> = Lazy::new(IntDashMap::default);
+#[derive(Clone, Copy)]
+pub struct QueueData {
+    pub device: vk::Device,
+    pub family_index: u32,
+}
 
-pub fn get_queue_device(queue: vk::Queue) -> Option<vk::Device> {
-    QUEUE_MAP.get(&queue.as_raw()).map(|device| *device)
+// Queue -> QueueData
+static QUEUE_MAP: Lazy<IntDashMap<u64, QueueData>> = Lazy::new(IntDashMap::default);
+
+pub fn get_queue_data(queue: vk::Queue) -> Option<QueueData> {
+    QUEUE_MAP.get(&queue.as_raw()).map(|data| *data)
 }
 
 #[tracing::instrument(skip(name))]
@@ -148,18 +166,21 @@ pub extern "system" fn create_device(
                         queue, info.queue_family_index, i
                     );
                     queues.push(queue);
+                    QUEUE_MAP.insert(
+                        queue.as_raw(),
+                        QueueData {
+                            device,
+                            family_index: info.queue_family_index,
+                        },
+                    );
                 }
             }
         }
     }
-    for queue in &queues {
-        QUEUE_MAP.insert(queue.as_raw(), device);
-    }
 
     DISPATCH_TABLE.insert(
         device.as_raw(),
-        DispatchTable::new(next_get_device_proc_addr, device, queues)
-            .expect("failed to initialize dispatch table"),
+        DispatchTable::new(next_get_device_proc_addr, device, queues),
     );
 
     vk::Result::SUCCESS
@@ -178,7 +199,7 @@ extern "system" fn destroy_device(
         QUEUE_MAP.remove(&queue.as_raw());
     }
 
-    unsafe { (table.destroy_device)(device, allocator) }
+    unsafe { (table.device.fp_v1_0().destroy_device)(device, allocator) }
 }
 
 #[repr(C)]
