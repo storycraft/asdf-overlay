@@ -19,8 +19,8 @@ struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetInstanceProcAddr,
 
     destroy_instance: vk::PFN_vkDestroyInstance,
-    create_win32_surface: vk::PFN_vkCreateWin32SurfaceKHR,
-    destroy_surface: vk::PFN_vkDestroySurfaceKHR,
+    create_win32_surface: Option<vk::PFN_vkCreateWin32SurfaceKHR>,
+    destroy_surface: Option<vk::PFN_vkDestroySurfaceKHR>,
 }
 
 impl DispatchTable {
@@ -30,16 +30,15 @@ impl DispatchTable {
     ) -> anyhow::Result<Self> {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
-                unsafe { resolve_proc!(get_proc_addr => instance, $name : $ty) }.with_context(
-                    || format!("cannot resolve instance fn {}", $name.to_string_lossy()),
-                )
+                unsafe { resolve_proc!(get_proc_addr => instance, $name : $ty) }
             };
         }
 
         Ok(Self {
-            destroy_instance: proc!(c"vkDestroyInstance": vk::PFN_vkDestroyInstance)?,
-            create_win32_surface: proc!(c"vkCreateWin32SurfaceKHR": vk::PFN_vkCreateWin32SurfaceKHR)?,
-            destroy_surface: proc!(c"vkDestroySurfaceKHR": vk::PFN_vkDestroySurfaceKHR)?,
+            destroy_instance: proc!(c"vkDestroyInstance": vk::PFN_vkDestroyInstance)
+                .context("failed resolve instance fn vkDestroyInstance")?,
+            create_win32_surface: proc!(c"vkCreateWin32SurfaceKHR": vk::PFN_vkCreateWin32SurfaceKHR),
+            destroy_surface: proc!(c"vkDestroySurfaceKHR": vk::PFN_vkDestroySurfaceKHR),
 
             get_proc_addr,
         })

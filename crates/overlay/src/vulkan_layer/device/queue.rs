@@ -33,7 +33,13 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
         }
     }
 
-    unsafe { (DISPATCH_TABLE.get(&device.as_raw()).unwrap().queue_present)(queue, info) }
+    unsafe {
+        (DISPATCH_TABLE
+            .get(&device.as_raw())
+            .unwrap()
+            .queue_present
+            .unwrap())(queue, info)
+    }
 }
 
 fn draw_overlay(device: vk::Device, queue: vk::Queue, index: u32, backend: &mut WindowBackend) {

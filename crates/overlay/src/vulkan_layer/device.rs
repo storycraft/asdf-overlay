@@ -22,9 +22,9 @@ struct DispatchTable {
     queues: Vec<vk::Queue>,
 
     destroy_device: vk::PFN_vkDestroyDevice,
-    create_swapchain: vk::PFN_vkCreateSwapchainKHR,
-    destroy_swapchain: vk::PFN_vkDestroySwapchainKHR,
-    queue_present: vk::PFN_vkQueuePresentKHR,
+    create_swapchain: Option<vk::PFN_vkCreateSwapchainKHR>,
+    destroy_swapchain: Option<vk::PFN_vkDestroySwapchainKHR>,
+    queue_present: Option<vk::PFN_vkQueuePresentKHR>,
 }
 
 impl DispatchTable {
@@ -35,19 +35,18 @@ impl DispatchTable {
     ) -> anyhow::Result<Self> {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
-                unsafe { resolve_proc!(get_proc_addr => device, $name : $ty) }.with_context(
-                    || format!("cannot resolve device fn {}", $name.to_string_lossy()),
-                )
+                unsafe { resolve_proc!(get_proc_addr => device, $name : $ty) }
             };
         }
 
         Ok(Self {
             queues,
 
-            destroy_device: proc!(c"vkDestroyDevice": vk::PFN_vkDestroyDevice)?,
-            create_swapchain: proc!(c"vkCreateSwapchainKHR": vk::PFN_vkCreateSwapchainKHR)?,
-            destroy_swapchain: proc!(c"vkDestroySwapchainKHR": vk::PFN_vkDestroySwapchainKHR)?,
-            queue_present: proc!(c"vkQueuePresentKHR": vk::PFN_vkQueuePresentKHR)?,
+            destroy_device: proc!(c"vkDestroyDevice": vk::PFN_vkDestroyDevice)
+                .context("failed to resolve device fn vkDestroyDevice")?,
+            create_swapchain: proc!(c"vkCreateSwapchainKHR": vk::PFN_vkCreateSwapchainKHR),
+            destroy_swapchain: proc!(c"vkDestroySwapchainKHR": vk::PFN_vkDestroySwapchainKHR),
+            queue_present: proc!(c"vkQueuePresentKHR": vk::PFN_vkQueuePresentKHR),
 
             get_proc_addr,
         })

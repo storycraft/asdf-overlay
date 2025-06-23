@@ -39,7 +39,8 @@ pub extern "system" fn create_swapchain(
         (DISPATCH_TABLE
             .get(&device.as_raw())
             .unwrap()
-            .create_swapchain)(device, create_info, callback, swapchain)
+            .create_swapchain
+            .unwrap())(device, create_info, callback, swapchain)
     };
     if res != vk::Result::SUCCESS {
         return res;
@@ -70,7 +71,7 @@ pub extern "system" fn destroy_swapchain(
     let table = DISPATCH_TABLE.get(&device.as_raw()).unwrap();
     cleanup_swapchain(swapchain);
 
-    unsafe { (table.destroy_swapchain)(device, swapchain, callback) }
+    unsafe { (table.destroy_swapchain.unwrap())(device, swapchain, callback) }
 }
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {

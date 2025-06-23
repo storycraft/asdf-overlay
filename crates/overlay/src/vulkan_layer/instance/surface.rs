@@ -23,7 +23,8 @@ pub extern "system" fn create_win32_surface(
         (DISPATCH_TABLE
             .get(&instance.as_raw())
             .unwrap()
-            .create_win32_surface)(instance, create_info, callback, surface)
+            .create_win32_surface
+            .unwrap())(instance, create_info, callback, surface)
     };
     if res != vk::Result::SUCCESS {
         return res;
@@ -47,7 +48,8 @@ pub extern "system" fn destroy_surface(
         (DISPATCH_TABLE
             .get(&instance.as_raw())
             .unwrap()
-            .destroy_surface)(instance, surface, callback);
+            .destroy_surface
+            .unwrap())(instance, surface, callback);
     }
 
     SURFACE_MAP.remove(&surface.as_raw());
