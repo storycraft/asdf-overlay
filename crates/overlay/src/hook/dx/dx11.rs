@@ -5,7 +5,6 @@ use crate::backend::{Backends, renderers::Renderer};
 
 #[tracing::instrument]
 pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
-    debug!("dx11 renderer cleanup");
     let hwnd = unsafe { swapchain.GetHwnd() }.ok();
 
     let Some(hwnd) = hwnd else {
@@ -17,6 +16,8 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
         let Some(Renderer::Dx11(ref mut renderer)) = backend.renderer else {
             return;
         };
+        debug!("dx11 renderer cleanup");
+
         renderer.take();
         backend.cx.dx11.take();
     });

@@ -41,8 +41,6 @@ pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
 
 #[tracing::instrument]
 pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
-    debug!("dx12 renderer cleanup");
-
     let hwnd = unsafe { swapchain.GetHwnd() }.ok();
 
     let Some(hwnd) = hwnd else {
@@ -54,6 +52,8 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
         let Some(Renderer::Dx12(ref mut renderer)) = backend.renderer else {
             return;
         };
+        debug!("dx12 renderer cleanup");
+
         QUEUE_MAP.clear();
         renderer.take();
         backend.cx.dx12.take();
