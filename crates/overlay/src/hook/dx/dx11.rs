@@ -20,5 +20,6 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
 
         renderer.take();
         backend.cx.dx11.take();
+        backend.set_surface_updated();
     });
 }

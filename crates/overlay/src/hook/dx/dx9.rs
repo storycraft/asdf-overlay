@@ -124,6 +124,7 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
             debug!("dx9 renderer cleanup");
 
             renderer.take();
+            backend.set_surface_updated();
         });
     }
 }

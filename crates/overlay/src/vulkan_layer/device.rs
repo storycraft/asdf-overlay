@@ -1,5 +1,5 @@
-mod queue;
-mod swapchain;
+pub mod queue;
+pub mod swapchain;
 
 use core::{
     ffi::{CStr, c_char, c_void},
@@ -74,12 +74,12 @@ pub struct QueueData {
 // Queue -> QueueData
 static QUEUE_MAP: Lazy<IntDashMap<u64, QueueData>> = Lazy::new(IntDashMap::default);
 
-pub fn get_queue_data(queue: vk::Queue) -> Option<QueueData> {
+pub(super) fn get_queue_data(queue: vk::Queue) -> Option<QueueData> {
     QUEUE_MAP.get(&queue.as_raw()).map(|data| *data)
 }
 
 #[tracing::instrument(skip(name))]
-pub extern "system" fn get_proc_addr(
+pub(super) extern "system" fn get_proc_addr(
     device: vk::Device,
     name: *const c_char,
 ) -> vk::PFN_vkVoidFunction {
@@ -100,7 +100,7 @@ pub extern "system" fn get_proc_addr(
 }
 
 #[tracing::instrument]
-pub extern "system" fn create_device(
+pub(super) extern "system" fn create_device(
     ph_device: vk::PhysicalDevice,
     info: *const vk::DeviceCreateInfo,
     callback: *const vk::AllocationCallbacks,

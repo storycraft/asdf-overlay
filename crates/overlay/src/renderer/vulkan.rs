@@ -1,3 +1,4 @@
+mod frame;
 mod shaders;
 
 use core::mem;
@@ -6,53 +7,195 @@ use anyhow::Context;
 use ash::{Device, vk};
 use scopeguard::defer;
 use shaders::{FRAGMENT_SHADER, VERTEX_SHADER};
+use windows::{
+    Win32::Graphics::{
+        Direct3D11::{self, D3D11_TEXTURE2D_DESC},
+        Dxgi::IDXGIResource,
+    },
+    core::Interface,
+};
+
+use crate::{renderer::vulkan::frame::FrameData, vulkan_layer::device::swapchain::SwapchainData};
 
 pub struct VulkanRenderer {
     device: Device,
 
-    command_pool: vk::CommandPool,
-
+    descriptor_pool: vk::DescriptorPool,
     sampler: vk::Sampler,
     texture_layout: vk::DescriptorSetLayout,
+    texture_descriptor_set: vk::DescriptorSet,
+    texture: Option<(vk::DeviceMemory, vk::Image, vk::ImageView)>,
+
     pipeline_layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
-    fence: vk::Fence,
+
+    frame_datas: Vec<FrameData>,
 }
 
 impl VulkanRenderer {
     pub fn new(
         device: Device,
         queue_family_index: u32,
-        format: vk::Format,
+        swapchain_data: &SwapchainData,
+        swapchain_images: &[vk::Image],
     ) -> anyhow::Result<Self> {
-        unsafe {
-            let command_pool = create_command_pool(&device, queue_family_index)?;
-            let sampler = create_sampler(&device)?;
-            let texture_layout = create_texture_layout(&device, sampler)?;
-            let pipeline_layout = create_pipeline_layout(&device, texture_layout)?;
-            let render_pass = create_render_pass(&device, format)?;
-            let pipeline = create_pipeline(&device, pipeline_layout, render_pass)?;
-            let fence = device
-                .create_fence(
-                    &vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED),
-                    None,
+        let descriptor_pool = create_descriptor_pool(&device)?;
+        let sampler = create_sampler(&device)?;
+        let texture_layout = create_texture_layout(&device, sampler)?;
+        let texture_descriptor_set =
+            create_texture_descriptor_set(&device, descriptor_pool, texture_layout)?;
+
+        let pipeline_layout = create_pipeline_layout(&device, texture_layout)?;
+        let render_pass = create_render_pass(&device, swapchain_data.format)?;
+        let pipeline = create_pipeline(
+            &device,
+            swapchain_data.image_size,
+            pipeline_layout,
+            render_pass,
+        )?;
+        let mut frame_data = Vec::with_capacity(swapchain_images.len());
+        for &swapchain_image in swapchain_images {
+            frame_data.push(
+                FrameData::new(
+                    &device,
+                    queue_family_index,
+                    render_pass,
+                    swapchain_image,
+                    swapchain_data.format,
+                    swapchain_data.image_size,
                 )
-                .context("failed to create Fence")?;
-
-            Ok(Self {
-                device,
-
-                command_pool,
-
-                sampler,
-                texture_layout,
-                pipeline_layout,
-                render_pass,
-                pipeline,
-                fence,
-            })
+                .context("failed to create SwapchainImageData")?,
+            );
         }
+
+        Ok(Self {
+            device,
+
+            descriptor_pool,
+            sampler,
+            texture_layout,
+            texture_descriptor_set,
+            texture: None,
+
+            pipeline_layout,
+            render_pass,
+            pipeline,
+
+            frame_datas: frame_data,
+        })
+    }
+
+    pub fn update_texture(
+        &mut self,
+        texture: Option<&Direct3D11::ID3D11Texture2D>,
+    ) -> anyhow::Result<()> {
+        unsafe {
+            if let Some((memory, image, view)) = self.texture.take() {
+                self.device.device_wait_idle()?;
+
+                self.device.destroy_image_view(view, None);
+                self.device.destroy_image(image, None);
+                self.device.free_memory(memory, None);
+            }
+
+            let Some(texture) = texture else {
+                return Ok(());
+            };
+
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            texture.GetDesc(&mut desc);
+            let handle = texture
+                .cast::<IDXGIResource>()
+                .unwrap()
+                .GetSharedHandle()
+                .unwrap();
+
+            let mut external_memory_image_info = vk::ExternalMemoryImageCreateInfo::default()
+                .handle_types(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT);
+            let image = self.device.create_image(
+                &vk::ImageCreateInfo::default()
+                    .image_type(vk::ImageType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .extent(vk::Extent3D {
+                        width: desc.Width,
+                        height: desc.Height,
+                        depth: 1,
+                    })
+                    .mip_levels(1)
+                    .array_layers(1)
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .tiling(vk::ImageTiling::OPTIMAL)
+                    .usage(vk::ImageUsageFlags::SAMPLED)
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                    .initial_layout(vk::ImageLayout::UNDEFINED)
+                    .push_next(&mut external_memory_image_info),
+                None,
+            )?;
+
+            let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
+            let requirements = {
+                let mut requirements =
+                    vk::MemoryRequirements2::default().push_next(&mut dedicated_requirements);
+                self.device.get_image_memory_requirements2(
+                    &vk::ImageMemoryRequirementsInfo2::default().image(image),
+                    &mut requirements,
+                );
+
+                requirements.memory_requirements
+            };
+
+            let mut import_memory_info = vk::ImportMemoryWin32HandleInfoKHR::default()
+                .handle_type(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT)
+                .handle(handle.0 as _);
+            let mut dedicated_alloc_info = vk::MemoryDedicatedAllocateInfo::default().image(image);
+
+            if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE
+                || dedicated_requirements.requires_dedicated_allocation == vk::TRUE
+            {
+                import_memory_info.p_next = &mut dedicated_alloc_info as *const _ as _;
+            }
+
+            let alloc_info = vk::MemoryAllocateInfo::default()
+                .allocation_size(requirements.size)
+                .memory_type_index(0)
+                .push_next(&mut import_memory_info);
+
+            // todo acccurate memory_type_index
+            let memory = self.device.allocate_memory(&alloc_info, None)?;
+
+            self.device.bind_image_memory(image, memory, 0)?;
+
+            let view = self.device.create_image_view(
+                &vk::ImageViewCreateInfo::default()
+                    .image(image)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    }),
+                None,
+            )?;
+
+            let image_info = [vk::DescriptorImageInfo::default()
+                .image_view(view)
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+            let descriptor_writes = [vk::WriteDescriptorSet::default()
+                .dst_set(self.texture_descriptor_set)
+                .dst_binding(0)
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&image_info)];
+            self.device.update_descriptor_sets(&descriptor_writes, &[]);
+
+            self.texture = Some((memory, image, view));
+        }
+
+        Ok(())
     }
 
     pub fn draw(
@@ -63,17 +206,87 @@ impl VulkanRenderer {
         size: (u32, u32),
         screen: (u32, u32),
     ) -> anyhow::Result<()> {
-        unsafe {
-            // let command_buffer = 0;
+        if self.texture.is_none() {
+            return Ok(());
+        };
 
-            // let command_buffers = [command_buffer];
-            // self.device
-            //     .queue_submit(
-            //         queue,
-            //         &[vk::SubmitInfo::default().command_buffers(command_buffers)],
-            //         self.fence,
-            //     )
-            //     .context("queue submit failed")?;
+        let frame_data = self.frame_datas[index as usize];
+
+        let rect: [f32; 4] = [
+            (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0,
+            (position.1 as f32 / screen.1 as f32) * 2.0 - 1.0,
+            (size.0 as f32 / screen.0 as f32) * 2.0,
+            (size.1 as f32 / screen.1 as f32) * 2.0,
+        ];
+
+        unsafe {
+            let command_buffer = frame_data.command_buffer;
+            self.device.begin_command_buffer(
+                command_buffer,
+                &vk::CommandBufferBeginInfo::default()
+                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )?;
+
+            let offset = vk::Offset2D {
+                x: position.0.max(0),
+                y: position.1.max(0),
+            };
+            self.device.cmd_begin_render_pass(
+                command_buffer,
+                &vk::RenderPassBeginInfo::default()
+                    .render_pass(self.render_pass)
+                    .framebuffer(frame_data.framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset,
+                        extent: vk::Extent2D {
+                            width: size.0.min(screen.0 - offset.x as u32),
+                            height: size.1.min(screen.1 - offset.y as u32),
+                        },
+                    }),
+                vk::SubpassContents::INLINE,
+            );
+
+            let descriptor_sets = [self.texture_descriptor_set];
+            self.device.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                0,
+                &descriptor_sets,
+                &[],
+            );
+
+            self.device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline,
+            );
+
+            self.device.cmd_push_constants(
+                command_buffer,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                bytemuck::cast_slice(&rect),
+            );
+
+            self.device.cmd_draw(command_buffer, 4, 1, 0, 0);
+
+            self.device.cmd_end_render_pass(command_buffer);
+
+            self.device.end_command_buffer(command_buffer)?;
+            self.device.reset_fences(&[frame_data.fence])?;
+            self.device.queue_submit(
+                queue,
+                &[vk::SubmitInfo::default().command_buffers(&[command_buffer])],
+                frame_data.fence,
+            )?;
+
+            // todo
+            self.device
+                .wait_for_fences(&[frame_data.fence], true, u64::MAX)?;
+            self.device
+                .reset_command_pool(frame_data.command_pool, vk::CommandPoolResetFlags::empty())?;
         }
         Ok(())
     }
@@ -82,8 +295,28 @@ impl VulkanRenderer {
 impl Drop for VulkanRenderer {
     fn drop(&mut self) {
         unsafe {
-            _ = self.device.wait_for_fences(&[self.fence], true, u64::MAX);
-            self.device.destroy_fence(self.fence, None);
+            self.device.device_wait_idle().expect("failed to wait idle");
+
+            for frame_data in &mut self.frame_datas {
+                self.device.destroy_fence(frame_data.fence, None);
+                self.device
+                    .free_command_buffers(frame_data.command_pool, &[frame_data.command_buffer]);
+                self.device
+                    .destroy_command_pool(frame_data.command_pool, None);
+                self.device
+                    .destroy_framebuffer(frame_data.framebuffer, None);
+                self.device.destroy_image_view(frame_data.view, None);
+            }
+
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
+
+            if let Some((memory, image, view)) = self.texture {
+                self.device.destroy_image_view(view, None);
+                self.device.destroy_image(image, None);
+                self.device.free_memory(memory, None);
+            }
+
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_render_pass(self.render_pass, None);
             self.device
@@ -95,17 +328,39 @@ impl Drop for VulkanRenderer {
     }
 }
 
-fn create_command_pool(
-    device: &Device,
-    queue_family_index: u32,
-) -> anyhow::Result<vk::CommandPool> {
+fn create_descriptor_pool(device: &Device) -> anyhow::Result<vk::DescriptorPool> {
     unsafe {
         device
-            .create_command_pool(
-                &vk::CommandPoolCreateInfo::default().queue_family_index(queue_family_index),
+            .create_descriptor_pool(
+                &vk::DescriptorPoolCreateInfo::default()
+                    .max_sets(1)
+                    .pool_sizes(&[vk::DescriptorPoolSize::default()
+                        .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        .descriptor_count(1)]),
                 None,
             )
-            .context("failed to create CommandPool")
+            .context("failed to create DescriptorPool")
+    }
+}
+
+fn create_texture_descriptor_set(
+    device: &Device,
+    descriptor_pool: vk::DescriptorPool,
+    layout: vk::DescriptorSetLayout,
+) -> anyhow::Result<vk::DescriptorSet> {
+    unsafe {
+        let mut set = vk::DescriptorSet::null();
+        (device.fp_v1_0().allocate_descriptor_sets)(
+            device.handle(),
+            &vk::DescriptorSetAllocateInfo::default()
+                .descriptor_pool(descriptor_pool)
+                .set_layouts(&[layout]),
+            &mut set,
+        )
+        .result()
+        .context("failed to create DescriptorSet")?;
+
+        Ok(set)
     }
 }
 
@@ -201,6 +456,7 @@ fn create_pipeline_layout(
 
 fn create_pipeline(
     device: &Device,
+    size: (u32, u32),
     layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
 ) -> anyhow::Result<vk::Pipeline> {
@@ -209,9 +465,25 @@ fn create_pipeline(
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_STRIP);
         let tessellation_state = vk::PipelineTessellationStateCreateInfo::default();
+
+        let viewports = [vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: size.0 as _,
+            height: size.1 as _,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        }];
+        let scissors = [vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
+                width: size.0,
+                height: size.1,
+            },
+        }];
         let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-            .viewport_count(1)
-            .scissor_count(1);
+            .viewports(&viewports)
+            .scissors(&scissors);
         let rasterization_state =
             vk::PipelineRasterizationStateCreateInfo::default().line_width(1.0);
         let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
@@ -224,12 +496,11 @@ fn create_pipeline(
             .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)];
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .color_write_mask(vk::ColorComponentFlags::RGBA)];
         let color_blend_state =
             vk::PipelineColorBlendStateCreateInfo::default().attachments(&color_blend_attachments);
-        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state =
-            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default();
 
         let vertex_shader = device
             .create_shader_module(

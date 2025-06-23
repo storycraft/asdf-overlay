@@ -7,11 +7,11 @@ use crate::{types::IntDashMap, vulkan_layer::instance::DISPATCH_TABLE};
 // Surface -> HWND
 static SURFACE_MAP: Lazy<IntDashMap<u64, u32>> = Lazy::new(IntDashMap::default);
 
-pub fn get_surface_hwnd(surface: vk::SurfaceKHR) -> u32 {
-    *SURFACE_MAP.get(&surface.as_raw()).unwrap()
+pub fn get_surface_hwnd(surface: vk::SurfaceKHR) -> Option<u32> {
+    SURFACE_MAP.get(&surface.as_raw()).map(|hwnd| *hwnd)
 }
 
-pub extern "system" fn create_win32_surface(
+pub(super) extern "system" fn create_win32_surface(
     instance: vk::Instance,
     create_info: *const vk::Win32SurfaceCreateInfoKHR,
     callback: *const vk::AllocationCallbacks,
@@ -38,7 +38,7 @@ pub extern "system" fn create_win32_surface(
     vk::Result::SUCCESS
 }
 
-pub extern "system" fn destroy_surface(
+pub(super) extern "system" fn destroy_surface(
     instance: vk::Instance,
     surface: vk::SurfaceKHR,
     callback: *const vk::AllocationCallbacks,

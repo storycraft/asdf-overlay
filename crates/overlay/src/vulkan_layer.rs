@@ -1,5 +1,5 @@
-mod device;
-mod instance;
+pub mod device;
+pub mod instance;
 
 use core::ffi::c_void;
 

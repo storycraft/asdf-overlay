@@ -1,9 +1,6 @@
 use core::slice;
 
-use ash::{
-    Device,
-    vk::{self, Handle},
-};
+use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
 use windows::Win32::Foundation::HWND;
 
@@ -11,10 +8,16 @@ use crate::{
     app::OverlayIpc,
     backend::{Backends, WindowBackend, renderers::Renderer},
     renderer::vulkan::VulkanRenderer,
-    vulkan_layer::device::{DISPATCH_TABLE, get_queue_data, swapchain::get_swapchain_data},
+    vulkan_layer::device::{
+        DISPATCH_TABLE, DispatchTable, get_queue_data,
+        swapchain::{SwapchainData, get_swapchain_data},
+    },
 };
 
-pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR) -> vk::Result {
+pub(super) extern "system" fn present(
+    queue: vk::Queue,
+    info: *const vk::PresentInfoKHR,
+) -> vk::Result {
     trace!("vkQueuePresentKHR called");
 
     let queue_data = get_queue_data(queue).unwrap();
@@ -31,10 +34,11 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
 
                 if let Err(err) = Backends::with_or_init_backend(HWND(data.hwnd as _), |backend| {
                     draw_overlay(
-                        &table.device,
+                        &table,
+                        swapchain,
+                        &data,
                         queue,
                         queue_data.family_index,
-                        data.format,
                         index,
                         backend,
                     )
@@ -50,10 +54,11 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
 
 #[inline]
 fn draw_overlay(
-    device: &Device,
+    table: &DispatchTable,
+    swapchain: vk::SwapchainKHR,
+    data: &SwapchainData,
     queue: vk::Queue,
     queue_family_index: u32,
-    format: vk::Format,
     index: u32,
     backend: &mut WindowBackend,
 ) {
@@ -71,22 +76,44 @@ fn draw_overlay(
         }
     };
 
-    let mut renderer = renderer.get_or_insert_with(|| {
+    let renderer = renderer.get_or_insert_with(|| {
         debug!("initializing vulkan renderer");
+
+        let mut image_count = 0;
+        let mut images = Vec::<vk::Image>::new();
+        unsafe {
+            _ = (table.swapchain_fn.get_swapchain_images_khr)(
+                table.device.handle(),
+                swapchain,
+                &mut image_count,
+                0 as _,
+            );
+            images.resize(image_count as _, vk::Image::null());
+
+            (table.swapchain_fn.get_swapchain_images_khr)(
+                table.device.handle(),
+                swapchain,
+                &mut image_count,
+                images.as_mut_ptr(),
+            )
+            .result()
+            .expect("failed to get swapchain images");
+        };
+
         Box::new(
-            VulkanRenderer::new(device.clone(), queue_family_index, format)
+            VulkanRenderer::new(table.device.clone(), queue_family_index, data, &images)
                 .expect("renderer creation failed"),
         )
     });
 
-    // if backend.surface.invalidate_update() {
-    //     if let Err(err) =
-    //         renderer.update_texture(backend.surface.get().map(|surface| surface.texture()))
-    //     {
-    //         error!("failed to update opengl texture. err: {err:?}");
-    //         return;
-    //     }
-    // }
+    if backend.surface.invalidate_update() {
+        if let Err(err) =
+            renderer.update_texture(backend.surface.get().map(|surface| surface.texture()))
+        {
+            error!("failed to update opengl texture. err: {err:?}");
+            return;
+        }
+    }
     let Some(surface) = backend.surface.get() else {
         return;
     };
@@ -97,5 +124,6 @@ fn draw_overlay(
         .layout
         .get_or_calc((size.0 as _, size.1 as _), screen);
 
-    // renderer.draw();
+    let _res = renderer.draw(queue, index, position, size, screen);
+    trace!("vulkan render: {:?}", _res);
 }

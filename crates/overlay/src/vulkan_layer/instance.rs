@@ -46,7 +46,7 @@ impl DispatchTable {
 }
 
 #[tracing::instrument(skip(name))]
-pub extern "system" fn get_proc_addr(
+pub(super) extern "system" fn get_proc_addr(
     instance: vk::Instance,
     name: *const c_char,
 ) -> vk::PFN_vkVoidFunction {

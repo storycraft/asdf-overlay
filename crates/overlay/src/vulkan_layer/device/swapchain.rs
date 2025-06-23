@@ -11,18 +11,18 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub struct SwapchainData {
-    pub device: vk::Device,
     pub hwnd: u32,
+    pub image_size: (u32, u32),
     pub format: vk::Format,
 }
 
 static SWAPCHAIN_MAP: Lazy<IntDashMap<u64, SwapchainData>> = Lazy::new(IntDashMap::default);
 
-pub fn get_swapchain_data(swapchain: vk::SwapchainKHR) -> SwapchainData {
+pub(super) fn get_swapchain_data(swapchain: vk::SwapchainKHR) -> SwapchainData {
     *SWAPCHAIN_MAP.get(&swapchain.as_raw()).unwrap()
 }
 
-pub extern "system" fn create_swapchain(
+pub(super) extern "system" fn create_swapchain(
     device: vk::Device,
     create_info: *const vk::SwapchainCreateInfoKHR,
     callback: *const vk::AllocationCallbacks,
@@ -48,12 +48,12 @@ pub extern "system" fn create_swapchain(
 
     debug!("initializing swapchain data");
     let swapchain = unsafe { *swapchain }.as_raw();
-    let hwnd = get_surface_hwnd(info.surface);
+    let hwnd = get_surface_hwnd(info.surface).unwrap();
     SWAPCHAIN_MAP.insert(
         swapchain,
         SwapchainData {
-            device,
             hwnd,
+            image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
         },
     );
@@ -61,7 +61,7 @@ pub extern "system" fn create_swapchain(
     vk::Result::SUCCESS
 }
 
-pub extern "system" fn destroy_swapchain(
+pub(super) extern "system" fn destroy_swapchain(
     device: vk::Device,
     swapchain: vk::SwapchainKHR,
     callback: *const AllocationCallbacks,
@@ -83,5 +83,6 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
         };
         debug!("vulkan renderer cleanup");
         renderer.take();
+        backend.set_surface_updated();
     });
 }
