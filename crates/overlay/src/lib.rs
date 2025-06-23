@@ -103,9 +103,12 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     let pid = unsafe { GetCurrentProcessId() };
     let module_handle = dll_module.0 as u32;
     // setup first ipc server
-    let Ok(server) = create_ipc_server(create_ipc_addr(pid, module_handle), true) else {
-        error!("cannot open ipc server");
-        return false;
+    let server = match create_ipc_server(create_ipc_addr(pid, module_handle), true) {
+        Ok(server) => server,
+        Err(err) => {
+            error!("cannot open ipc server. err: {err:?}");
+            return false;
+        }
     };
     let create_server = move || create_ipc_server(create_ipc_addr(pid, module_handle), false);
 
