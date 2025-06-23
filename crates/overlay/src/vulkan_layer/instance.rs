@@ -45,6 +45,7 @@ impl DispatchTable {
     }
 }
 
+#[tracing::instrument(skip(name))]
 pub extern "system" fn get_proc_addr(
     instance: vk::Instance,
     name: *const c_char,

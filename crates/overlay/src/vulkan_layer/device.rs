@@ -60,7 +60,7 @@ pub fn get_queue_device(queue: vk::Queue) -> Option<vk::Device> {
     QUEUE_MAP.get(&queue.as_raw()).map(|device| *device)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(name))]
 pub extern "system" fn get_proc_addr(
     device: vk::Device,
     name: *const c_char,
