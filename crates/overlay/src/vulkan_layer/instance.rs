@@ -75,7 +75,6 @@ extern "system" fn create_instance(
 ) -> vk::Result {
     trace!("vkCreateInstance called");
 
-    dbg!("finding");
     let Some(layer_create_info) =
         (unsafe { get_layer_link_info(info).map(|mut info| info.as_mut()) })
     else {
