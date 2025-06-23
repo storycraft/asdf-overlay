@@ -1,6 +1,10 @@
+mod queue;
+mod swapchain;
+
 use core::{
     ffi::{CStr, c_char, c_void},
     ptr::NonNull,
+    slice,
 };
 
 use crate::types::IntDashMap;
@@ -15,12 +19,20 @@ static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashM
 
 struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
+    queues: Vec<vk::Queue>,
 
     destroy_device: vk::PFN_vkDestroyDevice,
+    create_swapchain: vk::PFN_vkCreateSwapchainKHR,
+    destroy_swapchain: vk::PFN_vkDestroySwapchainKHR,
+    queue_present: vk::PFN_vkQueuePresentKHR,
 }
 
 impl DispatchTable {
-    fn new(get_proc_addr: vk::PFN_vkGetDeviceProcAddr, device: vk::Device) -> anyhow::Result<Self> {
+    fn new(
+        get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
+        device: vk::Device,
+        queues: Vec<vk::Queue>,
+    ) -> anyhow::Result<Self> {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
                 unsafe { resolve_proc!(get_proc_addr => device, $name : $ty) }.with_context(
@@ -30,11 +42,23 @@ impl DispatchTable {
         }
 
         Ok(Self {
+            queues,
+
             destroy_device: proc!(c"vkDestroyDevice": vk::PFN_vkDestroyDevice)?,
+            create_swapchain: proc!(c"vkCreateSwapchainKHR": vk::PFN_vkCreateSwapchainKHR)?,
+            destroy_swapchain: proc!(c"vkDestroySwapchainKHR": vk::PFN_vkDestroySwapchainKHR)?,
+            queue_present: proc!(c"vkQueuePresentKHR": vk::PFN_vkQueuePresentKHR)?,
 
             get_proc_addr,
         })
     }
+}
+
+// Queue -> Device
+static QUEUE_MAP: Lazy<IntDashMap<u64, vk::Device>> = Lazy::new(IntDashMap::default);
+
+pub fn get_queue_device(queue: vk::Queue) -> Option<vk::Device> {
+    QUEUE_MAP.get(&queue.as_raw()).map(|device| *device)
 }
 
 #[tracing::instrument]
@@ -49,6 +73,9 @@ pub extern "system" fn get_proc_addr(
         proc_table!(&*CStr::from_ptr(name).to_string_lossy() => {
             "vkGetDeviceProcAddr" => get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
             "vkDestroyDevice" => destroy_device: vk::PFN_vkDestroyDevice,
+            "vkCreateSwapchainKHR" => swapchain::create_swapchain: vk::PFN_vkCreateSwapchainKHR,
+            "vkDestroySwapchainKHR" => swapchain::destroy_swapchain: vk::PFN_vkDestroySwapchainKHR,
+            "vkQueuePresentKHR" => queue::present: vk::PFN_vkQueuePresentKHR,
         });
     }
 
@@ -96,10 +123,43 @@ pub extern "system" fn create_device(
     }
 
     debug!("initializing device dispatch table");
+    let info = unsafe { &*info };
     let device = unsafe { *device };
+
+    let get_device_queue = (unsafe {
+        resolve_proc!(next_get_device_proc_addr =>
+            device,
+            c"vkGetDeviceQueue": vk::PFN_vkGetDeviceQueue
+        )
+    })
+    .unwrap();
+
+    let mut queues = vec![];
+    unsafe {
+        for info in slice::from_raw_parts(
+            info.p_queue_create_infos,
+            info.queue_create_info_count as usize,
+        ) {
+            for i in 0..info.queue_count {
+                let mut queue = vk::Queue::null();
+                get_device_queue(device, info.queue_family_index, i, &mut queue);
+                if queue != vk::Queue::null() {
+                    debug!(
+                        "found queue: {:?} family_index: {} index: {}",
+                        queue, info.queue_family_index, i
+                    );
+                    queues.push(queue);
+                }
+            }
+        }
+    }
+    for queue in &queues {
+        QUEUE_MAP.insert(queue.as_raw(), device);
+    }
+
     DISPATCH_TABLE.insert(
         device.as_raw(),
-        DispatchTable::new(next_get_device_proc_addr, device)
+        DispatchTable::new(next_get_device_proc_addr, device, queues)
             .expect("failed to initialize dispatch table"),
     );
 
@@ -114,13 +174,12 @@ extern "system" fn destroy_device(
     trace!("vkDestroyDevice called");
 
     debug!("device dispatch table cleanup");
-    unsafe {
-        (DISPATCH_TABLE
-            .remove(&device.as_raw())
-            .unwrap()
-            .1
-            .destroy_device)(device, allocator)
+    let (_, table) = DISPATCH_TABLE.remove(&device.as_raw()).unwrap();
+    for queue in table.queues {
+        QUEUE_MAP.remove(&queue.as_raw());
     }
+
+    unsafe { (table.destroy_device)(device, allocator) }
 }
 
 #[repr(C)]

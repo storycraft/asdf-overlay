@@ -58,6 +58,12 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
                 // skip drawing on render changes
                 return;
             }
+            // use dxgi swapchain instead
+            Some(Renderer::Vulkan(_)) => {
+                backend.renderer = Some(Renderer::Dx12(None));
+                debug!("switching from vulkan to dx12 render");
+                return;
+            }
             Some(_) => {
                 trace!("ignoring dx12 rendering");
                 return;

@@ -1,3 +1,5 @@
+pub mod surface;
+
 use core::{
     ffi::{CStr, c_char, c_void},
     ptr::NonNull,
@@ -17,6 +19,8 @@ struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetInstanceProcAddr,
 
     destroy_instance: vk::PFN_vkDestroyInstance,
+    create_win32_surface: vk::PFN_vkCreateWin32SurfaceKHR,
+    destroy_surface: vk::PFN_vkDestroySurfaceKHR,
 }
 
 impl DispatchTable {
@@ -34,6 +38,8 @@ impl DispatchTable {
 
         Ok(Self {
             destroy_instance: proc!(c"vkDestroyInstance": vk::PFN_vkDestroyInstance)?,
+            create_win32_surface: proc!(c"vkCreateWin32SurfaceKHR": vk::PFN_vkCreateWin32SurfaceKHR)?,
+            destroy_surface: proc!(c"vkDestroySurfaceKHR": vk::PFN_vkDestroySurfaceKHR)?,
 
             get_proc_addr,
         })
@@ -53,6 +59,8 @@ pub extern "system" fn get_proc_addr(
             "vkCreateInstance" => create_instance: vk::PFN_vkCreateInstance,
             "vkDestroyInstance" => destroy_instance: vk::PFN_vkDestroyInstance,
             "vkCreateDevice" => device::create_device: vk::PFN_vkCreateDevice,
+            "vkCreateWin32SurfaceKHR" => surface::create_win32_surface: vk::PFN_vkCreateWin32SurfaceKHR,
+            "vkDestroySurfaceKHR" => surface::destroy_surface: vk::PFN_vkDestroySurfaceKHR,
         });
     }
 
@@ -99,7 +107,8 @@ extern "system" fn create_instance(
     let instance = unsafe { *instance };
     DISPATCH_TABLE.insert(
         instance.as_raw(),
-        DispatchTable::new(next_get_instance_proc_addr, instance).expect("failed to initialize dispatch table"),
+        DispatchTable::new(next_get_instance_proc_addr, instance)
+            .expect("failed to initialize dispatch table"),
     );
 
     vk::Result::SUCCESS

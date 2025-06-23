@@ -51,10 +51,10 @@ use proc_table;
 
 macro_rules! resolve_proc {
     ($f:expr => $this:expr, $name:literal : $ty:ty) => {
-        ::core::mem::transmute::<
-            ::ash::vk::PFN_vkVoidFunction,
-            Option<$ty>
-        >($f($this, $name.as_ptr()))
+        ::core::mem::transmute::<::ash::vk::PFN_vkVoidFunction, Option<$ty>>($f(
+            $this,
+            $name.as_ptr(),
+        ))
     };
 }
 use resolve_proc;
