@@ -33,8 +33,8 @@ pub extern "system" fn present(queue: vk::Queue, info: *const vk::PresentInfoKHR
 }
 
 fn draw_overlay(device: vk::Device, queue: vk::Queue, backend: &mut WindowBackend) {
-    match backend.renderer {
-        Some(Renderer::Vulkan(ref mut renderer)) => {}
+    let renderer = match backend.renderer {
+        Some(Renderer::Vulkan(ref mut renderer)) => renderer,
         Some(_) => {
             trace!("ignoring vulkan rendering");
             return;
@@ -45,5 +45,7 @@ fn draw_overlay(device: vk::Device, queue: vk::Queue, backend: &mut WindowBacken
             // wait next swap for possible dxgi swapchain check
             return;
         }
-    }
+    };
+
+    
 }
