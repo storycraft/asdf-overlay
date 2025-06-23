@@ -20,6 +20,7 @@ mod dbg;
 mod interop;
 mod layout;
 mod surface;
+mod vulkan_layer;
 
 use anyhow::Context;
 use app::app;

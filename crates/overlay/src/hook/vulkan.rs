@@ -1,21 +1,27 @@
-use core::{mem::forget, slice};
+use core::{mem, slice};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_hook::DetourHook;
 use ash::{
-    Device, Entry, Instance,
+    Device, Entry, Instance, StaticFn,
     khr::swapchain,
     vk::{
         self, AcquireNextImageInfoKHR, AllocationCallbacks, ApplicationInfo, Fence, Handle,
         InstanceCreateFlags, InstanceCreateInfo, PFN_vkAcquireNextImage2KHR,
-        PFN_vkAcquireNextImageKHR, PFN_vkDestroySwapchainKHR, PFN_vkQueuePresentKHR,
-        PhysicalDeviceFeatures, PresentInfoKHR, Semaphore, SwapchainKHR,
+        PFN_vkAcquireNextImageKHR, PFN_vkDestroySwapchainKHR, PFN_vkGetInstanceProcAddr,
+        PFN_vkQueuePresentKHR, PhysicalDeviceFeatures, PresentInfoKHR, Semaphore, SwapchainKHR,
     },
 };
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
 use tracing::{debug, error, trace};
-use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+use windows::{
+    Win32::{
+        System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
+        UI::Input::KeyboardAndMouse::GetActiveWindow,
+    },
+    core::s,
+};
 
 use crate::types::IntDashMap;
 
@@ -40,17 +46,31 @@ static SWAPCHAIN_MAP: Lazy<IntDashMap<u64, vk::Device>> = Lazy::new(IntDashMap::
 
 #[tracing::instrument]
 pub fn hook() {
-    fn inner() -> anyhow::Result<()> {
-        let entry = unsafe { Entry::load().context("failed to load vulkan")? };
+    fn inner() -> anyhow::Result<Option<()>> {
+        let Ok(module) = (unsafe { GetModuleHandleA(s!("vulkan-1.dll")) }) else {
+            return Ok(None);
+        };
+
+        let Some(get_instance_proc_addr) =
+            (unsafe { GetProcAddress(module, s!("vkGetInstanceProcAddr")) })
+        else {
+            bail!("cannot find vkGetInstanceProcAddr");
+        };
+
+        let entry = unsafe {
+            Entry::from_static_fn(StaticFn {
+                get_instance_proc_addr: mem::transmute::<
+                    unsafe extern "system" fn() -> isize,
+                    PFN_vkGetInstanceProcAddr,
+                >(get_instance_proc_addr),
+            })
+        };
 
         let instance =
             create_dummy_instance(&entry).context("failed to create dummy vulkan instance")?;
         defer!(unsafe {
             instance.destroy_instance(None);
         });
-
-        // Dropping entry free library
-        forget(entry);
 
         let device =
             create_dummy_device(&instance).context("failed to create dummy vulkan device")?;
@@ -91,11 +111,20 @@ pub fn hook() {
                 destroy_swapchain_khr,
             })
         })?;
-        Ok(())
+
+        Ok(Some(()))
     }
 
-    if let Err(err) = inner() {
-        error!("failed to hook vulkan. err: {err:?}");
+    match inner() {
+        Ok(Some(_)) => {}
+
+        Ok(None) => {
+            debug!("vulkan is not loaded. Skipping...");
+        }
+
+        Err(err) => {
+            error!("failed to hook vulkan. err: {err:?}");
+        }
     }
 }
 
