@@ -84,8 +84,9 @@ impl OpenglRenderer {
     }
 
     pub fn update_texture(&mut self, texture: Option<&ID3D11Texture2D>) -> anyhow::Result<()> {
+        // drop previous texture first, so it can be opened again without error
+        self.interop_texture.take();
         let Some(texture) = texture else {
-            self.interop_texture.take();
             return Ok(());
         };
 
