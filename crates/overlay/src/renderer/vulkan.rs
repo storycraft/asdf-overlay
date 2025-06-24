@@ -159,7 +159,6 @@ impl VulkanRenderer {
 
             let memory_type_index = {
                 let mut bits = requirements.memory_type_bits;
-                dbg!(bits);
 
                 props
                     .memory_types_as_slice()
@@ -447,7 +446,7 @@ fn create_render_pass(device: &Device, format: vk::Format) -> anyhow::Result<vk:
             .store_op(vk::AttachmentStoreOp::STORE)
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .initial_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)];
         let input_attachments = [vk::AttachmentReference::default()
             .attachment(0)
