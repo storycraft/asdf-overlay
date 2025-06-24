@@ -23,6 +23,7 @@ static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashM
 struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
     queues: Vec<vk::Queue>,
+    semaphore_buf: Vec<vk::Semaphore>,
 
     device: Device,
     swapchain_fn: khr::swapchain::DeviceFn,
@@ -49,6 +50,7 @@ impl DispatchTable {
         };
         Self {
             queues,
+            semaphore_buf: vec![],
 
             device: Device::from_parts_1_3(
                 device,

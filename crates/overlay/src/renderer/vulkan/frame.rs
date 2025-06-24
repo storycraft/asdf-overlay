@@ -11,6 +11,7 @@ pub struct FrameData {
     pub view: vk::ImageView,
     pub framebuffer: vk::Framebuffer,
     pub fence: vk::Fence,
+    pub submit_semaphore: vk::Semaphore,
 }
 
 impl FrameData {
@@ -34,6 +35,11 @@ impl FrameData {
                 )
                 .context("failed to create Fence")?
         };
+        let submit_semaphore = unsafe {
+            device
+                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                .context("failed to create Semaphore")?
+        };
 
         Ok(Self {
             command_pool,
@@ -41,6 +47,7 @@ impl FrameData {
             view,
             framebuffer,
             fence,
+            submit_semaphore,
         })
     }
 }

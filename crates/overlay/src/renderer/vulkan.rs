@@ -201,16 +201,24 @@ impl VulkanRenderer {
     pub fn draw(
         &mut self,
         queue: vk::Queue,
+        wait_semaphores: &[vk::Semaphore],
         index: u32,
         position: (i32, i32),
         size: (u32, u32),
         screen: (u32, u32),
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<vk::Semaphore>> {
         if self.texture.is_none() {
-            return Ok(());
+            return Ok(None);
         };
 
         let frame_data = self.frame_datas[index as usize];
+        unsafe {
+            self.device
+                .wait_for_fences(&[frame_data.fence], true, u64::MAX)?;
+            self.device
+                .reset_command_pool(frame_data.command_pool, vk::CommandPoolResetFlags::empty())?;
+            self.device.reset_fences(&[frame_data.fence])?;
+        }
 
         let rect: [f32; 4] = [
             (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0,
@@ -218,9 +226,8 @@ impl VulkanRenderer {
             (size.0 as f32 / screen.0 as f32) * 2.0,
             (size.1 as f32 / screen.1 as f32) * 2.0,
         ];
-
+        let command_buffer = frame_data.command_buffer;
         unsafe {
-            let command_buffer = frame_data.command_buffer;
             self.device.begin_command_buffer(
                 command_buffer,
                 &vk::CommandBufferBeginInfo::default()
@@ -275,20 +282,19 @@ impl VulkanRenderer {
             self.device.cmd_end_render_pass(command_buffer);
 
             self.device.end_command_buffer(command_buffer)?;
-            self.device.reset_fences(&[frame_data.fence])?;
+
             self.device.queue_submit(
                 queue,
-                &[vk::SubmitInfo::default().command_buffers(&[command_buffer])],
+                &[vk::SubmitInfo::default()
+                    .command_buffers(&[command_buffer])
+                    .wait_semaphores(wait_semaphores)
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::TOP_OF_PIPE])
+                    .signal_semaphores(&[frame_data.submit_semaphore])],
                 frame_data.fence,
             )?;
-
-            // todo
-            self.device
-                .wait_for_fences(&[frame_data.fence], true, u64::MAX)?;
-            self.device
-                .reset_command_pool(frame_data.command_pool, vk::CommandPoolResetFlags::empty())?;
         }
-        Ok(())
+
+        Ok(Some(frame_data.submit_semaphore))
     }
 }
 
@@ -298,6 +304,8 @@ impl Drop for VulkanRenderer {
             self.device.device_wait_idle().expect("failed to wait idle");
 
             for frame_data in &mut self.frame_datas {
+                self.device
+                    .destroy_semaphore(frame_data.submit_semaphore, None);
                 self.device.destroy_fence(frame_data.fence, None);
                 self.device
                     .free_command_buffers(frame_data.command_pool, &[frame_data.command_buffer]);
