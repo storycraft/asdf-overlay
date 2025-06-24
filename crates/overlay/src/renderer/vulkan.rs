@@ -312,7 +312,11 @@ impl VulkanRenderer {
                 &[vk::SubmitInfo::default()
                     .command_buffers(&[command_buffer])
                     .wait_semaphores(wait_semaphores)
-                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::TOP_OF_PIPE])
+                    .wait_dst_stage_mask(if wait_semaphores.is_empty() {
+                        &[]
+                    } else {
+                        &[vk::PipelineStageFlags::TOP_OF_PIPE]
+                    })
                     .signal_semaphores(&[frame_data.submit_semaphore])],
                 frame_data.fence,
             )?;
