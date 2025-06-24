@@ -89,6 +89,7 @@ impl VulkanRenderer {
     pub fn update_texture(
         &mut self,
         texture: Option<&Direct3D11::ID3D11Texture2D>,
+        surface_format: vk::Format,
         props: &vk::PhysicalDeviceMemoryProperties,
     ) -> anyhow::Result<()> {
         unsafe {
@@ -117,7 +118,7 @@ impl VulkanRenderer {
             let image = self.device.create_image(
                 &vk::ImageCreateInfo::default()
                     .image_type(vk::ImageType::TYPE_2D)
-                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .format(surface_format)
                     .extent(vk::Extent3D {
                         width: desc.Width,
                         height: desc.Height,
@@ -192,7 +193,7 @@ impl VulkanRenderer {
             let view = self.device.create_image_view(
                 &vk::ImageViewCreateInfo::default()
                     .image(image)
-                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .format(surface_format)
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .subresource_range(vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,

@@ -135,6 +135,7 @@ fn draw_overlay(
 
         if let Err(err) = renderer.update_texture(
             backend.surface.get().map(|surface| surface.texture()),
+            data.format,
             &props,
         ) {
             error!("failed to update opengl texture. err: {err:?}");
