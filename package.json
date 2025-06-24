@@ -49,7 +49,8 @@
     "addon-aarch64.node",
     "asdf_overlay-x64.dll",
     "asdf_overlay-x86.dll",
-    "asdf_overlay-aarch64.dll"
+    "asdf_overlay-aarch64.dll",
+    "asdf_overlay-layer.json"
   ],
   "devDependencies": {
     "@tsconfig/node20": "^20.1.4",
