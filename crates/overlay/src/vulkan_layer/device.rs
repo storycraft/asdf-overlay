@@ -12,7 +12,7 @@ use crate::types::IntDashMap;
 
 use super::{proc_table, resolve_proc};
 use ash::{
-    Device, DeviceFnV1_0, DeviceFnV1_1, DeviceFnV1_2, DeviceFnV1_3, khr,
+    Device, khr,
     vk::{self, BaseInStructure, Handle},
 };
 use once_cell::sync::Lazy;
@@ -22,6 +22,7 @@ static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashM
 
 struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
+    physical_device: vk::PhysicalDevice,
     queues: Vec<vk::Queue>,
     semaphore_buf: Vec<vk::Semaphore>,
 
@@ -33,32 +34,30 @@ struct DispatchTable {
 impl DispatchTable {
     fn new(
         get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
-        device: vk::Device,
+        physical_device: vk::PhysicalDevice,
+        raw_device: vk::Device,
         queues: Vec<vk::Queue>,
     ) -> Self {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
-                unsafe { resolve_proc!(get_proc_addr => device, $name : $ty) }
+                unsafe { resolve_proc!(get_proc_addr => raw_device, $name : $ty) }
             };
         }
 
         let loader = |name: &CStr| unsafe {
             mem::transmute::<vk::PFN_vkVoidFunction, *const c_void>(get_proc_addr(
-                device,
+                raw_device,
                 name.as_ptr(),
             ))
         };
+        let device = unsafe { Device::load_with(loader, raw_device) };
+
         Self {
+            physical_device,
             queues,
             semaphore_buf: vec![],
 
-            device: Device::from_parts_1_3(
-                device,
-                DeviceFnV1_0::load(loader),
-                DeviceFnV1_1::load(loader),
-                DeviceFnV1_2::load(loader),
-                DeviceFnV1_3::load(loader),
-            ),
+            device,
             swapchain_fn: khr::swapchain::DeviceFn::load(loader),
             queue_present: proc!(c"vkQueuePresentKHR": vk::PFN_vkQueuePresentKHR),
 
@@ -182,7 +181,7 @@ pub(super) extern "system" fn create_device(
 
     DISPATCH_TABLE.insert(
         device.as_raw(),
-        DispatchTable::new(next_get_device_proc_addr, device, queues),
+        DispatchTable::new(next_get_device_proc_addr, ph_device, device, queues),
     );
 
     vk::Result::SUCCESS

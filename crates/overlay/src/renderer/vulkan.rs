@@ -89,6 +89,7 @@ impl VulkanRenderer {
     pub fn update_texture(
         &mut self,
         texture: Option<&Direct3D11::ID3D11Texture2D>,
+        props: &vk::PhysicalDeviceMemoryProperties,
     ) -> anyhow::Result<()> {
         unsafe {
             if let Some((memory, image, view)) = self.texture.take() {
@@ -156,12 +157,35 @@ impl VulkanRenderer {
                 import_memory_info.p_next = &mut dedicated_alloc_info as *const _ as _;
             }
 
+            let memory_type_index = {
+                let mut bits = requirements.memory_type_bits;
+                dbg!(bits);
+
+                props
+                    .memory_types_as_slice()
+                    .iter()
+                    .enumerate()
+                    .find_map({
+                        |(index, ty)| {
+                            if bits & 1 == 1
+                                && ty
+                                    .property_flags
+                                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                            {
+                                Some(index as u32)
+                            } else {
+                                bits >>= 1;
+                                None
+                            }
+                        }
+                    })
+                    .unwrap_or_default()
+            };
+
             let alloc_info = vk::MemoryAllocateInfo::default()
                 .allocation_size(requirements.size)
-                .memory_type_index(0)
+                .memory_type_index(memory_type_index)
                 .push_next(&mut import_memory_info);
-
-            // todo acccurate memory_type_index
             let memory = self.device.allocate_memory(&alloc_info, None)?;
 
             self.device.bind_image_memory(image, memory, 0)?;

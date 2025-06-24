@@ -1,15 +1,22 @@
+pub mod physical_device;
 pub mod surface;
 
 use core::{
     ffi::{CStr, c_char, c_void},
+    mem,
     ptr::NonNull,
 };
 
-use crate::{types::IntDashMap, vulkan_layer::device};
+use crate::{
+    types::IntDashMap,
+    vulkan_layer::{device, instance::physical_device::PHYSICAL_DEVICE_MAP},
+};
 
 use super::{proc_table, resolve_proc};
-use anyhow::Context;
-use ash::vk::{self, BaseInStructure, Handle};
+use ash::{
+    Instance,
+    vk::{self, BaseInStructure, Handle},
+};
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 
@@ -17,31 +24,43 @@ static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashM
 
 struct DispatchTable {
     get_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+    physical_devices: Vec<vk::PhysicalDevice>,
 
-    destroy_instance: vk::PFN_vkDestroyInstance,
+    instance: Instance,
     create_win32_surface: Option<vk::PFN_vkCreateWin32SurfaceKHR>,
     destroy_surface: Option<vk::PFN_vkDestroySurfaceKHR>,
 }
 
 impl DispatchTable {
-    fn new(
-        get_proc_addr: vk::PFN_vkGetInstanceProcAddr,
-        instance: vk::Instance,
-    ) -> anyhow::Result<Self> {
+    fn new(get_proc_addr: vk::PFN_vkGetInstanceProcAddr, raw_instance: vk::Instance) -> Self {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
-                unsafe { resolve_proc!(get_proc_addr => instance, $name : $ty) }
+                unsafe { resolve_proc!(get_proc_addr => raw_instance, $name : $ty) }
             };
         }
 
-        Ok(Self {
-            destroy_instance: proc!(c"vkDestroyInstance": vk::PFN_vkDestroyInstance)
-                .context("failed resolve instance fn vkDestroyInstance")?,
+        let instance = unsafe {
+            Instance::load_with(
+                |name| {
+                    mem::transmute::<vk::PFN_vkVoidFunction, *const c_void>(get_proc_addr(
+                        raw_instance,
+                        name.as_ptr(),
+                    ))
+                },
+                raw_instance,
+            )
+        };
+        let physical_devices = unsafe { instance.enumerate_physical_devices() }
+            .expect("failed to enumerate physical devices");
+        Self {
+            physical_devices,
+
+            instance,
             create_win32_surface: proc!(c"vkCreateWin32SurfaceKHR": vk::PFN_vkCreateWin32SurfaceKHR),
             destroy_surface: proc!(c"vkDestroySurfaceKHR": vk::PFN_vkDestroySurfaceKHR),
 
             get_proc_addr,
-        })
+        }
     }
 }
 
@@ -104,11 +123,17 @@ extern "system" fn create_instance(
 
     debug!("initializing instance dispatch table");
     let instance = unsafe { *instance };
-    DISPATCH_TABLE.insert(
-        instance.as_raw(),
-        DispatchTable::new(next_get_instance_proc_addr, instance)
-            .expect("failed to initialize dispatch table"),
-    );
+    let table = DispatchTable::new(next_get_instance_proc_addr, instance);
+    for &physical_device in &table.physical_devices {
+        let props = unsafe {
+            table
+                .instance
+                .get_physical_device_memory_properties(physical_device)
+        };
+        PHYSICAL_DEVICE_MAP.insert(physical_device.as_raw(), props);
+    }
+
+    DISPATCH_TABLE.insert(instance.as_raw(), table);
 
     vk::Result::SUCCESS
 }
@@ -121,12 +146,13 @@ extern "system" fn destroy_instance(
     trace!("vkDestroyInstance called");
 
     debug!("instance dispatch table cleanup");
+    let (_, table) = DISPATCH_TABLE.remove(&instance.as_raw()).unwrap();
     unsafe {
-        (DISPATCH_TABLE
-            .remove(&instance.as_raw())
-            .unwrap()
-            .1
-            .destroy_instance)(instance, allocator)
+        (table.instance.fp_v1_0().destroy_instance)(instance, allocator);
+    }
+
+    for physical_device in table.physical_devices {
+        PHYSICAL_DEVICE_MAP.remove(&physical_device.as_raw());
     }
 }
 

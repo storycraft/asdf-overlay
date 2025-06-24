@@ -8,9 +8,12 @@ use crate::{
     app::OverlayIpc,
     backend::{Backends, WindowBackend, renderers::Renderer},
     renderer::vulkan::VulkanRenderer,
-    vulkan_layer::device::{
-        DISPATCH_TABLE, DispatchTable, get_queue_data,
-        swapchain::{SwapchainData, get_swapchain_data},
+    vulkan_layer::{
+        device::{
+            DISPATCH_TABLE, DispatchTable, get_queue_data,
+            swapchain::{SwapchainData, get_swapchain_data},
+        },
+        instance::physical_device::get_physical_device_memory_properties,
     },
 };
 
@@ -122,15 +125,23 @@ fn draw_overlay(
         };
 
         Box::new(
-            VulkanRenderer::new(table.device.clone(), queue_family_index, data, &images)
-                .expect("renderer creation failed"),
+            VulkanRenderer::new(
+                table.device.clone(),
+                queue_family_index,
+                data,
+                &images,
+            )
+            .expect("renderer creation failed"),
         )
     });
 
     if backend.surface.invalidate_update() {
-        if let Err(err) =
-            renderer.update_texture(backend.surface.get().map(|surface| surface.texture()))
-        {
+        let props = get_physical_device_memory_properties(table.physical_device).unwrap();
+
+        if let Err(err) = renderer.update_texture(
+            backend.surface.get().map(|surface| surface.texture()),
+            &props,
+        ) {
             error!("failed to update opengl texture. err: {err:?}");
             return None;
         }
