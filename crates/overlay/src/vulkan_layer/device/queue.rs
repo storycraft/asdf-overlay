@@ -125,13 +125,8 @@ fn draw_overlay(
         };
 
         Box::new(
-            VulkanRenderer::new(
-                table.device.clone(),
-                queue_family_index,
-                data,
-                &images,
-            )
-            .expect("renderer creation failed"),
+            VulkanRenderer::new(table.device.clone(), queue_family_index, data, &images)
+                .expect("renderer creation failed"),
         )
     });
 
