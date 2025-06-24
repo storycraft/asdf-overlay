@@ -121,7 +121,10 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
             let Some(Renderer::Dx9(ref mut renderer)) = backend.renderer else {
                 return;
             };
+            debug!("dx9 renderer cleanup");
+
             renderer.take();
+            backend.set_surface_updated();
         });
     }
 }

@@ -20,7 +20,7 @@ By reading the documentation you will learn how to
 * [ ] DX10
 * [x] DX11
 * [x] DX12
-* [ ] Vulkan
+* [x] Vulkan (via loading as vulkan layer)
 
 ## License
 This project is dual licensed under MIT or Apache-2.0 License.

@@ -206,6 +206,10 @@ impl WindowBackend {
         Ok(())
     }
 
+    pub fn set_surface_updated(&mut self) {
+        self.surface.updated = true;
+    }
+
     pub fn position(&mut self) -> (i32, i32) {
         self.layout.get_or_calc(
             self.surface

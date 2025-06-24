@@ -58,6 +58,12 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
                 // skip drawing on render changes
                 return;
             }
+            // use dxgi swapchain instead
+            Some(Renderer::Vulkan(_)) => {
+                backend.renderer = Some(Renderer::Dx12(None));
+                debug!("switching from vulkan to dx12 render");
+                return;
+            }
             Some(_) => {
                 trace!("ignoring dx12 rendering");
                 return;
@@ -96,7 +102,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
         let position = backend.layout.get_or_calc(size, screen);
         trace!("using dx12 renderer");
         let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-        let _res = rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
+        let res = rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
             renderer.draw(
                 &device,
                 &swapchain,
@@ -108,7 +114,7 @@ fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
                 screen,
             )
         });
-        trace!("dx12 render: {:?}", _res);
+        trace!("dx12 render: {:?}", res);
     } else if let Ok(device) = device.cast::<ID3D11Device1>() {
         let renderer = match backend.renderer {
             Some(Renderer::Dx11(ref mut renderer)) => renderer,
