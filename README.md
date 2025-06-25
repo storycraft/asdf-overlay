@@ -15,12 +15,12 @@ Blazingly fast™ Windows Overlay library
 [Documentation](https://storycraft.github.io/asdf-overlay/)
 
 ## Used by
-[alspotron-url]: https://github.com/organization/alspotron
+[lyrs-url]: https://github.com/organization/lyrs
 [tosu-url]: https://github.com/tosuapp/tosu
 
 | | | |
 | :-----: | ----- | ----- |
-| [![Alspotron logo](.github/images/alspotron-logo.png)][alspotron-url] | [Alspotron][alspotron-url] | Ingame lyrics overlay
+| [![Lyrs logo](.github/images/lyrs-logo.png)][lyrs-url] | [Lyrs][lyrs-url] | Ingame lyrics overlay
 | [![Tosu logo](.github/images/tosu-logo.png)][tosu-url] | [Tosu][tosu-url] | Ingame overlay
 
 ## Sponsorship
