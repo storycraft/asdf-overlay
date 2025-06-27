@@ -40,8 +40,9 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
+// hglrc is not strictly bound to one window. But no one seems to uses it on multiple windows
 // HGLRC -> (HWND, OpenglRenderer)
-static MAP: Lazy<IntDashMap<u32, OpenglRenderer>> = Lazy::new(IntDashMap::default);
+static MAP: Lazy<IntDashMap<u32, (u32, OpenglRenderer)>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) {
@@ -85,8 +86,15 @@ pub fn hook(dummy_hwnd: HWND) {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    if MAP.remove(&(hglrc.0 as u32)).is_some() {
+    if let Some((_, (hwnd, _))) = MAP.remove(&(hglrc.0 as u32)) {
         debug!("gl renderer cleanup");
+        _ = Backends::with_backend(HWND(hwnd as _), |backend| {
+            let Some(Renderer::Opengl) = backend.renderer else {
+                return;
+            };
+
+            backend.set_surface_updated();
+        });
     }
 
     unsafe { HOOK.wait().wgl_delete_context.original_fn()(hglrc) }
@@ -140,19 +148,23 @@ fn draw_overlay(hdc: HDC) {
 
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                let renderer = &mut (*match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
-                    debug!("initializing opengl renderer");
+                let (_, ref mut renderer) =
+                    *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
+                        debug!("initializing opengl renderer");
 
-                    OpenglRenderer::new(&backend.interop.device)
-                        .context("failed to create OpenglRenderer")
-                        .context("failed to create WglContextWrapped")
-                }) {
-                    Ok(renderer) => renderer,
-                    Err(err) => {
-                        error!("renderer setup failed. err: {:?}", err);
-                        return;
-                    }
-                });
+                        Ok::<_, anyhow::Error>((
+                            hwnd.0 as _,
+                            OpenglRenderer::new(&backend.interop.device)
+                                .context("failed to create OpenglRenderer")
+                                .context("failed to create WglContextWrapped")?,
+                        ))
+                    }) {
+                        Ok(renderer) => renderer,
+                        Err(err) => {
+                            error!("renderer setup failed. err: {:?}", err);
+                            return;
+                        }
+                    };
 
                 if backend.surface.invalidate_update() {
                     if let Err(err) = renderer
