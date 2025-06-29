@@ -134,20 +134,18 @@ fn load_library_w_for(
                     .find(|ex| matches!(ex.name, Some("LoadLibraryW")))
                     .context("cannot find LoadLibraryW exports")?;
 
-                let mod_list = unsafe {
-                    let mut size = 0;
-                    EnumProcessModulesEx(process, 0 as _, 0, &mut size, LIST_MODULES_ALL)?;
-                    let mut list =
-                        vec![HMODULE::default(); size as usize / mem::size_of::<HMODULE>()];
+                let mut mod_list = vec![HMODULE::default(); 1024];
+                let mut cb_size = 0;
+                unsafe {
                     EnumProcessModulesEx(
                         process,
-                        list.as_mut_ptr(),
-                        size,
-                        &mut size,
+                        mod_list.as_mut_ptr(),
+                        (mod_list.len() * mem::size_of::<HMODULE>()) as u32,
+                        &mut cb_size,
                         LIST_MODULES_ALL,
                     )?;
-                    list
                 };
+                mod_list.truncate(cb_size as usize / mem::size_of::<HMODULE>());
 
                 let target_kernel32_base = {
                     let mut buf = [0_u8; MAX_PATH as usize + 1];
