@@ -160,13 +160,42 @@ impl Dx9Renderer {
                 _ = state_block.Apply();
             });
 
+            device.SetPixelShader(None)?;
+            device.SetVertexShader(None)?;
+            device.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
+            device.SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD.0 as _)?;
+            device.SetRenderState(D3DRS_ZWRITEENABLE, 0)?;
+            device.SetRenderState(D3DRS_ALPHATESTENABLE, 0)?;
+            device.SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE.0 as _)?;
+            device.SetRenderState(D3DRS_ZENABLE, 0)?;
             // disable srgb gamma correction enabled in some games
             device.SetRenderState(D3DRS_SRGBWRITEENABLE, 0)?;
+            device.SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD.0 as _)?;
             device.SetRenderState(D3DRS_ALPHABLENDENABLE, 1)?;
             device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA.0 as _)?;
             device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA.0 as _)?;
-            device.SetTextureStageState(0, D3DTSS_COLOROP, D3DTSS_COLORARG1.0 as _)?;
+            device.SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, 1)?;
+            device.SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE.0 as _)?;
+            device.SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA.0 as _)?;
+            device.SetRenderState(D3DRS_SCISSORTESTENABLE, 0)?;
+            device.SetRenderState(D3DRS_FOGENABLE, 0)?;
+            device.SetRenderState(D3DRS_RANGEFOGENABLE, 0)?;
+            device.SetRenderState(D3DRS_SPECULARENABLE, 0)?;
+            device.SetRenderState(D3DRS_STENCILENABLE, 0)?;
+            device.SetRenderState(D3DRS_CLIPPING, 0)?;
+            device.SetRenderState(D3DRS_LIGHTING, 0)?;
+            device.SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE.0 as _)?;
             device.SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE)?;
+            device.SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE)?;
+            device.SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE.0 as _)?;
+            device.SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE)?;
+            device.SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE)?;
+            device.SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE.0 as _)?;
+            device.SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_NONE.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_NONE.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP.0 as _)?;
 
             device.SetFVF(Vertex::FVF)?;
             device.SetTexture(0, texture)?;
