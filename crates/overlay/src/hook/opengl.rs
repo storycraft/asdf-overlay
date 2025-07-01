@@ -3,6 +3,7 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
+use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
 use tracing::{debug, error, trace};
@@ -11,7 +12,9 @@ use windows::{
         Foundation::{HMODULE, HWND},
         Graphics::{
             Gdi::{HDC, WGL_SWAP_MAIN_PLANE, WindowFromDC},
-            OpenGL::{HGLRC, wglGetCurrentContext, wglGetProcAddress},
+            OpenGL::{
+                HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
+            },
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
     },
@@ -40,9 +43,13 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
-// hglrc is not strictly bound to one window. But no one seems to uses it on multiple windows
-// HGLRC -> (HWND, OpenglRenderer)
-static MAP: Lazy<IntDashMap<u32, (u32, OpenglRenderer)>> = Lazy::new(IntDashMap::default);
+struct GlData {
+    hglrc: u32,
+    hwnd: u32,
+    renderer: Option<OpenglRenderer>,
+}
+// HDC -> GlData
+static MAP: Lazy<IntDashMap<u32, GlData>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) {
@@ -86,15 +93,39 @@ pub fn hook(dummy_hwnd: HWND) {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    if let Some((_, (hwnd, _))) = MAP.remove(&(hglrc.0 as u32)) {
-        debug!("gl renderer cleanup");
-        _ = Backends::with_backend(HWND(hwnd as _), |backend| {
+    let current_hdc = unsafe { wglGetCurrentDC() };
+    let current_hglrc = unsafe { wglGetCurrentContext() };
+    let mut renderer_cleanup = false;
+    MAP.retain(|&hdc, gl_data| {
+        if gl_data.hglrc != hglrc.0 as u32 {
+            return true;
+        }
+        if !renderer_cleanup {
+            renderer_cleanup = true;
+        }
+
+        debug!(
+            "gl renderer cleanup hdc: {hdc:x} hwnd: {:x} hglrc: {:x}",
+            gl_data.hwnd, gl_data.hglrc
+        );
+        unsafe {
+            _ = wglMakeCurrent(HDC(hdc as _), HGLRC(gl_data.hglrc as _));
+            gl_data.renderer.take();
+        }
+        _ = Backends::with_backend(HWND(gl_data.hwnd as _), |backend| {
             let Some(Renderer::Opengl) = backend.renderer else {
                 return;
             };
 
             backend.set_surface_updated();
         });
+
+        false
+    });
+    if renderer_cleanup {
+        unsafe {
+            _ = wglMakeCurrent(current_hdc, current_hglrc);
+        }
     }
 
     unsafe { HOOK.wait().wgl_delete_context.original_fn()(hglrc) }
@@ -115,9 +146,9 @@ fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
     f(last_call_count)
 }
 
-#[inline]
 fn draw_overlay(hdc: HDC) {
-    fn inner(hglrc: HGLRC, hwnd: HWND) {
+    #[inline]
+    fn inner(hwnd: HWND, renderer: &mut Option<OpenglRenderer>) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
             match backend.renderer {
                 Some(Renderer::Opengl) => {}
@@ -148,23 +179,20 @@ fn draw_overlay(hdc: HDC) {
 
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                let (_, ref mut renderer) =
-                    *match MAP.entry(hglrc.0 as u32).or_try_insert_with(|| {
+                let renderer = match renderer {
+                    Some(renderer) => renderer,
+                    None => {
                         debug!("initializing opengl renderer");
 
-                        Ok::<_, anyhow::Error>((
-                            hwnd.0 as _,
-                            OpenglRenderer::new(&backend.interop.device)
-                                .context("failed to create OpenglRenderer")
-                                .context("failed to create WglContextWrapped")?,
-                        ))
-                    }) {
-                        Ok(renderer) => renderer,
-                        Err(err) => {
-                            error!("renderer setup failed. err: {:?}", err);
-                            return;
-                        }
-                    };
+                        renderer.insert(match OpenglRenderer::new(&backend.interop.device) {
+                            Ok(renderer) => renderer,
+                            Err(err) => {
+                                error!("renderer setup failed. err: {:?}", err);
+                                return;
+                            }
+                        })
+                    }
+                };
 
                 if backend.surface.invalidate_update() {
                     if let Err(err) = renderer
@@ -200,17 +228,27 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    let hglrc = unsafe { wglGetCurrentContext() };
-    if hglrc.is_invalid() {
-        return;
-    }
+    let mut data = match MAP.entry(hdc.0 as u32) {
+        Entry::Occupied(entry) => entry.into_ref(),
+        Entry::Vacant(entry) => {
+            let hglrc = unsafe { wglGetCurrentContext() };
+            if hglrc.is_invalid() {
+                return;
+            }
 
-    let hwnd = unsafe { WindowFromDC(hdc) };
-    if hwnd.is_invalid() {
-        return;
-    }
+            let hwnd = unsafe { WindowFromDC(hdc) };
+            if hwnd.is_invalid() {
+                return;
+            }
 
-    inner(hglrc, hwnd);
+            entry.insert(GlData {
+                hglrc: hglrc.0 as _,
+                hwnd: hwnd.0 as _,
+                renderer: None,
+            })
+        }
+    };
+    inner(HWND(data.hwnd as _), &mut data.renderer);
 }
 
 #[tracing::instrument]
