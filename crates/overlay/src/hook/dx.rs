@@ -106,9 +106,8 @@ pub fn hook(dummy_hwnd: HWND) {
             DetourHook::attach(reset_ex, dx9::hooked_reset_ex as _)
         })?;
         debug!("hooking IDirect3DDevice9::Present");
-        HOOK.dx9_present.get_or_try_init(|| unsafe {
-            DetourHook::attach(present, dx9::hooked_present as _)
-        })?;
+        HOOK.dx9_present
+            .get_or_try_init(|| unsafe { DetourHook::attach(present, dx9::hooked_present as _) })?;
         debug!("hooking IDirect3DSwapChain9::Present");
         HOOK.dx9_swapchain_present.get_or_try_init(|| unsafe {
             DetourHook::attach(swapchain_present, dx9::hooked_swapchain_present as _)
