@@ -6,7 +6,7 @@ pub mod util;
 
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
-use dx9::{EndSceneFn, ResetFn};
+use dx9::{PresentExFn, PresentFn as Dx9PresentFn, ResetFn, SwapchainPresentFn};
 use dx12::ExecuteCommandListsFn;
 use dxgi::{Present1Fn, PresentFn};
 use once_cell::sync::OnceCell;
@@ -25,7 +25,9 @@ struct Hook {
     resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
     resize_buffers1: OnceCell<DetourHook<ResizeBuffers1Fn>>,
     execute_command_lists: OnceCell<DetourHook<ExecuteCommandListsFn>>,
-    end_scene: OnceCell<DetourHook<EndSceneFn>>,
+    dx9_present: OnceCell<DetourHook<Dx9PresentFn>>,
+    dx9_present_ex: OnceCell<DetourHook<PresentExFn>>,
+    dx9_swapchain_present: OnceCell<DetourHook<SwapchainPresentFn>>,
     reset: OnceCell<DetourHook<ResetFn>>,
     reset_ex: OnceCell<DetourHook<ResetExFn>>,
 }
@@ -36,7 +38,9 @@ static HOOK: Hook = Hook {
     resize_buffers: OnceCell::new(),
     resize_buffers1: OnceCell::new(),
     execute_command_lists: OnceCell::new(),
-    end_scene: OnceCell::new(),
+    dx9_present: OnceCell::new(),
+    dx9_present_ex: OnceCell::new(),
+    dx9_swapchain_present: OnceCell::new(),
     reset: OnceCell::new(),
     reset_ex: OnceCell::new(),
 };
@@ -91,7 +95,7 @@ pub fn hook(dummy_hwnd: HWND) {
     }
 
     fn hook_dx9(dummy_hwnd: HWND) -> anyhow::Result<()> {
-        let (end_scene, reset, reset_ex) =
+        let (present, swapchain_present, present_ex, reset, reset_ex) =
             dx9::get_dx9_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
 
         debug!("hooking IDirect3DDevice9::Reset");
@@ -101,9 +105,16 @@ pub fn hook(dummy_hwnd: HWND) {
         HOOK.reset_ex.get_or_try_init(|| unsafe {
             DetourHook::attach(reset_ex, dx9::hooked_reset_ex as _)
         })?;
-        debug!("hooking IDirect3DDevice9::EndScene");
-        HOOK.end_scene.get_or_try_init(|| unsafe {
-            DetourHook::attach(end_scene, dx9::hooked_end_scene as _)
+        debug!("hooking IDirect3DDevice9::Present");
+        HOOK.dx9_present
+            .get_or_try_init(|| unsafe { DetourHook::attach(present, dx9::hooked_present as _) })?;
+        debug!("hooking IDirect3DSwapChain9::Present");
+        HOOK.dx9_swapchain_present.get_or_try_init(|| unsafe {
+            DetourHook::attach(swapchain_present, dx9::hooked_swapchain_present as _)
+        })?;
+        debug!("hooking IDirect3DDevice9Ex::PresentEx");
+        HOOK.dx9_present_ex.get_or_try_init(|| unsafe {
+            DetourHook::attach(present_ex, dx9::hooked_present_ex as _)
         })?;
 
         Ok(())

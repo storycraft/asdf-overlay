@@ -4,11 +4,15 @@ use anyhow::Context;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::HWND,
-        Graphics::Direct3D9::{
-            D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
-            D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX, D3DPRESENT_PARAMETERS,
-            D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3DDevice9,
+        Foundation::{HWND, RECT},
+        Graphics::{
+            Direct3D9::{
+                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
+                D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX,
+                D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3DDevice9,
+                IDirect3DSwapChain9,
+            },
+            Gdi::RGNDATA,
         },
     },
     core::{BOOL, HRESULT, Interface},
@@ -22,7 +26,29 @@ use crate::{
 
 use super::HOOK;
 
-pub type EndSceneFn = unsafe extern "system" fn(*mut c_void) -> HRESULT;
+pub type PresentFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+) -> HRESULT;
+pub type PresentExFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+    u32,
+) -> HRESULT;
+pub type SwapchainPresentFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+    u32,
+) -> HRESULT;
 pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
 pub type ResetExFn = unsafe extern "system" fn(
     *mut c_void,
@@ -31,22 +57,108 @@ pub type ResetExFn = unsafe extern "system" fn(
 ) -> HRESULT;
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_end_scene(this: *mut c_void) -> HRESULT {
-    trace!("EndScene called");
+pub(super) extern "system" fn hooked_present(
+    this: *mut c_void,
+    source_rect: *const RECT,
+    dest_rect: *const RECT,
+    dest_window_override: HWND,
+    dirty_region: *const RGNDATA,
+) -> HRESULT {
+    trace!("Present called");
 
     let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-    let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-
-    let mut params = D3DPRESENT_PARAMETERS::default();
-    unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
-    if !params.hDeviceWindow.is_invalid() {
-        draw_overlay(params.hDeviceWindow, device);
+    let mut hwnd = dest_window_override;
+    if hwnd.is_invalid() {
+        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+        let mut params = D3DPRESENT_PARAMETERS::default();
+        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+        hwnd = params.hDeviceWindow;
+    }
+    if !hwnd.is_invalid() {
+        draw_overlay(hwnd, device);
     }
 
-    unsafe { HOOK.end_scene.wait().original_fn()(this) }
+    unsafe {
+        HOOK.dx9_present.wait().original_fn()(
+            this,
+            source_rect,
+            dest_rect,
+            dest_window_override,
+            dirty_region,
+        )
+    }
 }
 
-#[inline]
+#[tracing::instrument]
+pub(super) extern "system" fn hooked_swapchain_present(
+    this: *mut c_void,
+    source_rect: *const RECT,
+    dest_rect: *const RECT,
+    dest_window_override: HWND,
+    dirty_region: *const RGNDATA,
+    dw_flags: u32,
+) -> HRESULT {
+    trace!("IDirect3DSwapChain9::Present called");
+
+    let swapchain = unsafe { IDirect3DSwapChain9::from_raw_borrowed(&this) }.unwrap();
+    let device = unsafe { swapchain.GetDevice() }.unwrap();
+    let mut hwnd = dest_window_override;
+    if hwnd.is_invalid() {
+        let mut params = D3DPRESENT_PARAMETERS::default();
+        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+        hwnd = params.hDeviceWindow;
+    }
+    if !hwnd.is_invalid() {
+        draw_overlay(hwnd, &device);
+    }
+
+    unsafe {
+        HOOK.dx9_swapchain_present.wait().original_fn()(
+            this,
+            source_rect,
+            dest_rect,
+            dest_window_override,
+            dirty_region,
+            dw_flags,
+        )
+    }
+}
+
+#[tracing::instrument]
+pub(super) extern "system" fn hooked_present_ex(
+    this: *mut c_void,
+    source_rect: *const RECT,
+    dest_rect: *const RECT,
+    dest_window_override: HWND,
+    dirty_region: *const RGNDATA,
+    dw_flags: u32,
+) -> HRESULT {
+    trace!("PresentEx called");
+
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+    let mut hwnd = dest_window_override;
+    if hwnd.is_invalid() {
+        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+        let mut params = D3DPRESENT_PARAMETERS::default();
+        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+        hwnd = params.hDeviceWindow;
+    }
+    if !hwnd.is_invalid() {
+        draw_overlay(hwnd, device);
+    }
+
+    unsafe {
+        HOOK.dx9_present_ex.wait().original_fn()(
+            this,
+            source_rect,
+            dest_rect,
+            dest_window_override,
+            dirty_region,
+            dw_flags,
+        )
+    }
+}
+
 fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
     let res = Backends::with_or_init_backend(hwnd, |backend| {
         let renderer = match backend.renderer {
@@ -92,8 +204,13 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
             |mapped| renderer.update_texture(device, size, mapped),
         ) {
             Ok(Some(_)) => {
+                if unsafe { device.BeginScene() }.is_err() {
+                    return;
+                }
+
                 let _res = renderer.draw(device, position, screen);
                 trace!("dx9 render: {:?}", _res);
+                unsafe { _ = device.EndScene() };
             }
             Ok(None) => {}
             Err(err) => {
@@ -158,8 +275,17 @@ pub(super) extern "system" fn hooked_reset_ex(
     unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) }
 }
 
-/// Get pointer to IDirect3DDevice9::EndScene, IDirect3DDevice9::Reset by creating dummy device
-pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn, ResetExFn)> {
+/// Get pointer to IDirect3DDevice9::Present, IDirect3DSwapChain9::Present,
+/// IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset, IDirect3DDevice9Ex::ResetEx by creating dummy device
+pub fn get_dx9_addr(
+    dummy_hwnd: HWND,
+) -> anyhow::Result<(
+    PresentFn,
+    SwapchainPresentFn,
+    PresentExFn,
+    ResetFn,
+    ResetExFn,
+)> {
     let device = unsafe {
         let dx9ex = Direct3DCreate9Ex(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
 
@@ -182,9 +308,18 @@ pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn, Re
         device.context("cannot create IDirect3DDevice9")?
     };
 
+    let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+
     let dx9_vtable = Interface::vtable(&*device);
-    let end_scene = dx9_vtable.EndScene;
-    debug!("IDirect3DDevice9::EndScene found: {:p}", end_scene);
+    let present = dx9_vtable.Present;
+    debug!("IDirect3DDevice9::Present found: {:p}", present);
+
+    let dx9_swapchain_vtable = Interface::vtable(&swapchain);
+    let swapchain_present = dx9_swapchain_vtable.Present;
+    debug!(
+        "IDirect3DSwapChain9::Present found: {:p}",
+        swapchain_present
+    );
 
     let reset = dx9_vtable.Reset;
     debug!("IDirect3DDevice9::Reset found: {:p}", reset);
@@ -193,5 +328,8 @@ pub fn get_dx9_addr(dummy_hwnd: HWND) -> anyhow::Result<(EndSceneFn, ResetFn, Re
     let reset_ex = dx9ex_vtable.ResetEx;
     debug!("IDirect3DDevice9Ex::ResetEx found: {:p}", reset_ex);
 
-    Ok((end_scene, reset, reset_ex))
+    let present_ex = dx9ex_vtable.PresentEx;
+    debug!("IDirect3DDevice9Ex::PresentEx found: {:p}", present_ex);
+
+    Ok((present, swapchain_present, present_ex, reset, reset_ex))
 }

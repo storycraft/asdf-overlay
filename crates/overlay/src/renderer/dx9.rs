@@ -34,6 +34,7 @@ pub struct Dx9Renderer {
     texture_size: (u32, u32),
 
     texture: Option<IDirect3DTexture9>,
+    vertex_buffer: IDirect3DVertexBuffer9,
     state_block: IDirect3DStateBlock9,
 }
 
@@ -41,12 +42,24 @@ impl Dx9Renderer {
     #[tracing::instrument]
     pub fn new(device: &IDirect3DDevice9) -> anyhow::Result<Self> {
         unsafe {
+            let mut vertex_buffer = None;
+            device.CreateVertexBuffer(
+                mem::size_of::<[Vertex; 4]>() as u32,
+                (D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC) as _,
+                Vertex::FVF,
+                D3DPOOL_DEFAULT,
+                &mut vertex_buffer,
+                0 as _,
+            )?;
+            let vertex_buffer = vertex_buffer.unwrap();
             let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
+
             Ok(Self {
                 texture_size: (2, 2),
                 size: (0, 0),
 
                 texture: None,
+                vertex_buffer,
                 state_block,
             })
         }
@@ -160,6 +173,24 @@ impl Dx9Renderer {
                 _ = state_block.Apply();
             });
 
+            let mut buf = ptr::null_mut();
+            self.vertex_buffer.Lock(
+                0,
+                mem::size_of::<[Vertex; 4]>() as _,
+                &mut buf,
+                D3DLOCK_DISCARD as _,
+            )?;
+            buf.cast::<[Vertex; 4]>().write(vertices);
+            self.vertex_buffer.Unlock()?;
+
+            device.SetViewport(&D3DVIEWPORT9 {
+                X: 0,
+                Y: 0,
+                Width: screen.0,
+                Height: screen.1,
+                MinZ: 0.0,
+                MaxZ: 1.0,
+            })?;
             device.SetPixelShader(None)?;
             device.SetVertexShader(None)?;
             device.SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID.0 as _)?;
@@ -197,14 +228,10 @@ impl Dx9Renderer {
             device.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP.0 as _)?;
             device.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP.0 as _)?;
 
+            device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as u32)?;
             device.SetFVF(Vertex::FVF)?;
             device.SetTexture(0, texture)?;
-            device.DrawPrimitiveUP(
-                D3DPT_TRIANGLESTRIP,
-                2,
-                vertices.as_ptr().cast(),
-                mem::size_of::<Vertex>() as _,
-            )?;
+            device.DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2)?;
 
             Ok(())
         }
