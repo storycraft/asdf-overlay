@@ -43,10 +43,13 @@ struct Hook {
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
-// hglrc is not strictly bound to one window. But no one seems to uses it on multiple windows
-// HDC -> (HGLRC, HWND, OpenglRenderer)
-static MAP: Lazy<IntDashMap<u32, (u32, u32, Option<OpenglRenderer>)>> =
-    Lazy::new(IntDashMap::default);
+struct GlData {
+    hglrc: u32,
+    hwnd: u32,
+    renderer: Option<OpenglRenderer>,
+}
+// HDC -> GlData
+static MAP: Lazy<IntDashMap<u32, GlData>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) {
@@ -93,20 +96,23 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     let current_hdc = unsafe { wglGetCurrentDC() };
     let current_hglrc = unsafe { wglGetCurrentContext() };
     let mut renderer_cleanup = false;
-    MAP.retain(|&hdc, &mut (last_hglrc, hwnd, ref mut renderer)| {
-        if last_hglrc != hglrc.0 as u32 {
+    MAP.retain(|&hdc, gl_data| {
+        if gl_data.hglrc != hglrc.0 as u32 {
             return true;
         }
         if !renderer_cleanup {
             renderer_cleanup = true;
         }
 
-        debug!("gl renderer cleanup hdc: {hdc:x} hwnd: {hwnd:x} hglrc: {last_hglrc:x}");
+        debug!(
+            "gl renderer cleanup hdc: {hdc:x} hwnd: {:x} hglrc: {:x}",
+            gl_data.hwnd, gl_data.hglrc
+        );
         unsafe {
-            _ = wglMakeCurrent(HDC(hdc as _), HGLRC(last_hglrc as _));
-            renderer.take();
+            _ = wglMakeCurrent(HDC(hdc as _), HGLRC(gl_data.hglrc as _));
+            gl_data.renderer.take();
         }
-        _ = Backends::with_backend(HWND(hwnd as _), |backend| {
+        _ = Backends::with_backend(HWND(gl_data.hwnd as _), |backend| {
             let Some(Renderer::Opengl) = backend.renderer else {
                 return;
             };
@@ -222,7 +228,7 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    let mut entry = match MAP.entry(hdc.0 as u32) {
+    let mut data = match MAP.entry(hdc.0 as u32) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
             let hglrc = unsafe { wglGetCurrentContext() };
@@ -235,11 +241,14 @@ fn draw_overlay(hdc: HDC) {
                 return;
             }
 
-            entry.insert((hglrc.0 as u32, hwnd.0 as u32, None))
+            entry.insert(GlData {
+                hglrc: hglrc.0 as _,
+                hwnd: hwnd.0 as _,
+                renderer: None,
+            })
         }
     };
-
-    inner(HWND(entry.1 as _), &mut entry.2);
+    inner(HWND(data.hwnd as _), &mut data.renderer);
 }
 
 #[tracing::instrument]
