@@ -6,7 +6,7 @@ use windows::{
 use super::HOOK;
 
 #[tracing::instrument]
-pub unsafe fn call_original_execute_command_lists(
+pub unsafe fn original_execute_command_lists(
     queue: &ID3D12CommandQueue,
     command_lists: &[Option<ID3D12CommandList>],
 ) {

@@ -1,8 +1,7 @@
 mod dx;
 mod opengl;
 mod proc;
-
-pub use dx::util::call_original_execute_command_lists;
+pub mod util;
 
 use anyhow::Context;
 use windows::Win32::Foundation::HWND;
