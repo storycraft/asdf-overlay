@@ -6,7 +6,7 @@ use windows::Win32::Foundation::HWND;
 
 use crate::{
     app::OverlayIpc,
-    backend::{Backends, WindowBackend, renderers::Renderer},
+    backend::{Backends, WindowBackend, renderer::Renderer},
     renderer::vulkan::VulkanRenderer,
     vulkan_layer::{
         device::{

@@ -41,7 +41,7 @@ impl<F: Copy> DetourHook<F> {
         Ok(DetourHook { func })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn original_fn(&self) -> F {
         self.func
     }
