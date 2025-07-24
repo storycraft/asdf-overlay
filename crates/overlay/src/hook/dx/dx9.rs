@@ -19,7 +19,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, renderers::Renderer},
+    backend::{Backends, renderer::Renderer},
     reader::SharedHandleReader,
     renderer::dx9::Dx9Renderer,
 };

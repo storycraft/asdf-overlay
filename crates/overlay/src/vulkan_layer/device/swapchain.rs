@@ -4,7 +4,7 @@ use tracing::{debug, trace};
 use windows::Win32::Foundation::HWND;
 
 use crate::{
-    backend::{Backends, renderers::Renderer},
+    backend::{Backends, renderer::Renderer},
     types::IntDashMap,
     vulkan_layer::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd},
 };

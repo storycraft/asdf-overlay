@@ -1,7 +1,7 @@
 use tracing::debug;
 use windows::Win32::Graphics::Dxgi::IDXGISwapChain1;
 
-use crate::backend::{Backends, renderers::Renderer};
+use crate::backend::{Backends, renderer::Renderer};
 
 #[tracing::instrument]
 pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {

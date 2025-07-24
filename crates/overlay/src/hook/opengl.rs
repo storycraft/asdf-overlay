@@ -23,7 +23,7 @@ use windows::{
 
 use crate::{
     app::OverlayIpc,
-    backend::{Backends, renderers::Renderer},
+    backend::{Backends, renderer::Renderer},
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
     wgl,

@@ -1,6 +1,6 @@
 pub mod cx;
 pub mod proc;
-pub mod renderers;
+pub mod renderer;
 
 use core::{mem, num::NonZeroU32};
 
@@ -17,7 +17,7 @@ use cx::DrawContext;
 use dashmap::{Entry, mapref::multiple::RefMulti};
 use once_cell::sync::Lazy;
 use proc::hooked_wnd_proc;
-use renderers::Renderer;
+use renderer::Renderer;
 use tracing::trace;
 use windows::Win32::{
     Foundation::HWND,

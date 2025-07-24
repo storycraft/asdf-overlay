@@ -35,7 +35,7 @@ use crate::{
     backend::{
         Backends, WindowBackend,
         cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
-        renderers::Renderer,
+        renderer::Renderer,
     },
     hook::dx::{dx11, dx12},
     renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},

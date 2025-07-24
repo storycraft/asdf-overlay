@@ -16,7 +16,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, renderers::Renderer},
+    backend::{Backends, renderer::Renderer},
     types::IntDashMap,
 };
 
