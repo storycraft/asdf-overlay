@@ -10,7 +10,7 @@ permissions:
 name: rustfmt-pr
 jobs:
   review:
-    runs-on: windows-latest
+    runs-on: ubuntu-24.04
     env:
       RUSTFLAGS: -D warnings
     steps:
