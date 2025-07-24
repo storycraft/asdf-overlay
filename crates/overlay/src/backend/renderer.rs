@@ -1,5 +1,5 @@
-use crate::renderer::{
-    dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, vulkan::VulkanRenderer,
+use crate::{
+    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, vulkan::VulkanRenderer},
 };
 
 pub enum Renderer {
