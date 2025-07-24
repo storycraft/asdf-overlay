@@ -20,8 +20,7 @@ use windows::{
 };
 
 use crate::{
-    hook::call_original_execute_command_lists, renderer::dx::shaders, texture::OverlayTextureState,
-    util::wrap_com_manually_drop,
+    hook::util::original_execute_command_lists, renderer::dx::shaders, texture::OverlayTextureState, util::wrap_com_manually_drop
 };
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
@@ -328,7 +327,7 @@ impl Dx12Renderer {
             )]);
 
             command_list.Close()?;
-            call_original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
+            original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
         }
         self.fence.register(queue)?;
 

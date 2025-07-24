@@ -1,30 +1,31 @@
+pub mod util;
+
 use core::ffi::c_void;
 
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::{
-    Win32::{
-        Foundation::POINT,
+    core::BOOL, Win32::{
+        Foundation::{POINT, RECT},
         UI::{
             Input::{
-                HRAWINPUT, KeyboardAndMouse::GetActiveWindow, RAW_INPUT_DATA_COMMAND_FLAGS,
-                RAWINPUT,
+                KeyboardAndMouse::GetActiveWindow, HRAWINPUT, RAWINPUT, RAW_INPUT_DATA_COMMAND_FLAGS
             },
             WindowsAndMessaging::GetForegroundWindow,
         },
-    },
-    core::BOOL,
+    }
 };
 
 use crate::backend::Backends;
 
 #[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 unsafe extern "system" {
+    fn ClipCursor(lprect: *const RECT) -> BOOL;
+    fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetKeyboardState(buf: *mut u8) -> BOOL;
     fn GetKeyState(vkey: i32) -> i16;
     fn GetAsyncKeyState(vkey: i32) -> i16;
-    fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetRawInputData(
         hrawinput: HRAWINPUT,
         uicommand: RAW_INPUT_DATA_COMMAND_FLAGS,
@@ -33,10 +34,10 @@ unsafe extern "system" {
         cbsizeheader: u32,
     ) -> u32;
     fn GetRawInputBuffer(pdata: *mut RAWINPUT, pcbsize: *mut u32, cbsizeheader: u32) -> u32;
-
 }
 
 struct Hook {
+    clip_cursor: DetourHook<ClipCursorFn>,
     get_cursor_pos: DetourHook<GetCursorPos>,
     get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
     get_key_state: DetourHook<GetKeyStateFn>,
@@ -46,6 +47,7 @@ struct Hook {
 }
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
+type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetAsyncKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyStateFn = unsafe extern "system" fn(i32) -> i16;
@@ -61,6 +63,9 @@ type GetRawInputBufferFn = unsafe extern "system" fn(*mut RAWINPUT, *mut u32, u3
 
 pub fn hook() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
+        debug!("hooking ClipCursor");
+        let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
+
         debug!("hooking GetCursorPos");
         let get_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
 
@@ -84,6 +89,7 @@ pub fn hook() -> anyhow::Result<()> {
             DetourHook::attach(GetRawInputBuffer as _, hooked_get_raw_input_buffer as _)?;
 
         Ok::<_, anyhow::Error>(Hook {
+            clip_cursor,
             get_cursor_pos,
             get_async_key_state,
             get_key_state,
@@ -110,6 +116,15 @@ fn foreground_hwnd_input_blocked() -> bool {
 
     !hwnd.is_invalid()
         && Backends::with_backend(hwnd, |backend| backend.input_blocking()).unwrap_or(false)
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
+    if active_hwnd_input_blocked() {
+        return BOOL(1);
+    }
+    
+    unsafe { HOOK.wait().clip_cursor.original_fn()(lprect) }
 }
 
 #[tracing::instrument]

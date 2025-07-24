@@ -2,9 +2,7 @@ mod cursor;
 
 use super::WindowBackend;
 use crate::{
-    app::OverlayIpc,
-    backend::{BACKENDS, Backends, BlockingState, CursorState},
-    util::get_client_size,
+    app::OverlayIpc, backend::{Backends, BlockingState, CursorState, BACKENDS}, hook::util::original_clip_cursor, util::get_client_size
 };
 use asdf_overlay_common::{
     event::{
@@ -22,7 +20,7 @@ use scopeguard::defer;
 use tracing::trace;
 use utf16string::{LittleEndian, WString};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
@@ -30,8 +28,8 @@ use windows::Win32::{
             KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_F10, VK_MENU},
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor, MSG, SetCursor,
-            ShowCursor, WM_NCDESTROY, XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
+            GetClipCursor, MSG, SetCursor, ShowCursor, WM_NCDESTROY, XBUTTON1,
         },
     },
 };
@@ -78,9 +76,6 @@ fn block_proc_input(
         msg::WM_POINTERUPDATE => {}
 
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP | msg::WM_XBUTTONDBLCLK => return Some(LRESULT(1)),
-
-        // ignore raw input (ignoring in hook leak handle)
-        msg::WM_INPUT => {}
 
         _ => return None,
     }
@@ -259,13 +254,23 @@ pub(super) extern "system" fn hooked_wnd_proc(
             BlockingState::StartBlocking => unsafe {
                 ShowCursor(true);
                 SetCursor(backend.blocking_cursor.and_then(load_cursor));
-                backend.blocking_state = BlockingState::Blocking;
+                let mut rect = RECT::default();
+                let clip_cursor = if GetClipCursor(&mut rect).is_ok() {
+                    _ = original_clip_cursor(None);
+                    Some(rect)
+                } else {
+                    None
+                };
+                backend.blocking_state = BlockingState::Blocking { clip_cursor };
             },
 
-            BlockingState::Blocking => {}
+            BlockingState::Blocking { .. } => {}
 
-            BlockingState::StopBlocking => unsafe {
+            BlockingState::StopBlocking { clip_cursor } => unsafe {
                 ShowCursor(false);
+                if let Some(clip_cursor) = clip_cursor {
+                    _ = original_clip_cursor(Some(&clip_cursor));
+                }
                 backend.blocking_state = BlockingState::None;
                 break 'blocking;
             },

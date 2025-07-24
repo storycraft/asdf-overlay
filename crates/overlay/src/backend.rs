@@ -20,9 +20,9 @@ use proc::hooked_wnd_proc;
 use renderer::Renderer;
 use tracing::trace;
 use windows::Win32::{
-    Foundation::HWND,
+    Foundation::{HWND, RECT},
     Graphics::Direct3D11::ID3D11Device,
-    UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
+    UI::WindowsAndMessaging::{SetWindowLongPtrA, GWLP_WNDPROC, WNDPROC},
 };
 
 use crate::{
@@ -288,7 +288,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 enum BlockingState {
     // Not Blocking
     None,
@@ -297,16 +297,20 @@ enum BlockingState {
     StartBlocking,
 
     // Blocking
-    Blocking,
+    Blocking {
+        clip_cursor: Option<RECT>,
+    },
 
     // End blocking, cleanup
-    StopBlocking,
+    StopBlocking {
+        clip_cursor: Option<RECT>,
+    },
 }
 
 impl BlockingState {
     #[inline]
     fn input_blocking(self) -> bool {
-        matches!(self, Self::StartBlocking | Self::Blocking)
+        matches!(self, Self::StartBlocking | Self::Blocking { .. })
     }
 
     /// Change blocking state
@@ -315,11 +319,12 @@ impl BlockingState {
             return false;
         }
 
-        *self = match self {
+        *self = match *self {
             BlockingState::None => BlockingState::StartBlocking,
             BlockingState::StartBlocking => BlockingState::None,
-            BlockingState::Blocking => BlockingState::StopBlocking,
-            BlockingState::StopBlocking => BlockingState::Blocking,
+            // TODO
+            BlockingState::Blocking { clip_cursor } => BlockingState::StopBlocking { clip_cursor },
+            BlockingState::StopBlocking { clip_cursor } => BlockingState::Blocking { clip_cursor },
         };
 
         true
