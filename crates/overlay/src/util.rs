@@ -42,7 +42,7 @@ pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
     unsafe {
         let instance = INSTANCE.get().copied().unwrap_or_default();
         let class_name =
-            CString::new(format!("asdf-overlay-{} dummy window class", instance)).unwrap();
+            CString::new(format!("asdf-overlay-{instance} dummy window class")).unwrap();
         let hinstance = HINSTANCE(instance as _);
 
         if RegisterClassA(&WNDCLASSA {
