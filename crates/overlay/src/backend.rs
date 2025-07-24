@@ -22,7 +22,7 @@ use tracing::trace;
 use windows::Win32::{
     Foundation::{HWND, RECT},
     Graphics::Direct3D11::ID3D11Device,
-    UI::WindowsAndMessaging::{SetWindowLongPtrA, GWLP_WNDPROC, WNDPROC},
+    UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
 };
 
 use crate::{
@@ -297,14 +297,10 @@ enum BlockingState {
     StartBlocking,
 
     // Blocking
-    Blocking {
-        clip_cursor: Option<RECT>,
-    },
+    Blocking { clip_cursor: Option<RECT> },
 
     // End blocking, cleanup
-    StopBlocking {
-        clip_cursor: Option<RECT>,
-    },
+    StopBlocking { clip_cursor: Option<RECT> },
 }
 
 impl BlockingState {

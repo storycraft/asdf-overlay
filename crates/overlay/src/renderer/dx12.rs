@@ -20,7 +20,8 @@ use windows::{
 };
 
 use crate::{
-    hook::util::original_execute_command_lists, renderer::dx::shaders, texture::OverlayTextureState, util::wrap_com_manually_drop
+    hook::util::original_execute_command_lists, renderer::dx::shaders,
+    texture::OverlayTextureState, util::wrap_com_manually_drop,
 };
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {

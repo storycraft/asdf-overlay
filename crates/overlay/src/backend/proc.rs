@@ -2,7 +2,10 @@ mod cursor;
 
 use super::WindowBackend;
 use crate::{
-    app::OverlayIpc, backend::{Backends, BlockingState, CursorState, BACKENDS}, hook::util::original_clip_cursor, util::get_client_size
+    app::OverlayIpc,
+    backend::{BACKENDS, Backends, BlockingState, CursorState},
+    hook::util::original_clip_cursor,
+    util::get_client_size,
 };
 use asdf_overlay_common::{
     event::{
@@ -28,8 +31,8 @@ use windows::Win32::{
             KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_F10, VK_MENU},
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor,
-            GetClipCursor, MSG, SetCursor, ShowCursor, WM_NCDESTROY, XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor, GetClipCursor, MSG,
+            SetCursor, ShowCursor, WM_NCDESTROY, XBUTTON1,
         },
     },
 };

@@ -6,15 +6,17 @@ use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::{
-    core::BOOL, Win32::{
+    Win32::{
         Foundation::{POINT, RECT},
         UI::{
             Input::{
-                KeyboardAndMouse::GetActiveWindow, HRAWINPUT, RAWINPUT, RAW_INPUT_DATA_COMMAND_FLAGS
+                HRAWINPUT, KeyboardAndMouse::GetActiveWindow, RAW_INPUT_DATA_COMMAND_FLAGS,
+                RAWINPUT,
             },
             WindowsAndMessaging::GetForegroundWindow,
         },
-    }
+    },
+    core::BOOL,
 };
 
 use crate::backend::Backends;
@@ -123,7 +125,7 @@ extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
     if active_hwnd_input_blocked() {
         return BOOL(1);
     }
-    
+
     unsafe { HOOK.wait().clip_cursor.original_fn()(lprect) }
 }
 
