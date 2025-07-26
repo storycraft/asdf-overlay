@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Prerequirements - Asdf Overlay Documentation</title>
+        <title>Concepts - Asdf Overlay Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -175,27 +175,35 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="prerequirements"><a class="header" href="#prerequirements">Prerequirements</a></h1>
-<p>To build Asdf Overlay, you need prerequirements.
-Click each items below, follow the install instructions.</p>
-<ul>
-<li><a href="https://nodejs.org/en/download">Node.js</a></li>
-<li><a href="https://visualstudio.microsoft.com/">Microsoft Visual C++ Compiler</a> for x86, x64 and ARM64</li>
-<li><a href="https://www.rust-lang.org/tools/install">Rust</a></li>
-<li><a href="https://git-scm.com/downloads">Git</a></li>
-</ul>
+                        <h1 id="concepts"><a class="header" href="#concepts">Concepts</a></h1>
+<p>To expose consistent interface from the target process, the library introduces some concepts.
+These concepts are important as they represents how Asdf Overlay hook and abstracts underlying rendering infrastructure.</p>
+<h2 id="window"><a class="header" href="#window">Window</a></h2>
+<p>Window represents a Win32 window with an HWND.
+Each window can accept inputs and have one Swapchain.</p>
+<h2 id="swapchain"><a class="header" href="#swapchain">Swapchain</a></h2>
+<p>Swapchain represents collection of framebuffers associated to an window.
+The actual implementation varies by GPU backends.</p>
+<p>For each swapchain, Asdf Overlay accept any BGRA formatted Direct3D 11 shared texture to be set as overlay surface.
+Provided Direct3D 11 texture is drew on top of actual framebuffer before presentation.</p>
+<p>Overlay texture must be drew using same GPU with target swapchain as it uses shared texture to avoid expensive cpu copy.
+If provided texture is rendered on other GPU, the rendering will fail and overlay will not be displayed.
+This is not significant issue on desktop as most desktops have only one GPU.
+However some laptops have integrated GPU and discrete one then it can be problem.</p>
+<h2 id="input"><a class="header" href="#input">Input</a></h2>
+<p>Input is mouse and keyboard inputs coming from window.
+This also includes raw inputs coming from event loop associated to a window.</p>
+<p>Asdf Overlay let you listen these inputs, intercept and block them so users can interact with overlay.
+To prevent abuse, blocking is disabled when the user attempts to close the window.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../developer-guide/workspace-setup.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -203,13 +211,10 @@ Click each items below, follow the install instructions.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../developer-guide/workspace-setup.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
