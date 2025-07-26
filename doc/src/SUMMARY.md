@@ -7,3 +7,4 @@
 
 # User Guide
 - [Installation](./user-guide/installation.md)
+- [Concepts](./user-guide/concepts.md)
