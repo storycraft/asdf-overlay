@@ -24,9 +24,9 @@ use windows::{
 use crate::{
     app::OverlayIpc,
     backend::{Backends, renderer::Renderer},
+    gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
-    wgl,
 };
 
 #[link(name = "gdi32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
@@ -172,8 +172,8 @@ fn draw_overlay(hdc: HDC) {
                 }
             }
 
-            if !wgl::DXOpenDeviceNV::is_loaded() {
-                error!("WGL_NV_DX_interop2 is not supported");
+            if !gl::ImportMemoryWin32HandleEXT::is_loaded() {
+                error!("GL_EXT_memory_object_win32 is not supported");
                 return;
             }
 
@@ -359,7 +359,7 @@ fn setup_gl() -> anyhow::Result<()> {
         addr
     }
 
-    wgl::load_with(|s| loader(opengl32module, s));
+    gl::load_with(|s| loader(opengl32module, s));
     gl::load_with(|s| loader(opengl32module, s));
 
     Ok(())

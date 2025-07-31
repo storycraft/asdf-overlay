@@ -118,7 +118,6 @@ dependencies = [
  "bytemuck",
  "dashmap",
  "futures",
- "gl",
  "gl_generator",
  "nohash-hasher",
  "once_cell",
@@ -604,15 +603,6 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
-
-[[package]]
-name = "gl"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a94edab108827d67608095e269cf862e60d920f144a5026d3dbcfd8b877fb404"
-dependencies = [
- "gl_generator",
-]
 
 [[package]]
 name = "gl_generator"

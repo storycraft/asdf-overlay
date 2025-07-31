@@ -1,7 +1,6 @@
 use core::num::NonZeroU32;
 
 use asdf_overlay_common::request::UpdateSharedHandle;
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 #[derive(Debug)]
 pub enum OverlayTextureState<T> {
@@ -51,13 +50,5 @@ impl<T> OverlayTextureState<T> {
 impl<T> Default for OverlayTextureState<T> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<T> Drop for OverlayTextureState<T> {
-    fn drop(&mut self) {
-        if let Self::Handle(handle) = self {
-            unsafe { _ = CloseHandle(HANDLE(handle.get() as _)) };
-        }
     }
 }
