@@ -1,25 +1,25 @@
 pub mod data;
 
-use anyhow::bail;
 use core::ffi::c_void;
-use gl::types::{GLint, GLuint};
-use scopeguard::defer;
+
+use crate::gl::{
+    self,
+    types::{GLint, GLuint},
+};
 use tracing::trace;
 use windows::{
-    Win32::Graphics::Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
+    Win32::Graphics::{
+        Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
+        Dxgi::IDXGIResource,
+    },
     core::Interface,
 };
-
-use crate::wgl;
 
 static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
-    dx_device_handle: *const c_void,
-
-    interop_texture: Option<InteropTexture>,
-    texture: GLuint,
+    interop: Option<GlInteropTexture>,
     program: GLuint,
     rect_loc: GLint,
     tex_loc: GLint,
@@ -29,18 +29,6 @@ impl OpenglRenderer {
     #[tracing::instrument]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
-            let dx_device_handle = wgl::DXOpenDeviceNV(device.as_raw());
-            if dx_device_handle.is_null() {
-                bail!("DXOpenDeviceNV failed");
-            }
-
-            let mut texture = 0;
-            gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
-
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
             gl::ShaderSource(
                 vert_shader,
@@ -71,11 +59,8 @@ impl OpenglRenderer {
             gl::DeleteShader(frag_shader);
 
             Ok(Self {
-                dx_device_handle,
+                interop: None,
 
-                interop_texture: None,
-
-                texture,
                 program,
                 rect_loc,
                 tex_loc,
@@ -85,7 +70,7 @@ impl OpenglRenderer {
 
     pub fn update_texture(&mut self, texture: Option<&ID3D11Texture2D>) -> anyhow::Result<()> {
         // drop previous texture first, so it can be opened again without error
-        self.interop_texture.take();
+        self.interop.take();
         let Some(texture) = texture else {
             return Ok(());
         };
@@ -97,10 +82,11 @@ impl OpenglRenderer {
             return Ok(());
         }
 
-        self.interop_texture = Some(InteropTexture::open_from(
-            self.dx_device_handle,
-            texture,
-            self.texture,
+        self.interop = Some(GlInteropTexture::open(
+            unsafe { texture.cast::<IDXGIResource>()?.GetSharedHandle()? }
+                .0
+                .cast(),
+            (size.0 as _, size.1 as _),
         )?);
         Ok(())
     }
@@ -116,7 +102,7 @@ impl OpenglRenderer {
             return Ok(());
         }
 
-        let Some(ref interop_texture) = self.interop_texture else {
+        let Some(GlInteropTexture { texture, .. }) = self.interop else {
             return Ok(());
         };
 
@@ -127,7 +113,6 @@ impl OpenglRenderer {
             -(size.1 as f32 / screen.1 as f32) * 2.0,
         ];
 
-        let dx_device_handle = self.dx_device_handle;
         unsafe {
             gl::Viewport(0, 0, screen.0 as _, screen.1 as _);
 
@@ -148,20 +133,7 @@ impl OpenglRenderer {
             gl::Uniform1i(self.tex_loc, 0);
 
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
-
-            wgl::DXLockObjectsNV(
-                dx_device_handle,
-                1,
-                &interop_texture.dx11_tex_handle as *const _ as _,
-            );
-            defer!({
-                wgl::DXUnlockObjectsNV(
-                    dx_device_handle,
-                    1,
-                    &interop_texture.dx11_tex_handle as *const _ as _,
-                );
-            });
+            gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         }
 
@@ -172,11 +144,8 @@ impl OpenglRenderer {
 impl Drop for OpenglRenderer {
     #[tracing::instrument(skip(self))]
     fn drop(&mut self) {
-        self.interop_texture.take();
+        self.interop.take();
         unsafe {
-            wgl::DXCloseDeviceNV(self.dx_device_handle as _);
-
-            gl::DeleteTextures(1, &self.texture);
             gl::DeleteProgram(self.program);
         }
         trace!("OpenGL resources freed");
@@ -186,43 +155,64 @@ impl Drop for OpenglRenderer {
 unsafe impl Send for OpenglRenderer {}
 unsafe impl Sync for OpenglRenderer {}
 
-struct InteropTexture {
-    owned_device_handle: *const c_void,
-    dx11_tex_handle: *const c_void,
+struct GlInteropTexture {
+    memory_object: GLuint,
+    texture: GLuint,
 }
 
-impl InteropTexture {
-    fn open_from(
-        dx_device_handle: *const c_void,
-        texture: &ID3D11Texture2D,
-        gl_texture: GLuint,
-    ) -> anyhow::Result<Self> {
+impl GlInteropTexture {
+    fn open(handle: *mut c_void, size: (i32, i32)) -> anyhow::Result<Self> {
         unsafe {
-            let dx11_tex_handle = wgl::DXRegisterObjectNV(
-                dx_device_handle,
-                texture.as_raw(),
-                gl_texture,
-                gl::TEXTURE_2D,
-                wgl::ACCESS_READ_ONLY_NV,
-            );
-            if dx11_tex_handle.is_null() {
-                bail!("DXRegisterObjectNV failed");
-            }
+            let mut memory_object = 0;
+            gl::CreateMemoryObjectsEXT(1, &mut memory_object);
+            gl::MemoryObjectParameterivEXT(memory_object, gl::DEDICATED_MEMORY_OBJECT_EXT, &1);
 
-            Ok(InteropTexture {
-                owned_device_handle: dx_device_handle,
-                dx11_tex_handle,
+            gl::ImportMemoryWin32HandleEXT(
+                memory_object,
+                0,
+                gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
+                handle,
+            );
+
+            let mut texture = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_TILING_EXT,
+                gl::OPTIMAL_TILING_EXT as _,
+            );
+
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexStorageMem2DEXT(
+                gl::TEXTURE_2D,
+                1,
+                gl::BGRA,
+                size.0 as _,
+                size.1 as _,
+                memory_object,
+                0,
+            );
+
+            Ok(Self {
+                memory_object,
+                texture,
             })
         }
     }
 }
 
-impl Drop for InteropTexture {
+impl Drop for GlInteropTexture {
     fn drop(&mut self) {
         unsafe {
-            wgl::DXUnregisterObjectNV(self.owned_device_handle, self.dx11_tex_handle);
+            gl::DeleteTextures(1, &self.texture);
+            gl::DeleteMemoryObjectsEXT(1, &self.memory_object);
         }
     }
 }
 
-unsafe impl Send for InteropTexture {}
+unsafe impl Send for GlInteropTexture {}

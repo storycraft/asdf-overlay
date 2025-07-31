@@ -6,18 +6,18 @@ use std::path::Path;
 use winres::WindowsResource;
 
 fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
-    let mut file = File::create(Path::new(&out_dir).join("wgl_bindings.rs"))
+    let mut file = File::create(Path::new(&out_dir).join("gl_bindings.rs"))
         .context("Unable to generate wgl bindings")?;
 
     Registry::new(
-        Api::Wgl,
-        (1, 0),
+        Api::Gl,
+        (3, 0),
         Profile::Core,
         Fallbacks::None,
-        ["WGL_NV_DX_interop", "WGL_NV_DX_interop2"],
+        ["GL_EXT_memory_object", "GL_EXT_memory_object_win32"],
     )
     .write_bindings(GlobalGenerator, &mut file)
-    .context("Couldn't write wgl bindings")?;
+    .context("Couldn't write gl bindings")?;
 
     Ok(())
 }

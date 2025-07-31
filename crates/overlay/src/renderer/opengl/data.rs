@@ -1,3 +1,4 @@
+use crate::gl;
 use scopeguard::defer;
 
 pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
