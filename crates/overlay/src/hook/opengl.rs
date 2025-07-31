@@ -360,7 +360,6 @@ fn setup_gl() -> anyhow::Result<()> {
     }
 
     gl::load_with(|s| loader(opengl32module, s));
-    gl::load_with(|s| loader(opengl32module, s));
 
     Ok(())
 }
