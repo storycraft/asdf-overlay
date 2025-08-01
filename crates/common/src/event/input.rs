@@ -36,6 +36,7 @@ pub enum CursorEvent {
 pub enum KeyboardInput {
     Key { key: Key, state: InputState },
     Char(char),
+    Ime(Ime),
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
@@ -63,4 +64,15 @@ pub enum InputState {
 pub struct InputPosition {
     pub x: i32,
     pub y: i32,
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
+pub enum Ime {
+    Enabled,
+    Compose {
+        text: String,
+        caret: usize,
+    },
+    Commit(String),
+    Disabled,
 }

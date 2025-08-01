@@ -14,6 +14,7 @@
   },
   "scripts": {
     "test": "tsc && cargo test",
+    "lint": "eslint",
     "build-dll": "cargo xtask build-dll --",
     "cargo-build": "cargo xtask build-node --",
     "build:dist": "tsc",
@@ -53,9 +54,14 @@
     "asdf_overlay-layer.json"
   ],
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.4",
-    "@types/node": "^22.14.0",
-    "typescript": "^5.3.3"
+    "@eslint/js": "^9.32.0",
+    "@stylistic/eslint-plugin": "^5.2.2",
+    "@types/node": "^24.1.0",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.38.0"
   },
-  "packageManager": "pnpm@10.11.0+sha512.6540583f41cc5f628eb3d9773ecee802f4f9ef9923cc45b69890fb47991d4b092964694ec3a4f738a420c918a333062c8b925d312f42e4f0c263eb603551f977"
+  "packageManager": "pnpm@10.13.1"
 }

@@ -2,7 +2,7 @@ mod input;
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{InputEvent, InputState, KeyboardInput},
+        input::{Ime, InputEvent, InputState, KeyboardInput},
     },
     key::Key,
 };
@@ -16,7 +16,10 @@ use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
-        Input::Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
+        Input::Ime::{
+            CS_NOMOVECARET, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC,
+            IME_COMPOSITION_STRING, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
+        },
         WindowsAndMessaging::{self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG},
     },
 };
@@ -120,15 +123,55 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
                 return Some(LRESULT(0));
             }
         }
-        msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
+
+        msg::WM_IME_SETCONTEXT => {
+            OverlayIpc::emit_event(keyboard_input(
+                backend.hwnd,
+                KeyboardInput::Ime(if msg.wParam.0 != 0 {
+                    Ime::Enabled
+                } else {
+                    Ime::Disabled
+                }),
+            ));
+
+            return None;
+        }
+
+        msg::WM_IME_COMPOSITION => {
             let proc = backend.proc.lock();
             if !proc.listening_keyboard() {
                 return None;
             }
 
-            if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
-                for ch in str.chars() {
-                    OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+            let hwnd = HWND(backend.hwnd as _);
+            let himc = unsafe { ImmGetContext(hwnd) };
+            defer!(unsafe {
+                _ = ImmReleaseContext(hwnd, himc);
+            });
+
+            let comp = msg.lParam.0 as u32;
+            if comp & (GCS_COMPSTR.0 | GCS_COMPATTR.0 | GCS_CURSORPOS.0) != 0 {
+                let caret = if comp & CS_NOMOVECARET == 0 && comp & GCS_CURSORPOS.0 != 0 {
+                    unsafe { ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0) as usize }
+                } else {
+                    0
+                };
+
+                if let Some(text) = get_ime_string(himc, GCS_COMPSTR) {
+                    OverlayIpc::emit_event(keyboard_input(
+                        backend.hwnd,
+                        KeyboardInput::Ime(Ime::Compose {
+                            text: text.to_utf8(),
+                            caret,
+                        }),
+                    ));
+                }
+            } else if comp & GCS_RESULTSTR.0 != 0 {
+                if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
+                    OverlayIpc::emit_event(keyboard_input(
+                        backend.hwnd,
+                        KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                    ));
                 }
             }
 
@@ -191,23 +234,13 @@ fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
 }
 
 #[inline]
-fn get_ime_string(hwnd: HWND) -> Option<WString<LittleEndian>> {
-    let himc = unsafe { ImmGetContext(hwnd) };
-    defer!(unsafe {
-        _ = ImmReleaseContext(hwnd, himc);
-    });
-
-    let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
+fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<LittleEndian>> {
+    let byte_size = unsafe { ImmGetCompositionStringW(himc, comp, None, 0) };
     if byte_size >= 0 {
         let mut buf = vec![0_u8; byte_size as usize];
 
         unsafe {
-            ImmGetCompositionStringW(
-                himc,
-                GCS_RESULTSTR,
-                Some(buf.as_mut_ptr().cast()),
-                buf.len() as _,
-            )
+            ImmGetCompositionStringW(himc, comp, Some(buf.as_mut_ptr().cast()), buf.len() as _)
         };
 
         WString::from_utf16le(buf).ok()

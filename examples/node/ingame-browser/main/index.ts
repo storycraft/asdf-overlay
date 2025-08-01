@@ -19,38 +19,40 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  mainWindow.webContents.on('paint', async (e) => {
-    if (!e.texture) {
-      return;
-    }
+  mainWindow.webContents.on('paint', (e) => {
+    void (async (e) => {
+      if (!e.texture) {
+        return;
+      }
 
-    const info = e.texture.textureInfo;
-    // captureUpdateRect contains more accurate dirty rect, fallback to contentRect if it doesn't exist.
-    const rect = info.metadata.captureUpdateRect ?? info.contentRect;
+      const info = e.texture.textureInfo;
+      // captureUpdateRect contains more accurate dirty rect, fallback to contentRect if it doesn't exist.
+      const rect = info.metadata.captureUpdateRect ?? info.contentRect;
 
-    try {
-      // update only changed part
-      await overlay.updateShtex(
-        hwnd,
-        info.codedSize.width,
-        info.codedSize.height,
-        e.texture.textureInfo.sharedTextureHandle,
-        {
-          dstX: rect.x,
-          dstY: rect.y,
-          src: rect
-        },
-      );
-    } finally {
-      e.texture.release();
-    }
+      try {
+        // update only changed part
+        await overlay.updateShtex(
+          hwnd,
+          info.codedSize.width,
+          info.codedSize.height,
+          e.texture.textureInfo.sharedTextureHandle,
+          {
+            dstX: rect.x,
+            dstY: rect.y,
+            src: rect,
+          },
+        );
+      } finally {
+        e.texture.release();
+      }
+    })(e);
   });
 
-  const hwnd = await new Promise<number>((resolve) => overlay.event.once('added', resolve));
+  const hwnd = await new Promise<number>(resolve => overlay.event.once('added', resolve));
 
   // centre layout
-  overlay.setPosition(hwnd, percent(0.5), percent(0.5));
-  overlay.setAnchor(hwnd, percent(0.5), percent(0.5));
+  void overlay.setPosition(hwnd, percent(0.5), percent(0.5));
+  void overlay.setAnchor(hwnd, percent(0.5), percent(0.5));
 
   // always listen keyboard events
   await overlay.listenInput(hwnd, false, true);
@@ -63,7 +65,7 @@ async function createOverlayWindow(pid: number) {
   });
 
   mainWindow.webContents.on('cursor-changed', (_, type) => {
-    overlay.setBlockingCursor(hwnd, toCursor(type));
+    void overlay.setBlockingCursor(hwnd, toCursor(type));
   });
 
   let block = false;
@@ -96,7 +98,7 @@ async function createOverlayWindow(pid: number) {
         }
 
         // block all inputs reaching window and listen
-        overlay.blockInput(hwnd, block);
+        void overlay.blockInput(hwnd, block);
         return;
       }
     }
@@ -116,7 +118,7 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    overlay.clearSurface(hwnd);
+    void overlay.clearSurface(hwnd);
   });
 
   mainWindow.webContents.stopPainting();
@@ -139,7 +141,7 @@ async function main() {
   await createOverlayWindow(list[0].pid);
 }
 
-main().catch((e) => {
+main().catch((e: unknown) => {
   app.quit();
   throw e;
 });

@@ -6,9 +6,9 @@ export type CursorInput = {
   windowX: number,
   windowY: number,
 } & ({
-  kind: 'Enter'
+  kind: 'Enter',
 } | {
-  kind: 'Leave'
+  kind: 'Leave',
 } | {
   kind: 'Action',
 
@@ -38,6 +38,20 @@ export type KeyboardInput = {
 } | {
   kind: 'Char',
   ch: string,
+} | {
+  kind: 'Ime',
+  ime: Ime,
+};
+
+export type Ime = {
+  kind: 'Enabled' | 'Disabled',
+} | {
+  kind: 'Compose',
+  text: string,
+  caret: number,
+} | {
+  kind: 'Commit',
+  text: string,
 };
 
 export type InputState = 'Pressed' | 'Released';

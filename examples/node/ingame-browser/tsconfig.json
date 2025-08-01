@@ -1,13 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "outDir": "lib",
+    "target": "esnext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "lib": [
       "ESNext"
     ],
-    "declaration": true,
+    "noEmit": true,
     "useDefineForClassFields": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,7 +16,7 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true
   },
-  "include": [
-    "src"
+  "exclude": [
+    "out"
   ]
 }

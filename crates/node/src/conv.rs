@@ -3,7 +3,7 @@ use asdf_overlay_client::{
         event::{
             ClientEvent, WindowEvent,
             input::{
-                CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
+                CursorAction, CursorEvent, CursorInput, Ime, InputEvent, InputState, KeyboardInput,
                 ScrollAxis,
             },
         },
@@ -98,6 +98,13 @@ fn serialize_keyboard_input<'a>(
             let ch = cx.string(ch.encode_utf8(&mut buf));
             obj.set(cx, "ch", ch)?;
         }
+        KeyboardInput::Ime(ime) => {
+            let kind = cx.string("Ime");
+            obj.set(cx, "kind", kind)?;
+
+            let ime = serialize_ime(cx, ime)?;
+            obj.set(cx, "ime", ime)?;
+        }
     }
 
     Ok(obj)
@@ -183,6 +190,33 @@ fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObje
 
     let extended = cx.boolean(key.extended);
     obj.set(cx, "extended", extended)?;
+
+    Ok(obj)
+}
+
+fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    let kind = match ime {
+        Ime::Enabled => cx.string("Enabled"),
+        Ime::Compose { text, caret } => {
+            let text = cx.string(text);
+            obj.set(cx, "text", text)?;
+
+            let caret = cx.number(caret as f64);
+            obj.set(cx, "caret", caret)?;
+
+            cx.string("Compose")
+        }
+        Ime::Commit(text) => {
+            let text = cx.string(text);
+            obj.set(cx, "text", text)?;
+
+            cx.string("Commit")
+        }
+        Ime::Disabled => cx.string("Disabled"),
+    };
+    obj.set(cx, "kind", kind)?;
 
     Ok(obj)
 }

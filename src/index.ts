@@ -5,7 +5,7 @@ import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { CursorInput, KeyboardInput } from './input.js';
-import { PercentLength, CopyRect, Key, Cursor } from './types.js';
+import { PercentLength, CopyRect, Cursor } from './types.js';
 
 export * from './types.js';
 export * from './util.js';
@@ -39,17 +39,17 @@ function loadAddon(): Addon {
   return nodeModule.exports as Addon;
 }
 
-const idSym: unique symbol = Symbol("id");
+const idSym: unique symbol = Symbol('id');
 
 export type OverlayEventEmitter = EventEmitter<{
-  'added': [hwnd: number, width: number, height: number],
-  'resized': [hwnd: number, width: number, height: number],
-  'cursor_input': [hwnd: number, input: CursorInput],
-  'keyboard_input': [hwnd: number, input: KeyboardInput],
-  'input_blocking_ended': [hwnd: number],
-  'destroyed': [hwnd: number],
-  'error': [err: unknown],
-  'disconnected': [],
+  added: [hwnd: number, width: number, height: number],
+  resized: [hwnd: number, width: number, height: number],
+  cursor_input: [hwnd: number, input: CursorInput],
+  keyboard_input: [hwnd: number, input: KeyboardInput],
+  input_blocking_ended: [hwnd: number],
+  destroyed: [hwnd: number],
+  error: [err: unknown],
+  disconnected: [],
 }>;
 
 export class Overlay {
@@ -61,10 +61,20 @@ export class Overlay {
 
     void (async () => {
       // wait until next tick so no events are lost
-      await new Promise<void>(resolve => process.nextTick(resolve));
+      await new Promise<void>((resolve) => {
+        process.nextTick(resolve);
+      });
 
       try {
-        while (await addon.overlayCallNextEvent(id, this.event, this.event.emit)) { }
+        for (;;) {
+          const hasNext = await addon.overlayCallNextEvent(
+            id,
+            this.event,
+            (name, ...args) => this.event.emit(name, ...args),
+          );
+
+          if (!hasNext) break;
+        }
       } catch (err) {
         if (this.event.listenerCount('error') != 0) {
           this.event.emit('error', err);
@@ -193,7 +203,7 @@ export class Overlay {
 
   /**
    * Attach overlay to target process
-   * 
+   *
    * Name must be unique or it will fail if there is a connection with same name
    * @param dllDir path to dlls
    * @param pid target process pid
