@@ -74,8 +74,8 @@ impl IpcClientConn {
     }
 
     #[inline]
-    pub const fn window(&mut self, hwnd: u32) -> IpcClientConnWindow<'_> {
-        IpcClientConnWindow { inner: self, hwnd }
+    pub const fn window(&mut self, id: u32) -> IpcClientConnWindow<'_> {
+        IpcClientConnWindow { inner: self, id }
     }
 
     async fn request<Response: Decode<()>>(&mut self, req: Request) -> anyhow::Result<Response> {
@@ -139,7 +139,7 @@ impl Drop for IpcClientConn {
 
 pub struct IpcClientConnWindow<'a> {
     inner: &'a mut IpcClientConn,
-    hwnd: u32,
+    id: u32,
 }
 
 impl IpcClientConnWindow<'_> {
@@ -148,7 +148,7 @@ impl IpcClientConnWindow<'_> {
     pub async fn request(&mut self, req: impl WindowRequestItem) -> anyhow::Result<bool> {
         self.inner
             .request(Request::Window {
-                hwnd: self.hwnd,
+                id: self.id,
                 request: req.into(),
             })
             .await

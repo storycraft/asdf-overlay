@@ -220,9 +220,9 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Opti
 }
 
 #[inline(always)]
-fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
+fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
     ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }
 }

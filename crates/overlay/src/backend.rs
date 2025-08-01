@@ -68,7 +68,7 @@ impl Backends {
                 let window_size = get_client_size(hwnd)?;
 
                 OverlayIpc::emit_event(ClientEvent::Window {
-                    hwnd: key,
+                    id: key,
                     event: WindowEvent::Added {
                         width: window_size.0,
                         height: window_size.1,
@@ -92,7 +92,7 @@ impl Backends {
         BACKENDS.map.remove(&key);
 
         OverlayIpc::emit_event(ClientEvent::Window {
-            hwnd: key,
+            id: key,
             event: WindowEvent::Destroyed,
         });
     }

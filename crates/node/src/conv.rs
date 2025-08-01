@@ -30,18 +30,18 @@ pub fn emit_event<'a>(
     let builder = call_options.this(emitter);
 
     match event {
-        ClientEvent::Window { hwnd, event } => match event {
+        ClientEvent::Window { id, event } => match event {
             WindowEvent::Added { width, height } => {
                 builder
                     .arg(cx.string("added"))
-                    .arg(cx.number(hwnd))
+                    .arg(cx.number(id))
                     .arg(cx.number(width))
                     .arg(cx.number(height));
             }
             WindowEvent::Resized { width, height } => {
                 builder
                     .arg(cx.string("resized"))
-                    .arg(cx.number(hwnd))
+                    .arg(cx.number(id))
                     .arg(cx.number(width))
                     .arg(cx.number(height));
             }
@@ -49,23 +49,23 @@ pub fn emit_event<'a>(
                 InputEvent::Cursor(input) => {
                     builder
                         .arg(cx.string("cursor_input"))
-                        .arg(cx.number(hwnd))
+                        .arg(cx.number(id))
                         .arg(serialize_cursor_input(cx, input)?);
                 }
                 InputEvent::Keyboard(input) => {
                     builder
                         .arg(cx.string("keyboard_input"))
-                        .arg(cx.number(hwnd))
+                        .arg(cx.number(id))
                         .arg(serialize_keyboard_input(cx, input)?);
                 }
             },
             WindowEvent::InputBlockingEnded => {
                 builder
                     .arg(cx.string("input_blocking_ended"))
-                    .arg(cx.number(hwnd));
+                    .arg(cx.number(id));
             }
             WindowEvent::Destroyed => {
-                builder.arg(cx.string("destroyed")).arg(cx.number(hwnd));
+                builder.arg(cx.string("destroyed")).arg(cx.number(id));
             }
         },
     }

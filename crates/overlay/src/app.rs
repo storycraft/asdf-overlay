@@ -87,12 +87,12 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
     }
 
     loop {
-        let (id, req) = server.recv().await?;
-        trace!("recv id: {id} req: {req:?}");
+        let (req_id, req) = server.recv().await?;
+        trace!("recv id: {req_id} req: {req:?}");
 
         match req {
-            Request::Window { hwnd, request } => {
-                server.reply(id, handle_window_event(hwnd, request)?)?;
+            Request::Window { id, request } => {
+                server.reply(req_id, handle_window_event(id, request)?)?;
             }
         }
     }
@@ -113,7 +113,7 @@ pub async fn app(
         for backend in Backends::iter() {
             let size = backend.render.lock().window_size;
             _ = emitter.emit(ClientEvent::Window {
-                hwnd: *backend.key() as _,
+                id: *backend.key() as _,
                 event: WindowEvent::Added {
                     width: size.0,
                     height: size.1,

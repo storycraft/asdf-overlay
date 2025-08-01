@@ -32,7 +32,7 @@ async function createOverlayWindow(pid: number) {
       try {
         // update only changed part
         await overlay.updateShtex(
-          hwnd,
+          id,
           info.codedSize.width,
           info.codedSize.height,
           e.texture.textureInfo.sharedTextureHandle,
@@ -48,14 +48,14 @@ async function createOverlayWindow(pid: number) {
     })(e);
   });
 
-  const hwnd = await new Promise<number>(resolve => overlay.event.once('added', resolve));
+  const id = await new Promise<number>(resolve => overlay.event.once('added', resolve));
 
   // centre layout
-  void overlay.setPosition(hwnd, percent(0.5), percent(0.5));
-  void overlay.setAnchor(hwnd, percent(0.5), percent(0.5));
+  void overlay.setPosition(id, percent(0.5), percent(0.5));
+  void overlay.setAnchor(id, percent(0.5), percent(0.5));
 
   // always listen keyboard events
-  await overlay.listenInput(hwnd, false, true);
+  await overlay.listenInput(id, false, true);
 
   overlay.event.on('cursor_input', (_, input) => {
     const event = toMouseEvent(input);
@@ -65,7 +65,7 @@ async function createOverlayWindow(pid: number) {
   });
 
   mainWindow.webContents.on('cursor-changed', (_, type) => {
-    void overlay.setBlockingCursor(hwnd, toCursor(type));
+    void overlay.setBlockingCursor(id, toCursor(type));
   });
 
   let block = false;
@@ -98,7 +98,7 @@ async function createOverlayWindow(pid: number) {
         }
 
         // block all inputs reaching window and listen
-        void overlay.blockInput(hwnd, block);
+        void overlay.blockInput(id, block);
         return;
       }
     }
@@ -118,7 +118,7 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    void overlay.clearSurface(hwnd);
+    void overlay.clearSurface(id);
   });
 
   mainWindow.webContents.stopPainting();

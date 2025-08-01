@@ -131,7 +131,7 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let x = cx.argument::<JsObject>(2)?;
     let x = deserialize_percent_length(&mut cx, &x)?;
     let y = cx.argument::<JsObject>(3)?;
@@ -140,7 +140,7 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd).request(SetPosition { x, y }).await?;
+            conn.window(win_id).request(SetPosition { x, y }).await?;
             Ok(())
         }),
     )
@@ -148,7 +148,7 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let x = cx.argument::<JsObject>(2)?;
     let x = deserialize_percent_length(&mut cx, &x)?;
     let y = cx.argument::<JsObject>(3)?;
@@ -157,7 +157,7 @@ fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd).request(SetAnchor { x, y }).await?;
+            conn.window(win_id).request(SetAnchor { x, y }).await?;
             Ok(())
         }),
     )
@@ -165,7 +165,7 @@ fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let top = cx.argument::<JsObject>(2)?;
     let top = deserialize_percent_length(&mut cx, &top)?;
     let right = cx.argument::<JsObject>(3)?;
@@ -178,7 +178,7 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd)
+            conn.window(win_id)
                 .request(SetMargin {
                     top,
                     right,
@@ -202,7 +202,7 @@ fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
 fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(3)?.as_slice(&cx).to_vec();
 
@@ -211,7 +211,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
             .with(id, async move |overlay| {
                 if let Some(shared) = overlay
                     .surface
-                    .entry(hwnd)
+                    .entry(win_id)
                     .or_try_insert_with(|| OverlaySurface::new().map(tokio::sync::Mutex::new))?
                     .lock()
                     .await
@@ -221,7 +221,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
                         .ipc
                         .lock()
                         .await
-                        .window(hwnd)
+                        .window(win_id)
                         .request(shared)
                         .await?;
                 }
@@ -235,7 +235,7 @@ fn overlay_update_bitmap(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
     let height = cx.argument::<JsNumber>(3)?.value(&mut cx) as u32;
     let handle = pod_read_unaligned::<usize>(cx.argument::<JsBuffer>(4)?.as_slice(&cx));
@@ -253,7 +253,7 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
             .with(id, async move |overlay| {
                 if let Some(shared) = overlay
                     .surface
-                    .entry(hwnd)
+                    .entry(win_id)
                     .or_try_insert_with(|| OverlaySurface::new().map(tokio::sync::Mutex::new))?
                     .lock()
                     .await
@@ -263,7 +263,7 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
                         .ipc
                         .lock()
                         .await
-                        .window(hwnd)
+                        .window(win_id)
                         .request(shared)
                         .await?;
                 }
@@ -278,17 +278,17 @@ fn overlay_update_shtex(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_clear_surface(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
 
     with_rt(&mut cx, async move {
         MANAGER
             .with(id, async move |overlay| {
-                if overlay.surface.remove(&hwnd).is_some() {
+                if overlay.surface.remove(&win_id).is_some() {
                     overlay
                         .ipc
                         .lock()
                         .await
-                        .window(hwnd)
+                        .window(win_id)
                         .request(UpdateSharedHandle { handle: None })
                         .await?;
                 }
@@ -339,14 +339,14 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx.argument::<JsBoolean>(2)?.value(&mut cx);
     let keyboard = cx.argument::<JsBoolean>(3)?.value(&mut cx);
 
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd)
+            conn.window(win_id)
                 .request(ListenInput { cursor, keyboard })
                 .await?;
 
@@ -357,13 +357,13 @@ fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_block_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let block = cx.argument::<JsBoolean>(2)?.value(&mut cx);
 
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd).request(BlockInput { block }).await?;
+            conn.window(win_id).request(BlockInput { block }).await?;
 
             Ok(())
         }),
@@ -372,7 +372,7 @@ fn overlay_block_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
 fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    let hwnd = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx
         .argument_opt(2)
         .filter(|v| !v.is_a::<JsUndefined, _>(&mut cx))
@@ -393,7 +393,7 @@ fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
     with_rt(
         &mut cx,
         try_with_ipc(id, async move |conn| {
-            conn.window(hwnd)
+            conn.window(win_id)
                 .request(SetBlockingCursor { cursor })
                 .await?;
 

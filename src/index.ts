@@ -42,12 +42,12 @@ function loadAddon(): Addon {
 const idSym: unique symbol = Symbol('id');
 
 export type OverlayEventEmitter = EventEmitter<{
-  added: [hwnd: number, width: number, height: number],
-  resized: [hwnd: number, width: number, height: number],
-  cursor_input: [hwnd: number, input: CursorInput],
-  keyboard_input: [hwnd: number, input: KeyboardInput],
-  input_blocking_ended: [hwnd: number],
-  destroyed: [hwnd: number],
+  added: [id: number, width: number, height: number],
+  resized: [id: number, width: number, height: number],
+  cursor_input: [id: number, input: CursorInput],
+  keyboard_input: [id: number, input: KeyboardInput],
+  input_blocking_ended: [id: number],
+  destroyed: [id: number],
   error: [err: unknown],
   disconnected: [],
 }>;
@@ -89,108 +89,108 @@ export class Overlay {
 
   /**
    * Update overlay position relative to window
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param x x position
    * @param y y position
    */
-  async setPosition(hwnd: number, x: PercentLength, y: PercentLength) {
-    await addon.overlaySetPosition(this[idSym], hwnd, x, y);
+  async setPosition(id: number, x: PercentLength, y: PercentLength) {
+    await addon.overlaySetPosition(this[idSym], id, x, y);
   }
 
   /**
    * Update overlay anchor
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param x x anchor
    * @param y y anchor
    */
-  async setAnchor(hwnd: number, x: PercentLength, y: PercentLength) {
-    await addon.overlaySetAnchor(this[idSym], hwnd, x, y);
+  async setAnchor(id: number, x: PercentLength, y: PercentLength) {
+    await addon.overlaySetAnchor(this[idSym], id, x, y);
   }
 
   /**
    * Update overlay margin
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param top top margin
    * @param right right margin
    * @param bottom bottom margin
    * @param left left margin
    */
   async setMargin(
-    hwnd: number,
+    id: number,
     top: PercentLength,
     right: PercentLength,
     bottom: PercentLength,
     left: PercentLength,
   ) {
-    await addon.overlaySetMargin(this[idSym], hwnd, top, right, bottom, left);
+    await addon.overlaySetMargin(this[idSym], id, top, right, bottom, left);
   }
 
   /**
    * Listen to window input without blocking
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param cursor listen cursor input or not
    * @param keyboard listen keyboard input or not
    */
   async listenInput(
-    hwnd: number,
+    id: number,
     cursor: boolean,
     keyboard: boolean,
   ) {
-    await addon.overlayListenInput(this[idSym], hwnd, cursor, keyboard);
+    await addon.overlayListenInput(this[idSym], id, cursor, keyboard);
   }
 
   /**
    * Block window input and listen them
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param block set true to block input, false to release
    */
   async blockInput(
-    hwnd: number,
+    id: number,
     block: boolean,
   ) {
-    await addon.overlayBlockInput(this[idSym], hwnd, block);
+    await addon.overlayBlockInput(this[idSym], id, block);
   }
 
   /**
    * Set cursor while in input blocking mode
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param cursor cursor to set. Do not supply this value to hide cursor.
    */
   async setBlockingCursor(
-    hwnd: number,
+    id: number,
     cursor?: Cursor,
   ) {
-    await addon.overlaySetBlockingCursor(this[idSym], hwnd, cursor);
+    await addon.overlaySetBlockingCursor(this[idSym], id, cursor);
   }
 
   /**
    * Update overlay using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param width width of the bitmap
    * @param data bgra formatted bitmap
    */
-  async updateBitmap(hwnd: number, width: number, data: Buffer) {
-    await addon.overlayUpdateBitmap(this[idSym], hwnd, width, data);
+  async updateBitmap(id: number, width: number, data: Buffer) {
+    await addon.overlayUpdateBitmap(this[idSym], id, width, data);
   }
 
   /**
    * Update overlay using D3D11 shared texture.
-   * @param hwnd target window hwnd
+   * @param id target window id
    * @param width width of the surface
    * @param height height of the surface
    * @param handle NT Handle of shared D3D11 Texture
    * @param rect Area to update
    */
-  async updateShtex(hwnd: number, width: number, height: number, handle: Buffer, rect?: CopyRect) {
-    await addon.overlayUpdateShtex(this[idSym], hwnd, width, height, handle, rect);
+  async updateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect) {
+    await addon.overlayUpdateShtex(this[idSym], id, width, height, handle, rect);
   }
 
   /**
    * Clear overlay
-   * @param hwnd target window hwnd
+   * @param id target window id
    */
-  async clearSurface(hwnd: number) {
-    await addon.overlayClearSurface(this[idSym], hwnd);
+  async clearSurface(id: number) {
+    await addon.overlayClearSurface(this[idSym], id);
   }
 
   /**

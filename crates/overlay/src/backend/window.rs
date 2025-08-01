@@ -78,7 +78,7 @@ impl WindowProcData {
                     y: window.y - self.position.1,
                 };
                 OverlayIpc::emit_event(ClientEvent::Window {
-                    hwnd,
+                    id: hwnd,
                     event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                         event: CursorEvent::Leave,
                         window,
@@ -88,7 +88,7 @@ impl WindowProcData {
             }
 
             OverlayIpc::emit_event(ClientEvent::Window {
-                hwnd,
+                id: hwnd,
                 event: WindowEvent::InputBlockingEnded,
             });
 
