@@ -21,6 +21,5 @@
     "./doc/book",
     "./lib",
     "./target",
-    "./examples",
   ]
 }
