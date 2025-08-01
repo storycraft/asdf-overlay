@@ -69,10 +69,7 @@ pub struct InputPosition {
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum Ime {
     Enabled,
-    Compose {
-        text: String,
-        caret: usize,
-    },
+    Compose { text: String, caret: usize },
     Commit(String),
     Disabled,
 }
