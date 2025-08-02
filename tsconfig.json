@@ -16,5 +16,11 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "allowJs": true
-  }
+  },
+  "exclude": [
+    "./doc/book",
+    "./lib",
+    "./target",
+    "./examples",
+  ]
 }
