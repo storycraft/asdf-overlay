@@ -17,7 +17,7 @@
     "lint": "eslint",
     "build-dll": "cargo xtask build-dll --",
     "cargo-build": "cargo xtask build-node --",
-    "build:dist": "tsc",
+    "build:dist": "tsc -p tsconfig.build.json",
     "build": "npm run cargo-build -- --release && npm run build-dll -- --release && npm run build:dist",
     "build:debug": "npm run cargo-build && npm run build-dll && npm run build:dist",
     "doc": "mdbook build ./doc",

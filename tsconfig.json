@@ -3,11 +3,10 @@
     "target": "ESNext",
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "outDir": "lib",
     "lib": [
       "ESNext"
     ],
-    "declaration": true,
+    "noEmit": true,
     "useDefineForClassFields": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,9 +14,7 @@
     "strict": true,
     "noImplicitAny": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true
-  },
-  "include": [
-    "src"
-  ]
+    "isolatedModules": true,
+    "allowJs": true
+  }
 }

@@ -7,10 +7,10 @@ import { globalIgnores } from 'eslint/config';
 
 export default tsEslint.config(
   globalIgnores([
-    'target/**/*',
-    'doc/**/*',
-    'lib/**/*',
-    'examples/node/ingame-browser/out/**/*',
+    './target/**/*',
+    './doc/book/**/*',
+    './lib/**/*',
+    './examples/node/ingame-browser/out/**/*',
   ]),
   eslint.configs.recommended,
   tsEslint.configs.strictTypeChecked,
@@ -54,9 +54,7 @@ export default tsEslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: {
-          defaultProject: 'tsconfig.eslint.json',
-        },
+        projectService: true,
       },
     },
   },
