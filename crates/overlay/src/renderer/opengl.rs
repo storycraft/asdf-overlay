@@ -310,7 +310,6 @@ impl MemoryObjectTexture {
 
             let mut memory_object = 0;
             gl::CreateMemoryObjectsEXT(1, &mut memory_object);
-            gl::MemoryObjectParameterivEXT(memory_object, gl::DEDICATED_MEMORY_OBJECT_EXT, &1);
 
             gl::ImportMemoryWin32HandleEXT(
                 memory_object,
