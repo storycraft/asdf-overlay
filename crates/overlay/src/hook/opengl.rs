@@ -27,6 +27,7 @@ use crate::{
     gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
+    wgl,
 };
 
 #[link(name = "gdi32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
@@ -172,28 +173,22 @@ fn draw_overlay(hdc: HDC) {
                 }
             }
 
-            if !gl::ImportMemoryWin32HandleEXT::is_loaded() {
-                error!("GL_EXT_memory_object_win32 is not supported");
-                return;
-            }
+            let renderer = match renderer {
+                Some(renderer) => renderer,
+                None => {
+                    debug!("initializing opengl renderer");
 
+                    renderer.insert(match OpenglRenderer::new(&backend.interop.device) {
+                        Ok(renderer) => renderer,
+                        Err(err) => {
+                            error!("renderer setup failed. err: {:?}", err);
+                            return;
+                        }
+                    })
+                }
+            };
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                let renderer = match renderer {
-                    Some(renderer) => renderer,
-                    None => {
-                        debug!("initializing opengl renderer");
-
-                        renderer.insert(match OpenglRenderer::new(&backend.interop.device) {
-                            Ok(renderer) => renderer,
-                            Err(err) => {
-                                error!("renderer setup failed. err: {:?}", err);
-                                return;
-                            }
-                        })
-                    }
-                };
-
                 if backend.surface.invalidate_update() {
                     if let Err(err) = renderer
                         .update_texture(backend.surface.get().map(|surface| surface.texture()))
@@ -359,6 +354,7 @@ fn setup_gl() -> anyhow::Result<()> {
         addr
     }
 
+    wgl::load_with(|s| loader(opengl32module, s));
     gl::load_with(|s| loader(opengl32module, s));
 
     Ok(())
