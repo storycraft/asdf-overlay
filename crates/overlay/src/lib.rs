@@ -5,6 +5,11 @@ mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 }
 
+#[allow(unsafe_op_in_unsafe_fn, clippy::all)]
+mod wgl {
+    include!(concat!(env!("OUT_DIR"), "/wgl_bindings.rs"));
+}
+
 mod app;
 mod backend;
 mod hook;
