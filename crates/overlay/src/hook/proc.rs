@@ -111,7 +111,8 @@ fn process_keyboard_listen(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT
                 KeyboardInput::Key { key, state },
             ));
 
-            if backend.proc.lock().input_blocking() {
+            let blocking = backend.proc.lock().input_blocking();
+            if blocking {
                 return Some(unsafe {
                     DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam)
                 });
