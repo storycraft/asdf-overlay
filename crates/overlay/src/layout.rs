@@ -5,7 +5,6 @@ pub struct OverlayLayout {
     position: (PercentLength, PercentLength),
     anchor: (PercentLength, PercentLength),
     margin: (PercentLength, PercentLength, PercentLength, PercentLength),
-    cache: Option<LayoutCache>,
 }
 
 impl OverlayLayout {
@@ -19,20 +18,20 @@ impl OverlayLayout {
                 PercentLength::ZERO,
                 PercentLength::ZERO,
             ),
-            cache: None,
         }
     }
 
+    #[inline]
     pub fn set_position(&mut self, x: PercentLength, y: PercentLength) {
-        self.cache.take();
         self.position = (x, y);
     }
 
+    #[inline]
     pub fn set_anchor(&mut self, x: PercentLength, y: PercentLength) {
-        self.cache.take();
         self.anchor = (x, y);
     }
 
+    #[inline]
     pub fn set_margin(
         &mut self,
         top: PercentLength,
@@ -40,27 +39,10 @@ impl OverlayLayout {
         bottom: PercentLength,
         left: PercentLength,
     ) {
-        self.cache.take();
         self.margin = (top, right, bottom, left);
     }
 
-    pub fn get_or_calc(&mut self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
-        if let Some(ref cache) = self.cache {
-            if let Some(position) = cache.resolve(size, screen) {
-                return position;
-            }
-        }
-
-        let final_position = self.calc_position(size, screen);
-        self.cache = Some(LayoutCache {
-            size,
-            screen,
-            final_position,
-        });
-        final_position
-    }
-
-    fn calc_position(&self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
+    pub fn calc(&self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
         let size = (size.0 as f32, size.1 as f32);
         let screen = (screen.0 as f32, screen.1 as f32);
         let (x, y) = self.position;
@@ -83,22 +65,5 @@ impl OverlayLayout {
 impl Default for OverlayLayout {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Clone)]
-struct LayoutCache {
-    pub size: (u32, u32),
-    pub screen: (u32, u32),
-    pub final_position: (i32, i32),
-}
-
-impl LayoutCache {
-    pub fn resolve(&self, size: (u32, u32), screen: (u32, u32)) -> Option<(i32, i32)> {
-        if size == self.size && self.screen == screen {
-            Some(self.final_position)
-        } else {
-            None
-        }
     }
 }

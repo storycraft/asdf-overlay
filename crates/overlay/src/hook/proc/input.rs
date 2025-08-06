@@ -109,7 +109,8 @@ fn active_hwnd_input_blocked() -> bool {
     let hwnd = unsafe { GetActiveWindow() };
 
     !hwnd.is_invalid()
-        && Backends::with_backend(hwnd, |backend| backend.input_blocking()).unwrap_or(false)
+        && Backends::with_backend(hwnd, |backend| backend.proc.lock().input_blocking())
+            .unwrap_or(false)
 }
 
 #[inline]
@@ -117,7 +118,8 @@ fn foreground_hwnd_input_blocked() -> bool {
     let hwnd = unsafe { GetForegroundWindow() };
 
     !hwnd.is_invalid()
-        && Backends::with_backend(hwnd, |backend| backend.input_blocking()).unwrap_or(false)
+        && Backends::with_backend(hwnd, |backend| backend.proc.lock().input_blocking())
+            .unwrap_or(false)
 }
 
 #[tracing::instrument]

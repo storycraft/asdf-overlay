@@ -1,45 +1,39 @@
-mod cursor;
-
 use super::WindowBackend;
 use crate::{
     app::OverlayIpc,
-    backend::{BACKENDS, Backends, BlockingState, CursorState},
+    backend::{
+        BACKENDS, Backends,
+        window::{BlockingState, CursorState, cursor::load_cursor},
+    },
     hook::util::original_clip_cursor,
     util::get_client_size,
 };
-use asdf_overlay_common::{
-    event::{
-        ClientEvent, WindowEvent,
-        input::{
-            CursorAction, CursorEvent, CursorInput, InputEvent, InputPosition, InputState,
-            KeyboardInput, ScrollAxis,
-        },
+use asdf_overlay_common::event::{
+    ClientEvent, WindowEvent,
+    input::{
+        CursorAction, CursorEvent, CursorInput, InputEvent, InputPosition, InputState, ScrollAxis,
     },
-    key::Key,
 };
 use core::mem;
-use cursor::load_cursor;
 use scopeguard::defer;
 use tracing::trace;
-use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::{
-            Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
-            KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, VK_F10, VK_MENU},
+        Input::KeyboardAndMouse::{
+            GetCapture, ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GA_ROOT, GetAncestor, GetClipCursor, MSG,
-            SetCursor, ShowCursor, WM_NCDESTROY, XBUTTON1,
+            self as msg, CallWindowProcA, GetClipCursor, SetCursor, ShowCursor, WM_NCDESTROY,
+            XBUTTON1,
         },
     },
 };
 
 #[inline]
 fn block_proc_input(
-    backend: &mut WindowBackend,
+    backend: &WindowBackend,
     msg: u32,
     _wparam: WPARAM,
     lparam: LPARAM,
@@ -52,23 +46,25 @@ fn block_proc_input(
                 area == 1
             } =>
         unsafe {
-            SetCursor(backend.blocking_cursor.and_then(load_cursor));
+            SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
             return Some(LRESULT(1));
         },
 
         // stop input capture when user request to
         msg::WM_CLOSE => {
-            backend.block_input(false);
+            backend.proc.lock().block_input(false, backend.hwnd);
         }
 
+        msg::WM_LBUTTONDOWN | msg::WM_MBUTTONDOWN | msg::WM_RBUTTONDOWN => unsafe {
+            SetCapture(HWND(backend.hwnd as _));
+        },
+
+        msg::WM_LBUTTONUP | msg::WM_MBUTTONUP | msg::WM_RBUTTONUP => unsafe {
+            _ = ReleaseCapture();
+        },
+
         // ignore mouse inputs
-        msg::WM_LBUTTONDOWN
-        | msg::WM_LBUTTONUP
-        | msg::WM_MBUTTONDOWN
-        | msg::WM_MBUTTONUP
-        | msg::WM_RBUTTONDOWN
-        | msg::WM_RBUTTONUP
-        | Controls::WM_MOUSELEAVE
+        Controls::WM_MOUSELEAVE
         | msg::WM_MOUSEMOVE
         | msg::WM_MOUSEWHEEL
         | msg::WM_MOUSEHWHEEL
@@ -87,12 +83,14 @@ fn block_proc_input(
 }
 
 #[inline]
-fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, lparam: LPARAM) {
+fn process_mouse_capture(backend: &WindowBackend, msg: u32, wparam: WPARAM, lparam: LPARAM) {
     // emit cursor action
-    let mut emit_cursor_action = |action: CursorAction, state: InputState| {
+    let emit_cursor_action = |action: CursorAction, state: InputState| {
+        let proc = &mut *backend.proc.lock();
+
         OverlayIpc::emit_event(cursor_input(
             backend.hwnd,
-            backend.position(),
+            proc.position,
             lparam,
             CursorEvent::Action { action, state },
         ));
@@ -136,28 +134,30 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
         }
 
         Controls::WM_MOUSELEAVE => {
-            backend.cursor_state = CursorState::Outside;
+            let proc = &mut *backend.proc.lock();
+            proc.cursor_state = CursorState::Outside;
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
-                backend.position(),
+                proc.position,
                 lparam,
                 CursorEvent::Leave,
             ));
         }
 
         msg::WM_MOUSEMOVE => {
+            let proc = &mut *backend.proc.lock();
             let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
-            match backend.cursor_state {
+            match proc.cursor_state {
                 CursorState::Inside(ref mut old_x, ref mut old_y) => {
                     *old_x = x;
                     *old_y = y;
                 }
                 CursorState::Outside => {
-                    backend.cursor_state = CursorState::Inside(x, y);
+                    proc.cursor_state = CursorState::Inside(x, y);
                     OverlayIpc::emit_event(cursor_input(
                         backend.hwnd,
-                        backend.position(),
+                        proc.position,
                         lparam,
                         CursorEvent::Enter,
                     ));
@@ -176,7 +176,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
-                backend.position(),
+                proc.position,
                 lparam,
                 CursorEvent::Move,
             ));
@@ -184,9 +184,10 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
         msg::WM_MOUSEWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let position = backend.proc.lock().position;
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
-                backend.position(),
+                position,
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::Y,
@@ -197,9 +198,10 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 
         msg::WM_MOUSEHWHEEL => {
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+            let position = backend.proc.lock().position;
             OverlayIpc::emit_event(cursor_input(
                 backend.hwnd,
-                backend.position(),
+                position,
                 lparam,
                 CursorEvent::Scroll {
                     axis: ScrollAxis::X,
@@ -213,7 +215,7 @@ fn process_mouse_capture(backend: &mut WindowBackend, msg: u32, wparam: WPARAM, 
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_wnd_proc(
+pub(crate) unsafe extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
@@ -229,34 +231,48 @@ pub(super) extern "system" fn hooked_wnd_proc(
         }
     });
 
-    let mut backend = BACKENDS.map.get_mut(&(hwnd.0 as u32)).unwrap();
+    let backend = BACKENDS.map.get(&(hwnd.0 as u32)).unwrap();
 
     if msg == msg::WM_WINDOWPOSCHANGED {
+        let render = &mut *backend.render.lock();
         let new_size = get_client_size(hwnd).unwrap();
-        if backend.size != new_size {
-            backend.size = new_size;
+        if render.window_size != new_size {
+            let proc = &mut *backend.proc.lock();
+            let position = proc.layout.calc(
+                render
+                    .surface
+                    .get()
+                    .map(|surface| surface.size())
+                    .unwrap_or((0, 0)),
+                new_size,
+            );
+
+            proc.position = position;
+            render.position = position;
+            render.window_size = new_size;
+
             OverlayIpc::emit_event(ClientEvent::Window {
-                hwnd: backend.hwnd,
+                hwnd: hwnd.0 as _,
                 event: WindowEvent::Resized {
-                    width: backend.size.0,
-                    height: backend.size.1,
+                    width: new_size.0,
+                    height: new_size.1,
                 },
             });
         }
     }
 
-    if backend.listening_cursor() {
+    if backend.proc.lock().listening_cursor() {
         // We want to skip events for non client area so listen in WndProc
-        process_mouse_capture(&mut backend, msg, wparam, lparam);
+        process_mouse_capture(&backend, msg, wparam, lparam);
     }
 
     'blocking: {
-        match backend.blocking_state {
+        match { backend.proc.lock().blocking_state } {
             BlockingState::None => break 'blocking,
 
             BlockingState::StartBlocking => unsafe {
                 ShowCursor(true);
-                SetCursor(backend.blocking_cursor.and_then(load_cursor));
+                SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
                 let mut rect = RECT::default();
                 let clip_cursor = if GetClipCursor(&mut rect).is_ok() {
                     _ = original_clip_cursor(None);
@@ -264,22 +280,25 @@ pub(super) extern "system" fn hooked_wnd_proc(
                 } else {
                     None
                 };
-                backend.blocking_state = BlockingState::Blocking { clip_cursor };
+                backend.proc.lock().blocking_state = BlockingState::Blocking { clip_cursor };
             },
 
             BlockingState::Blocking { .. } => {}
 
             BlockingState::StopBlocking { clip_cursor } => unsafe {
                 ShowCursor(false);
+                if GetCapture().0 as u32 == backend.hwnd {
+                    _ = ReleaseCapture();
+                }
                 if let Some(clip_cursor) = clip_cursor {
                     _ = original_clip_cursor(Some(&clip_cursor));
                 }
-                backend.blocking_state = BlockingState::None;
+                backend.proc.lock().blocking_state = BlockingState::None;
                 break 'blocking;
             },
         }
 
-        if let Some(ret) = block_proc_input(&mut backend, msg, wparam, lparam) {
+        if let Some(ret) = block_proc_input(&backend, msg, wparam, lparam) {
             return ret;
         }
     }
@@ -287,95 +306,6 @@ pub(super) extern "system" fn hooked_wnd_proc(
     let original_proc = backend.original_proc;
     drop(backend);
     unsafe { CallWindowProcA(original_proc, hwnd, msg, wparam, lparam) }
-}
-
-#[inline]
-fn process_keyboard_listen(backend: &mut WindowBackend, msg: &MSG) -> Option<LRESULT> {
-    fn emit_key_input(
-        backend: &mut WindowBackend,
-        msg: &MSG,
-        state: InputState,
-    ) -> Option<LRESULT> {
-        if let Some(key) = to_key(msg.wParam, msg.lParam) {
-            OverlayIpc::emit_event(keyboard_input(
-                backend.hwnd,
-                KeyboardInput::Key { key, state },
-            ));
-
-            if backend.input_blocking() {
-                let key = key.code.get() as u16;
-                // ignore f10, or menu key
-                // Default proc try to open non existent menu on some app and freezes window
-                if key == VK_F10.0 || key == VK_MENU.0 {
-                    return None;
-                }
-
-                return Some(unsafe {
-                    DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam)
-                });
-            }
-        }
-
-        None
-    }
-
-    match msg.message {
-        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            return emit_key_input(backend, msg, InputState::Pressed);
-        }
-
-        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            return emit_key_input(backend, msg, InputState::Released);
-        }
-
-        // unicode characters are handled in WM_IME_COMPOSITION
-        msg::WM_CHAR | msg::WM_SYSCHAR => {
-            if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
-            }
-        }
-        msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
-            if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
-                for ch in str.chars() {
-                    OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
-                }
-            }
-        }
-
-        // ignore remaining keyboard inputs
-        msg::WM_APPCOMMAND
-        | msg::WM_DEADCHAR
-        | msg::WM_HOTKEY
-        | msg::WM_SYSDEADCHAR
-        | msg::WM_UNICHAR => {}
-
-        _ => return None,
-    }
-
-    if backend.input_blocking() {
-        Some(LRESULT(0))
-    } else {
-        None
-    }
-}
-
-pub(crate) fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
-    if !msg.hwnd.is_invalid() {
-        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-        if let Some(ret) = Backends::with_backend(root_hwnd, |backend| {
-            if backend.listening_keyboard() {
-                process_keyboard_listen(backend, msg)
-            } else {
-                None
-            }
-        })
-        .flatten()
-        {
-            return Some(ret);
-        }
-    }
-
-    None
 }
 
 #[inline]
@@ -402,45 +332,5 @@ fn cursor_input(
             client: surface,
             window,
         })),
-    }
-}
-
-#[inline(always)]
-fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
-    ClientEvent::Window {
-        hwnd,
-        event: WindowEvent::Input(InputEvent::Keyboard(input)),
-    }
-}
-
-#[inline]
-fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
-    let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
-    Key::new(wparam.0 as _, flags & 0x01 == 0x01)
-}
-
-#[inline]
-fn get_ime_string(hwnd: HWND) -> Option<WString<LittleEndian>> {
-    let himc = unsafe { ImmGetContext(hwnd) };
-    defer!(unsafe {
-        _ = ImmReleaseContext(hwnd, himc);
-    });
-
-    let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
-    if byte_size >= 0 {
-        let mut buf = vec![0_u8; byte_size as usize];
-
-        unsafe {
-            ImmGetCompositionStringW(
-                himc,
-                GCS_RESULTSTR,
-                Some(buf.as_mut_ptr().cast()),
-                buf.len() as _,
-            )
-        };
-
-        WString::from_utf16le(buf).ok()
-    } else {
-        None
     }
 }

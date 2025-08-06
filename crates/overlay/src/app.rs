@@ -12,7 +12,7 @@ use tokio::{net::windows::named_pipe::NamedPipeServer, time::sleep};
 use tracing::{debug, error, trace, warn};
 use windows::Win32::Foundation::HWND;
 
-use crate::backend::{Backends, ListenInputFlags};
+use crate::backend::{Backends, window::ListenInputFlags};
 
 static CONN: ArcSwapOption<OverlayIpc> = ArcSwapOption::const_empty();
 
@@ -40,17 +40,24 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
     fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
         let res = Backends::with_backend(HWND(hwnd as _), |backend| match req {
             WindowRequest::SetPosition(position) => {
-                backend.layout.set_position(position.x, position.y);
+                backend
+                    .proc
+                    .lock()
+                    .layout
+                    .set_position(position.x, position.y);
             }
 
             WindowRequest::SetAnchor(anchor) => {
-                backend.layout.set_anchor(anchor.x, anchor.y);
+                backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
             }
 
             WindowRequest::SetMargin(margin) => {
-                backend
-                    .layout
-                    .set_margin(margin.top, margin.right, margin.bottom, margin.left);
+                backend.proc.lock().layout.set_margin(
+                    margin.top,
+                    margin.right,
+                    margin.bottom,
+                    margin.left,
+                );
             }
 
             WindowRequest::ListenInput(cmd) => {
@@ -58,19 +65,19 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
                 flags.set(ListenInputFlags::CURSOR, cmd.cursor);
                 flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
 
-                backend.listen_input = flags;
+                backend.proc.lock().listen_input = flags;
             }
 
             WindowRequest::BlockInput(cmd) => {
-                backend.block_input(cmd.block);
+                backend.proc.lock().block_input(cmd.block, backend.hwnd);
             }
 
             WindowRequest::SetBlockingCursor(cmd) => {
-                backend.blocking_cursor = cmd.cursor;
+                backend.proc.lock().blocking_cursor = cmd.cursor;
             }
 
             WindowRequest::UpdateSharedHandle(shared) => {
-                if let Err(err) = backend.update_surface(shared.handle) {
+                if let Err(err) = backend.render.lock().update_surface(shared.handle) {
                     error!("failed to open shared surface. err: {:?}", err);
                 }
             }
@@ -104,11 +111,12 @@ pub async fn app(
         let emitter = conn.create_emitter();
         // send existing windows
         for backend in Backends::iter() {
+            let size = backend.render.lock().window_size;
             _ = emitter.emit(ClientEvent::Window {
                 hwnd: *backend.key() as _,
                 event: WindowEvent::Added {
-                    width: backend.size.0,
-                    height: backend.size.1,
+                    width: size.0,
+                    height: size.1,
                 },
             });
         }

@@ -4,7 +4,7 @@ use tracing::{debug, trace};
 use windows::Win32::Foundation::HWND;
 
 use crate::{
-    backend::{Backends, renderer::Renderer},
+    backend::{Backends, render::Renderer},
     types::IntDashMap,
     vulkan_layer::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd},
 };
@@ -78,11 +78,13 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
     let data = get_swapchain_data(swapchain);
 
     _ = Backends::with_backend(HWND(data.hwnd as _), |backend| {
-        let Some(Renderer::Vulkan(ref mut renderer)) = backend.renderer else {
+        let mut render = backend.render.lock();
+
+        let Some(Renderer::Vulkan(ref mut renderer)) = render.renderer else {
             return;
         };
         debug!("vulkan renderer cleanup");
         renderer.take();
-        backend.set_surface_updated();
+        render.set_surface_updated();
     });
 }

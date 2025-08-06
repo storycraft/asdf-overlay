@@ -19,7 +19,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, renderer::Renderer},
+    backend::{Backends, render::Renderer},
     reader::SharedHandleReader,
     renderer::dx9::Dx9Renderer,
 };
@@ -161,7 +161,8 @@ pub(super) extern "system" fn hooked_present_ex(
 
 fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
     let res = Backends::with_or_init_backend(hwnd, |backend| {
-        let renderer = match backend.renderer {
+        let render = &mut *backend.render.lock();
+        let renderer = match render.renderer {
             Some(Renderer::Dx9(ref mut renderer)) => renderer,
             Some(_) => {
                 trace!("ignoring dx9 rendering");
@@ -169,7 +170,7 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
             }
             None => {
                 debug!("Found dx9 window");
-                backend.renderer = Some(Renderer::Dx9(None));
+                render.renderer = Some(Renderer::Dx9(None));
                 // wait next swap for possible remaining renderer check
                 return;
             }
@@ -178,37 +179,34 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
         let renderer = renderer
             .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
 
-        let reader = backend
+        let reader = render
             .cx
             .fallback_reader
             .get_or_insert_with(|| SharedHandleReader::new().unwrap());
 
-        if backend.surface.invalidate_update() && backend.surface.get().is_none() {
+        if render.surface.invalidate_update() && render.surface.get().is_none() {
             renderer.reset_texture();
         }
-        let Some(surface) = backend.surface.get() else {
+        let Some(surface) = render.surface.get() else {
             return;
         };
 
-        let screen = backend.size;
-        let size = surface.size();
-        let position = backend.layout.get_or_calc(size, screen);
-
-        let interop = &mut backend.interop;
+        let surface_size = surface.size();
+        let interop = &mut render.interop;
         match reader.with_mapped(
             &interop.device,
             surface.mutex(),
             interop.cx.get_mut(),
             surface.texture(),
-            size,
-            |mapped| renderer.update_texture(device, size, mapped),
+            surface_size,
+            |mapped| renderer.update_texture(device, surface_size, mapped),
         ) {
             Ok(Some(_)) => {
                 if unsafe { device.BeginScene() }.is_err() {
                     return;
                 }
 
-                let _res = renderer.draw(device, position, screen);
+                let _res = renderer.draw(device, render.position, render.window_size);
                 trace!("dx9 render: {:?}", _res);
                 unsafe { _ = device.EndScene() };
             }
@@ -235,13 +233,14 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
 
     if !hwnd.is_invalid() {
         _ = Backends::with_backend(hwnd, |backend| {
-            let Some(Renderer::Dx9(ref mut renderer)) = backend.renderer else {
+            let render = &mut *backend.render.lock();
+            let Some(Renderer::Dx9(ref mut renderer)) = render.renderer else {
                 return;
             };
             debug!("dx9 renderer cleanup");
 
             renderer.take();
-            backend.set_surface_updated();
+            render.set_surface_updated();
         });
     }
 }
