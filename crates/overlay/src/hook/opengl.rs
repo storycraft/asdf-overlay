@@ -152,7 +152,7 @@ fn draw_overlay(hdc: HDC) {
     #[inline]
     fn inner(hwnd: HWND, renderer: &mut Option<OpenglRenderer>) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
-            let  render = &mut *backend.render.lock();
+            let render = &mut *backend.render.lock();
 
             match render.renderer {
                 Some(Renderer::Opengl) => {}

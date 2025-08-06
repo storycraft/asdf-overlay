@@ -47,7 +47,7 @@ impl Backends {
     ) -> anyhow::Result<R> {
         let key = hwnd.0 as u32;
         if let Some(backend) = BACKENDS.map.get(&key) {
-            return Ok(f(&*backend));
+            return Ok(f(&backend));
         }
 
         let backend = BACKENDS
@@ -84,7 +84,7 @@ impl Backends {
             })?
             .downgrade();
 
-        Ok(f(&*backend))
+        Ok(f(&backend))
     }
 
     fn remove_backend(hwnd: HWND) {

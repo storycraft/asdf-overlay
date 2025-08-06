@@ -267,7 +267,7 @@ pub(crate) unsafe extern "system" fn hooked_wnd_proc(
     }
 
     'blocking: {
-        match { backend.proc.lock().blocking_state } {
+        match backend.proc.lock().blocking_state {
             BlockingState::None => break 'blocking,
 
             BlockingState::StartBlocking => unsafe {

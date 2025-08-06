@@ -86,19 +86,19 @@ fn draw_dx12_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: 
     };
 
     let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
-    let Some(queue) = get_queue_for(&device) else {
+    let Some(queue) = get_queue_for(device) else {
         return;
     };
 
     let renderer = renderer.get_or_insert_with(|| {
         debug!("initializing dx12 renderer");
         register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
-        Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
+        Dx12Renderer::new(device, &queue, &swapchain).expect("renderer creation failed")
     });
     let rtv = render
         .cx
         .dx12
-        .get_or_insert_with(|| RtvDescriptors::new(&device).expect("failed to create dx12 rtv"));
+        .get_or_insert_with(|| RtvDescriptors::new(device).expect("failed to create dx12 rtv"));
 
     if let Some(update) = render.surface.take_update() {
         renderer.update_texture(update);
@@ -111,9 +111,9 @@ fn draw_dx12_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: 
     let size = surface.size();
     trace!("using dx12 renderer");
     let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-    let res = rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
+    let res = rtv.with_next_swapchain(device, &swapchain, backbuffer_index as _, |desc| {
         renderer.draw(
-            &device,
+            device,
             &swapchain,
             backbuffer_index,
             desc,
@@ -188,7 +188,7 @@ fn draw_dx11_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain:
     let renderer = renderer.get_or_insert_with(|| {
         debug!("initializing dx11 renderer");
         register_swapchain_destruction_callback(swapchain, dx11::cleanup_swapchain);
-        Dx11Renderer::new(&device).expect("renderer creation failed")
+        Dx11Renderer::new(device).expect("renderer creation failed")
     });
 
     if let Some(update) = render.surface.take_update() {
@@ -209,7 +209,7 @@ fn draw_dx11_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain:
 
         unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
         defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-        let _res = renderer.draw(&device, &cx, render.position, size, render.window_size);
+        let _res = renderer.draw(device, &cx, render.position, size, render.window_size);
         trace!("dx11 render: {:?}", _res);
     }
 }

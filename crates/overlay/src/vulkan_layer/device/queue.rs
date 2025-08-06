@@ -145,7 +145,14 @@ fn draw_overlay(
     }
     let surface = render.surface.get()?;
 
-    let res = renderer.draw(queue, wait_semaphores, index, render.position, surface.size(), render.window_size);
+    let res = renderer.draw(
+        queue,
+        wait_semaphores,
+        index,
+        render.position,
+        surface.size(),
+        render.window_size,
+    );
     trace!("vulkan render: {:?}", res);
     res.ok().flatten()
 }
