@@ -58,7 +58,7 @@ fn process_wnd_proc(
                 render.window_size = new_size;
 
                 OverlayIpc::emit_event(ClientEvent::Window {
-                    hwnd: backend.hwnd,
+                    id: backend.hwnd,
                     event: WindowEvent::Resized {
                         width: new_size.0,
                         height: new_size.1,
@@ -349,7 +349,7 @@ fn cursor_event<const BLOCK_RESULT: isize>(
 
 #[inline]
 fn cursor_input(
-    hwnd: u32,
+    id: u32,
     position: (i32, i32),
     lparam: LPARAM,
     event: CursorEvent,
@@ -365,7 +365,7 @@ fn cursor_input(
         y: window.y - position.1,
     };
     ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event,
             client: surface,
