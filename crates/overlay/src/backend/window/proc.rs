@@ -93,7 +93,7 @@ fn process_wnd_proc(
         }
 
         // set focus to target window instead of child window
-        msg::WM_ACTIVATE => {
+        msg::WM_ACTIVATE | msg::WM_SETFOCUS | msg::WM_KILLFOCUS => {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
                 return Some(LRESULT(0));
