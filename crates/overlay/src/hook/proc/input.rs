@@ -133,7 +133,7 @@ extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if foreground_hwnd_input_blocked() {
+    if active_hwnd_input_blocked() {
         return BOOL(1);
     }
 
