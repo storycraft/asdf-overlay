@@ -70,15 +70,15 @@ fn process_wnd_proc(
         msg::WM_SETCURSOR
             if {
                 let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
+                // check if cursor is on client area
                 area == 1
             } =>
-        unsafe {
+        {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
-                SetCursor(proc.blocking_cursor.and_then(load_cursor));
                 return Some(LRESULT(1));
             }
-        },
+        }
 
         // stop input capture when user request to
         msg::WM_CLOSE => {
@@ -159,44 +159,42 @@ fn process_wnd_proc(
 
         msg::WM_MOUSEMOVE => {
             let mut proc = backend.proc.lock();
-            if !proc.listening_cursor() {
-                return None;
-            }
+            if proc.listening_cursor() {
+                let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
-            let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+                match proc.cursor_state {
+                    CursorState::Inside(ref mut old_x, ref mut old_y) => {
+                        *old_x = x;
+                        *old_y = y;
+                    }
+                    CursorState::Outside => {
+                        proc.cursor_state = CursorState::Inside(x, y);
+                        OverlayIpc::emit_event(cursor_input(
+                            backend.hwnd,
+                            proc.position,
+                            lparam,
+                            CursorEvent::Enter,
+                        ));
 
-            match proc.cursor_state {
-                CursorState::Inside(ref mut old_x, ref mut old_y) => {
-                    *old_x = x;
-                    *old_y = y;
+                        // track for leave event
+                        _ = unsafe {
+                            TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                                cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                                dwFlags: TME_LEAVE,
+                                hwndTrack: HWND(backend.hwnd as _),
+                                dwHoverTime: HOVER_DEFAULT,
+                            })
+                        };
+                    }
                 }
-                CursorState::Outside => {
-                    proc.cursor_state = CursorState::Inside(x, y);
-                    OverlayIpc::emit_event(cursor_input(
-                        backend.hwnd,
-                        proc.position,
-                        lparam,
-                        CursorEvent::Enter,
-                    ));
 
-                    // track for leave event
-                    _ = unsafe {
-                        TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                            cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                            dwFlags: TME_LEAVE,
-                            hwndTrack: HWND(backend.hwnd as _),
-                            dwHoverTime: HOVER_DEFAULT,
-                        })
-                    };
-                }
+                OverlayIpc::emit_event(cursor_input(
+                    backend.hwnd,
+                    proc.position,
+                    lparam,
+                    CursorEvent::Move,
+                ));
             }
-
-            OverlayIpc::emit_event(cursor_input(
-                backend.hwnd,
-                proc.position,
-                lparam,
-                CursorEvent::Move,
-            ));
 
             match proc.blocking_state {
                 BlockingState::None => {}
