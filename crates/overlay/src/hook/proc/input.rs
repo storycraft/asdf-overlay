@@ -72,7 +72,8 @@ pub fn hook() -> anyhow::Result<()> {
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
 
         debug!("hooking GetCursorPos");
-        let get_physical_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
+        let get_physical_cursor_pos =
+            DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
 
         debug!("hooking GetPhysicalCursorPos");
         let get_cursor_pos = DetourHook::attach(
