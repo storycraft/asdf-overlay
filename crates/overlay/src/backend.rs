@@ -118,4 +118,20 @@ impl WindowBackend {
         trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
         self.proc.lock().reset();
     }
+
+    pub fn recalc_position(&self) {
+        let mut proc = self.proc.lock();
+        let mut render = self.render.lock();
+        let position = proc.layout.calc(
+            render
+                .surface
+                .get()
+                .map(|surface| surface.size())
+                .unwrap_or((0, 0)),
+            render.window_size,
+        );
+
+        proc.position = position;
+        render.position = position;
+    }
 }

@@ -40,21 +40,9 @@ fn process_wnd_proc(
 ) -> Option<LRESULT> {
     match msg {
         msg::WM_WINDOWPOSCHANGED => {
-            let render = &mut *backend.render.lock();
             let new_size = get_client_size(HWND(backend.hwnd as _)).unwrap();
+            let mut render = backend.render.lock();
             if render.window_size != new_size {
-                let proc = &mut *backend.proc.lock();
-                let position = proc.layout.calc(
-                    render
-                        .surface
-                        .get()
-                        .map(|surface| surface.size())
-                        .unwrap_or((0, 0)),
-                    new_size,
-                );
-
-                proc.position = position;
-                render.position = position;
                 render.window_size = new_size;
 
                 OverlayIpc::emit_event(ClientEvent::Window {
@@ -65,6 +53,8 @@ fn process_wnd_proc(
                     },
                 });
             }
+            drop(render);
+            backend.recalc_position();
         }
 
         // set cursor in client area
@@ -332,6 +322,8 @@ fn cursor_event<const BLOCK_RESULT: isize>(
     ));
 
     if proc.input_blocking() {
+        // prevent possible deadlock caused by SetCapture and ReleaseCapture
+        drop(proc);
         match state {
             InputState::Pressed => unsafe {
                 SetCapture(HWND(backend.hwnd as _));
@@ -348,12 +340,7 @@ fn cursor_event<const BLOCK_RESULT: isize>(
 }
 
 #[inline]
-fn cursor_input(
-    id: u32,
-    position: (i32, i32),
-    lparam: LPARAM,
-    event: CursorEvent,
-) -> ClientEvent {
+fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEvent) -> ClientEvent {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
     let window = InputPosition {

@@ -45,10 +45,12 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
                     .lock()
                     .layout
                     .set_position(position.x, position.y);
+                backend.recalc_position();
             }
 
             WindowRequest::SetAnchor(anchor) => {
                 backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
+                backend.recalc_position();
             }
 
             WindowRequest::SetMargin(margin) => {
@@ -58,6 +60,7 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
                     margin.bottom,
                     margin.left,
                 );
+                backend.recalc_position();
             }
 
             WindowRequest::ListenInput(cmd) => {
@@ -77,8 +80,10 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
             }
 
             WindowRequest::UpdateSharedHandle(shared) => {
-                if let Err(err) = backend.render.lock().update_surface(shared.handle) {
-                    error!("failed to open shared surface. err: {:?}", err);
+                let res = backend.render.lock().update_surface(shared.handle);
+                match res {
+                    Ok(_) => backend.recalc_position(),
+                    Err(err) => error!("failed to open shared surface. err: {:?}", err),
                 }
             }
         });

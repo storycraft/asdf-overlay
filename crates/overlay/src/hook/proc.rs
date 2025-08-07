@@ -125,6 +125,11 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
         }
 
         msg::WM_IME_SETCONTEXT => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
             OverlayIpc::emit_event(keyboard_input(
                 backend.hwnd,
                 KeyboardInput::Ime(if msg.wParam.0 != 0 {
@@ -133,8 +138,6 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
                     Ime::Disabled
                 }),
             ));
-
-            return None;
         }
 
         msg::WM_IME_COMPOSITION => {
