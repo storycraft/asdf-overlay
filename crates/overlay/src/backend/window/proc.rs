@@ -31,6 +31,7 @@ use windows::Win32::{
     },
 };
 
+#[inline]
 fn process_wnd_proc(
     backend: &WindowBackend,
     msg: u32,
