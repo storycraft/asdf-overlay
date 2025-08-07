@@ -25,6 +25,7 @@ use crate::backend::Backends;
 unsafe extern "system" {
     fn ClipCursor(lprect: *const RECT) -> BOOL;
     fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
+    fn GetPhysicalCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetKeyboardState(buf: *mut u8) -> BOOL;
     fn GetKeyState(vkey: i32) -> i16;
     fn GetAsyncKeyState(vkey: i32) -> i16;
@@ -41,6 +42,7 @@ unsafe extern "system" {
 struct Hook {
     clip_cursor: DetourHook<ClipCursorFn>,
     get_cursor_pos: DetourHook<GetCursorPos>,
+    get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
     get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
     get_key_state: DetourHook<GetKeyStateFn>,
     get_keyboard_state: DetourHook<GetKeyboardStateFn>,
@@ -51,6 +53,7 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
+type GetPhysicalCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetAsyncKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyboardStateFn = unsafe extern "system" fn(*mut u8) -> BOOL;
@@ -69,7 +72,13 @@ pub fn hook() -> anyhow::Result<()> {
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
 
         debug!("hooking GetCursorPos");
-        let get_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
+        let get_physical_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
+
+        debug!("hooking GetPhysicalCursorPos");
+        let get_cursor_pos = DetourHook::attach(
+            GetPhysicalCursorPos as _,
+            hooked_get_physical_cursor_pos as _,
+        )?;
 
         debug!("hooking GetAsyncKeyState");
         let get_async_key_state =
@@ -93,6 +102,7 @@ pub fn hook() -> anyhow::Result<()> {
         Ok::<_, anyhow::Error>(Hook {
             clip_cursor,
             get_cursor_pos,
+            get_physical_cursor_pos,
             get_async_key_state,
             get_key_state,
             get_keyboard_state,
@@ -138,6 +148,15 @@ extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
     }
 
     unsafe { HOOK.wait().get_cursor_pos.original_fn()(lppoint) }
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
+    if active_hwnd_input_blocked() {
+        return BOOL(1);
+    }
+
+    unsafe { HOOK.wait().get_physical_cursor_pos.original_fn()(lppoint) }
 }
 
 #[tracing::instrument]
