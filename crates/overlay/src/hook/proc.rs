@@ -116,7 +116,7 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
                 OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
             }
 
-            if backend.proc.lock().input_blocking() {
+            if proc.input_blocking() {
                 return Some(LRESULT(0));
             }
         }
