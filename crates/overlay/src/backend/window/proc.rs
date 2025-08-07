@@ -70,12 +70,13 @@ fn process_wnd_proc(
         msg::WM_SETCURSOR
             if {
                 let [area, _] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-                // check if cursor is on client area
+                // check if cursor is on client
                 area == 1
             } =>
         {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
+                unsafe { SetCursor(proc.blocking_cursor.and_then(load_cursor)) };
                 return Some(LRESULT(1));
             }
         }
