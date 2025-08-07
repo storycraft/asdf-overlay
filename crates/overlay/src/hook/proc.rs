@@ -91,37 +91,11 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
     }
 
     let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-    Backends::with_backend(root_hwnd, |backend| {
-        if backend.proc.lock().listening_keyboard() {
-            process_keyboard_listen(backend, msg)
-        } else {
-            None
-        }
-    })
-    .flatten()
+    Backends::with_backend(root_hwnd, |backend| processs_dispatch_message(backend, msg)).flatten()
 }
 
 #[inline]
-fn process_keyboard_listen(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT> {
-    #[inline]
-    fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Option<LRESULT> {
-        if let Some(key) = to_key(msg.wParam, msg.lParam) {
-            OverlayIpc::emit_event(keyboard_input(
-                backend.hwnd,
-                KeyboardInput::Key { key, state },
-            ));
-
-            let blocking = backend.proc.lock().input_blocking();
-            if blocking {
-                return Some(unsafe {
-                    DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam)
-                });
-            }
-        }
-
-        None
-    }
-
+fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT> {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             return emit_key_input(backend, msg, InputState::Pressed);
@@ -133,6 +107,11 @@ fn process_keyboard_listen(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT
 
         // unicode characters are handled in WM_IME_COMPOSITION
         msg::WM_CHAR | msg::WM_SYSCHAR => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
                 OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
             }
@@ -142,13 +121,18 @@ fn process_keyboard_listen(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT
             }
         }
         msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
             if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
                 for ch in str.chars() {
                     OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                 }
             }
 
-            if backend.proc.lock().input_blocking() {
+            if proc.input_blocking() {
                 return Some(LRESULT(0));
             }
         }
@@ -168,6 +152,28 @@ fn process_keyboard_listen(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT
     }
 
     None
+}
+
+#[inline]
+fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Option<LRESULT> {
+    let proc = backend.proc.lock();
+    if !proc.listening_keyboard() {
+        return None;
+    }
+
+    if let Some(key) = to_key(msg.wParam, msg.lParam) {
+        OverlayIpc::emit_event(keyboard_input(
+            backend.hwnd,
+            KeyboardInput::Key { key, state },
+        ));
+    }
+
+    if proc.input_blocking() {
+        drop(proc);
+        Some(unsafe { DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam) })
+    } else {
+        None
+    }
 }
 
 #[inline(always)]
