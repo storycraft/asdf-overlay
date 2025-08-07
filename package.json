@@ -15,6 +15,7 @@
   "scripts": {
     "test": "tsc && cargo test",
     "lint": "eslint",
+    "check": "tsc",
     "build-dll": "cargo xtask build-dll --",
     "cargo-build": "cargo xtask build-node --",
     "build:dist": "tsc -p tsconfig.build.json",
