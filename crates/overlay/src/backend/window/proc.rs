@@ -3,7 +3,7 @@ use crate::{
     app::OverlayIpc,
     backend::{
         BACKENDS, Backends,
-        window::{BlockingState, CursorState, cursor::load_cursor},
+        window::{BlockingState, CursorState, ImeState, cursor::load_cursor},
     },
     hook::util::original_clip_cursor,
     util::get_client_size,
@@ -11,22 +11,33 @@ use crate::{
 use asdf_overlay_common::event::{
     ClientEvent, WindowEvent,
     input::{
-        CursorAction, CursorEvent, CursorInput, InputEvent, InputPosition, InputState, ScrollAxis,
+        CursorAction, CursorEvent, CursorInput, Ime, InputEvent, InputPosition, InputState,
+        KeyboardInput, ScrollAxis,
     },
 };
 use core::mem;
 use scopeguard::defer;
 use tracing::trace;
+use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{
-            GetCapture, ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+        Input::{
+            Ime::{
+                CS_NOMOVECARET, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC,
+                IME_COMPOSITION_STRING, ISC_SHOWUICOMPOSITIONWINDOW, ImmAssociateContext,
+                ImmCreateContext, ImmDestroyContext, ImmGetCompositionStringW, ImmGetContext,
+                ImmReleaseContext,
+            },
+            KeyboardAndMouse::{
+                GetCapture, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT,
+                TrackMouseEvent,
+            },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, GetClipCursor, SetCursor, ShowCursor, WM_NCDESTROY,
-            XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GetClipCursor, SetCursor, ShowCursor,
+            WM_NCDESTROY, XBUTTON1,
         },
     },
 };
@@ -77,6 +88,15 @@ fn process_wnd_proc(
             let mut proc = backend.proc.lock();
             if proc.input_blocking() {
                 proc.block_input(false, backend.hwnd);
+                return Some(LRESULT(0));
+            }
+        }
+
+        // set focus to target window instead of child window
+        msg::WM_ACTIVATE => {
+            let proc = backend.proc.lock();
+            if proc.input_blocking() {
+                return Some(LRESULT(0));
             }
         }
 
@@ -188,12 +208,14 @@ fn process_wnd_proc(
                 ));
             }
 
-            match proc.blocking_state {
+            let blocking_state = proc.blocking_state;
+            drop(proc);
+            match blocking_state {
                 BlockingState::None => {}
 
                 BlockingState::StartBlocking => unsafe {
                     ShowCursor(true);
-                    SetCursor(proc.blocking_cursor.and_then(load_cursor));
+                    SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
                     let mut rect = RECT::default();
                     let clip_cursor = if GetClipCursor(&mut rect).is_ok() {
                         _ = original_clip_cursor(None);
@@ -201,13 +223,25 @@ fn process_wnd_proc(
                     } else {
                         None
                     };
-                    proc.blocking_state = BlockingState::Blocking { clip_cursor };
+
+                    let old_ime_cx =
+                        ImmAssociateContext(HWND(backend.hwnd as _), ImmCreateContext()).0 as usize;
+
+                    // give focus to target window
+                    _ = SetFocus(Some(HWND(backend.hwnd as _)));
+                    backend.proc.lock().blocking_state = BlockingState::Blocking {
+                        clip_cursor,
+                        old_ime_cx,
+                    };
                     return Some(LRESULT(0));
                 },
 
                 BlockingState::Blocking { .. } => return Some(LRESULT(0)),
 
-                BlockingState::StopBlocking { clip_cursor } => unsafe {
+                BlockingState::StopBlocking {
+                    clip_cursor,
+                    old_ime_cx,
+                } => unsafe {
                     ShowCursor(false);
                     if GetCapture().0 as u32 == backend.hwnd {
                         _ = ReleaseCapture();
@@ -215,7 +249,10 @@ fn process_wnd_proc(
                     if let Some(clip_cursor) = clip_cursor {
                         _ = original_clip_cursor(Some(&clip_cursor));
                     }
-                    proc.blocking_state = BlockingState::None;
+                    let ime_cx =
+                        ImmAssociateContext(HWND(backend.hwnd as _), HIMC(old_ime_cx as _));
+                    _ = ImmDestroyContext(ime_cx);
+                    backend.proc.lock().blocking_state = BlockingState::None;
                 },
             }
         }
@@ -268,6 +305,134 @@ fn process_wnd_proc(
         msg::WM_POINTERUPDATE => {
             if backend.proc.lock().input_blocking() {
                 return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_IME_SETCONTEXT => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            OverlayIpc::emit_event(keyboard_input(
+                backend.hwnd,
+                KeyboardInput::Ime(if wparam.0 != 0 {
+                    Ime::Enabled
+                } else {
+                    Ime::Disabled
+                }),
+            ));
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(
+                        HWND(backend.hwnd as _),
+                        msg,
+                        wparam,
+                        LPARAM(lparam.0 & !(ISC_SHOWUICOMPOSITIONWINDOW as isize)),
+                    )
+                });
+            }
+        }
+
+        msg::WM_IME_STARTCOMPOSITION => {
+            let mut proc = backend.proc.lock();
+            proc.ime = ImeState::Enabled;
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
+        msg::WM_IME_COMPOSITION => {
+            let mut proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if proc.ime != ImeState::Disabled {
+                let hwnd = HWND(backend.hwnd as _);
+                let himc = unsafe { ImmGetContext(hwnd) };
+                defer!(unsafe {
+                    _ = ImmReleaseContext(hwnd, himc);
+                });
+
+                let comp = lparam.0 as u32;
+
+                // cancelled
+                if comp == 0 {
+                    OverlayIpc::emit_event(keyboard_input(
+                        backend.hwnd,
+                        KeyboardInput::Ime(Ime::Compose {
+                            text: String::new(),
+                            caret: 0,
+                        }),
+                    ));
+                }
+
+                if comp & GCS_RESULTSTR.0 != 0 {
+                    if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
+                        proc.ime = ImeState::Enabled;
+                        OverlayIpc::emit_event(keyboard_input(
+                            backend.hwnd,
+                            KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                        ));
+                    }
+                }
+
+                if comp & (GCS_COMPSTR.0 | GCS_COMPATTR.0 | GCS_CURSORPOS.0) != 0 {
+                    let caret = if comp & CS_NOMOVECARET == 0 && comp & GCS_CURSORPOS.0 != 0 {
+                        unsafe { ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0) as usize }
+                    } else {
+                        0
+                    };
+
+                    if let Some(text) = get_ime_string(himc, GCS_COMPSTR) {
+                        proc.ime = ImeState::Compose;
+
+                        OverlayIpc::emit_event(keyboard_input(
+                            backend.hwnd,
+                            KeyboardInput::Ime(Ime::Compose {
+                                text: text.to_utf8(),
+                                caret,
+                            }),
+                        ));
+                    }
+                }
+            }
+
+            if proc.input_blocking() {
+                return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_IME_ENDCOMPOSITION => {
+            let mut proc = backend.proc.lock();
+            let ime = proc.ime;
+            proc.ime = ImeState::Disabled;
+
+            if ime == ImeState::Compose {
+                let hwnd = HWND(backend.hwnd as _);
+                let himc = unsafe { ImmGetContext(hwnd) };
+                defer!(unsafe {
+                    _ = ImmReleaseContext(hwnd, himc);
+                });
+                if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
+                    OverlayIpc::emit_event(keyboard_input(
+                        backend.hwnd,
+                        KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                    ));
+                }
+            }
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
             }
         }
 
@@ -358,5 +523,29 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
             client: surface,
             window,
         })),
+    }
+}
+
+#[inline(always)]
+fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
+    ClientEvent::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Keyboard(input)),
+    }
+}
+
+#[inline]
+fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<LittleEndian>> {
+    let byte_size = unsafe { ImmGetCompositionStringW(himc, comp, None, 0) };
+    if byte_size >= 0 {
+        let mut buf = vec![0_u8; byte_size as usize];
+
+        unsafe {
+            ImmGetCompositionStringW(himc, comp, Some(buf.as_mut_ptr().cast()), buf.len() as _)
+        };
+
+        WString::from_utf16le(buf).ok()
+    } else {
+        None
     }
 }

@@ -21,6 +21,7 @@ pub struct WindowProcData {
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
+    pub ime: ImeState,
 }
 
 impl WindowProcData {
@@ -34,6 +35,7 @@ impl WindowProcData {
             blocking_cursor: Some(Cursor::Default),
 
             cursor_state: CursorState::Outside,
+            ime: ImeState::Disabled,
         }
     }
 
@@ -106,16 +108,29 @@ enum BlockingState {
     StartBlocking,
 
     // Blocking
-    Blocking { clip_cursor: Option<RECT> },
+    Blocking {
+        clip_cursor: Option<RECT>,
+        old_ime_cx: usize,
+    },
 
     // End blocking, cleanup
-    StopBlocking { clip_cursor: Option<RECT> },
+    StopBlocking {
+        clip_cursor: Option<RECT>,
+        old_ime_cx: usize,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CursorState {
     Inside(i16, i16),
     Outside,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ImeState {
+    Enabled,
+    Compose,
+    Disabled,
 }
 
 bitflags::bitflags! {
@@ -142,8 +157,20 @@ impl BlockingState {
             BlockingState::None => BlockingState::StartBlocking,
             BlockingState::StartBlocking => BlockingState::None,
             // TODO
-            BlockingState::Blocking { clip_cursor } => BlockingState::StopBlocking { clip_cursor },
-            BlockingState::StopBlocking { clip_cursor } => BlockingState::Blocking { clip_cursor },
+            BlockingState::Blocking {
+                clip_cursor,
+                old_ime_cx,
+            } => BlockingState::StopBlocking {
+                clip_cursor,
+                old_ime_cx,
+            },
+            BlockingState::StopBlocking {
+                clip_cursor,
+                old_ime_cx,
+            } => BlockingState::Blocking {
+                clip_cursor,
+                old_ime_cx,
+            },
         };
 
         true

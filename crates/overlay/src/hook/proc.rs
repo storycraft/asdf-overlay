@@ -2,7 +2,7 @@ mod input;
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{Ime, InputEvent, InputState, KeyboardInput},
+        input::{InputEvent, InputState, KeyboardInput},
     },
     key::Key,
 };
@@ -10,18 +10,10 @@ pub use input::util;
 
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
-use scopeguard::defer;
 use tracing::{debug, trace};
-use utf16string::{LittleEndian, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    UI::{
-        Input::Ime::{
-            CS_NOMOVECARET, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC,
-            IME_COMPOSITION_STRING, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
-        },
-        WindowsAndMessaging::{self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG},
-    },
+    UI::WindowsAndMessaging::{self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG},
 };
 
 use crate::{
@@ -93,94 +85,42 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
         return None;
     }
 
-    let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-    Backends::with_backend(root_hwnd, |backend| processs_dispatch_message(backend, msg)).flatten()
-}
-
-#[inline]
-fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT> {
+    // Keyboard messages only dispatched to focused window.
+    // Listening on DispatchMessage hook allow to hook keyboard messages going to child window
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            return emit_key_input(backend, msg, InputState::Pressed);
+            return with_root_backend(msg, |backend| {
+                emit_key_input(backend, msg, InputState::Pressed)
+            })
+            .flatten();
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            return emit_key_input(backend, msg, InputState::Released);
+            return with_root_backend(msg, |backend| {
+                emit_key_input(backend, msg, InputState::Released)
+            })
+            .flatten();
         }
 
         // unicode characters are handled in WM_IME_COMPOSITION
         msg::WM_CHAR | msg::WM_SYSCHAR => {
-            let proc = backend.proc.lock();
-            if !proc.listening_keyboard() {
-                return None;
-            }
-
-            if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
-            }
-
-            if proc.input_blocking() {
-                return Some(LRESULT(0));
-            }
-        }
-
-        msg::WM_IME_SETCONTEXT => {
-            let proc = backend.proc.lock();
-            if !proc.listening_keyboard() {
-                return None;
-            }
-
-            OverlayIpc::emit_event(keyboard_input(
-                backend.hwnd,
-                KeyboardInput::Ime(if msg.wParam.0 != 0 {
-                    Ime::Enabled
-                } else {
-                    Ime::Disabled
-                }),
-            ));
-        }
-
-        msg::WM_IME_COMPOSITION => {
-            let proc = backend.proc.lock();
-            if !proc.listening_keyboard() {
-                return None;
-            }
-
-            let hwnd = HWND(backend.hwnd as _);
-            let himc = unsafe { ImmGetContext(hwnd) };
-            defer!(unsafe {
-                _ = ImmReleaseContext(hwnd, himc);
-            });
-
-            let comp = msg.lParam.0 as u32;
-            if comp & (GCS_COMPSTR.0 | GCS_COMPATTR.0 | GCS_CURSORPOS.0) != 0 {
-                let caret = if comp & CS_NOMOVECARET == 0 && comp & GCS_CURSORPOS.0 != 0 {
-                    unsafe { ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0) as usize }
-                } else {
-                    0
-                };
-
-                if let Some(text) = get_ime_string(himc, GCS_COMPSTR) {
-                    OverlayIpc::emit_event(keyboard_input(
-                        backend.hwnd,
-                        KeyboardInput::Ime(Ime::Compose {
-                            text: text.to_utf8(),
-                            caret,
-                        }),
-                    ));
+            return with_root_backend(msg, |backend| {
+                let proc = backend.proc.lock();
+                if !proc.listening_keyboard() {
+                    return None;
                 }
-            } else if comp & GCS_RESULTSTR.0 != 0 {
-                if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
-                    OverlayIpc::emit_event(keyboard_input(
-                        backend.hwnd,
-                        KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
-                    ));
-                }
-            }
 
-            if proc.input_blocking() {
-                return Some(LRESULT(0));
-            }
+                if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
+                    OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                }
+
+                if proc.input_blocking() {
+                    Some(LRESULT(0))
+                } else {
+                    None
+                }
+            })
+            .flatten();
         }
 
         // ignore remaining keyboard inputs
@@ -189,15 +129,26 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
         | msg::WM_HOTKEY
         | msg::WM_SYSDEADCHAR
         | msg::WM_UNICHAR => {
-            if backend.proc.lock().input_blocking() {
-                return Some(LRESULT(0));
-            }
+            return with_root_backend(msg, |backend| {
+                if backend.proc.lock().input_blocking() {
+                    Some(LRESULT(0))
+                } else {
+                    None
+                }
+            })
+            .flatten();
         }
 
         _ => {}
     }
 
     None
+}
+
+#[inline]
+fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
+    let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
+    Backends::with_backend(root_hwnd, f)
 }
 
 #[inline]
@@ -216,7 +167,9 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Opti
 
     if proc.input_blocking() {
         drop(proc);
-        Some(unsafe { DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam) })
+        Some(unsafe {
+            DefWindowProcA(HWND(backend.hwnd as _), msg.message, msg.wParam, msg.lParam)
+        })
     } else {
         None
     }
@@ -234,20 +187,4 @@ fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
 fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
     let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
     Key::new(wparam.0 as _, flags & 0x01 == 0x01)
-}
-
-#[inline]
-fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<LittleEndian>> {
-    let byte_size = unsafe { ImmGetCompositionStringW(himc, comp, None, 0) };
-    if byte_size >= 0 {
-        let mut buf = vec![0_u8; byte_size as usize];
-
-        unsafe {
-            ImmGetCompositionStringW(himc, comp, Some(buf.as_mut_ptr().cast()), buf.len() as _)
-        };
-
-        WString::from_utf16le(buf).ok()
-    } else {
-        None
-    }
 }
