@@ -34,8 +34,10 @@ use crate::{
     app::OverlayIpc,
     backend::{
         Backends, WindowBackend,
-        cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
-        renderer::Renderer,
+        render::{
+            Renderer,
+            cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
+        },
     },
     hook::dx::{dx11, dx12},
     renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
@@ -44,165 +46,171 @@ use crate::{
 use super::{HOOK, dx12::get_queue_for};
 
 #[tracing::instrument(skip(backend))]
-fn draw_overlay(backend: &mut WindowBackend, swapchain: &IDXGISwapChain1) {
+fn draw_overlay(backend: &WindowBackend, swapchain: &IDXGISwapChain1) {
     let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
-
     if let Ok(device) = device.cast::<ID3D12Device>() {
-        let renderer = match backend.renderer {
-            Some(Renderer::Dx12(ref mut renderer)) => renderer,
-
-            // drawing on opengl with dxgi swapchain can cause deadlock
-            Some(Renderer::Opengl) => {
-                backend.renderer = Some(Renderer::Dx12(None));
-                debug!("switching from opengl to dx12 render");
-                // skip drawing on render changes
-                return;
-            }
-            // use dxgi swapchain instead
-            Some(Renderer::Vulkan(_)) => {
-                backend.renderer = Some(Renderer::Dx12(None));
-                debug!("switching from vulkan to dx12 render");
-                return;
-            }
-            Some(_) => {
-                trace!("ignoring dx12 rendering");
-                return;
-            }
-            None => {
-                backend.renderer = Some(Renderer::Dx12(None));
-                // skip drawing on renderer check
-                return;
-            }
-        };
-
-        let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
-        let Some(queue) = get_queue_for(&device) else {
-            return;
-        };
-
-        let renderer = renderer.get_or_insert_with(|| {
-            debug!("initializing dx12 renderer");
-            register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
-            Dx12Renderer::new(&device, &queue, &swapchain).expect("renderer creation failed")
-        });
-        let rtv = backend.cx.dx12.get_or_insert_with(|| {
-            RtvDescriptors::new(&device).expect("failed to create dx12 rtv")
-        });
-
-        if let Some(update) = backend.surface.take_update() {
-            renderer.update_texture(update);
-        }
-
-        let Some(surface) = backend.surface.get() else {
-            return;
-        };
-
-        let screen = backend.size;
-        let size = surface.size();
-        let position = backend.layout.get_or_calc(size, screen);
-        trace!("using dx12 renderer");
-        let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-        let res = rtv.with_next_swapchain(&device, &swapchain, backbuffer_index as _, |desc| {
-            renderer.draw(
-                &device,
-                &swapchain,
-                backbuffer_index,
-                desc,
-                &queue,
-                position,
-                size,
-                screen,
-            )
-        });
-        trace!("dx12 render: {:?}", res);
+        draw_dx12_overlay(backend, &device, swapchain);
     } else if let Ok(device) = device.cast::<ID3D11Device1>() {
-        let renderer = match backend.renderer {
-            Some(Renderer::Dx11(ref mut renderer)) => renderer,
+        draw_dx11_overlay(backend, &device, swapchain);
+    }
+}
 
-            // drawing on opengl with dxgi swapchain can cause deadlock
-            Some(Renderer::Opengl) => {
-                backend.renderer = Some(Renderer::Dx11(None));
-                debug!("switching from opengl to dx11 render");
-                // skip drawing on render changes
-                return;
-            }
-            Some(_) => {
-                trace!("ignoring dx11 rendering");
-                return;
-            }
-            None => {
-                backend.renderer = Some(Renderer::Dx11(None));
-                // skip drawing on renderer check
-                return;
-            }
-        };
+#[inline]
+fn draw_dx12_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &IDXGISwapChain1) {
+    let render = &mut *backend.render.lock();
+    let renderer = match render.renderer {
+        Some(Renderer::Dx12(ref mut renderer)) => renderer,
 
-        let cx = unsafe { device.GetImmediateContext1().unwrap() };
-
-        let state = backend.cx.dx11.get_or_insert_with(|| {
-            let mut state = None;
-            unsafe {
-                let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0
-                {
-                    D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
-                } else {
-                    0
-                };
-
-                device
-                    .CreateDeviceContextState(
-                        flag,
-                        &[D3D_FEATURE_LEVEL_11_0],
-                        D3D11_SDK_VERSION,
-                        &ID3D11Device::IID,
-                        None,
-                        Some(&mut state),
-                    )
-                    .expect("CreateDeviceContextState failed");
-            }
-
-            state.unwrap()
-        });
-
-        let mut prev_state = None;
-        unsafe {
-            cx.SwapDeviceContextState(&*state, Some(&mut prev_state));
-        }
-        let prev_state = prev_state.unwrap();
-        defer!(unsafe {
-            cx.SwapDeviceContextState(&prev_state, None);
-        });
-
-        trace!("using dx11 renderer");
-        let renderer = renderer.get_or_insert_with(|| {
-            debug!("initializing dx11 renderer");
-            register_swapchain_destruction_callback(swapchain, dx11::cleanup_swapchain);
-            Dx11Renderer::new(&device).expect("renderer creation failed")
-        });
-
-        if let Some(update) = backend.surface.take_update() {
-            renderer.update_texture(update);
-        }
-
-        let Some(surface) = backend.surface.get() else {
+        // drawing on opengl with dxgi swapchain can cause deadlock
+        Some(Renderer::Opengl) => {
+            render.renderer = Some(Renderer::Dx12(None));
+            debug!("switching from opengl to dx12 render");
+            // skip drawing on render changes
             return;
-        };
-        let screen = backend.size;
-        let size = surface.size();
-        let position = backend.layout.get_or_calc(size, screen);
-        {
-            let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
-                .expect("failed to get dx11 backbuffer");
-            let mut rtv = None;
-            unsafe { device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv)) }
-                .expect("failed to create rtv");
-            let rtv = rtv.unwrap();
-
-            unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
-            defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-            let _res = renderer.draw(&device, &cx, position, size, screen);
-            trace!("dx11 render: {:?}", _res);
         }
+        // use dxgi swapchain instead
+        Some(Renderer::Vulkan(_)) => {
+            render.renderer = Some(Renderer::Dx12(None));
+            debug!("switching from vulkan to dx12 render");
+            return;
+        }
+        Some(_) => {
+            trace!("ignoring dx12 rendering");
+            return;
+        }
+        None => {
+            render.renderer = Some(Renderer::Dx12(None));
+            // skip drawing on renderer check
+            return;
+        }
+    };
+
+    let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
+    let Some(queue) = get_queue_for(device) else {
+        return;
+    };
+
+    let renderer = renderer.get_or_insert_with(|| {
+        debug!("initializing dx12 renderer");
+        register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
+        Dx12Renderer::new(device, &queue, &swapchain).expect("renderer creation failed")
+    });
+    let rtv = render
+        .cx
+        .dx12
+        .get_or_insert_with(|| RtvDescriptors::new(device).expect("failed to create dx12 rtv"));
+
+    if let Some(update) = render.surface.take_update() {
+        renderer.update_texture(update);
+    }
+
+    let Some(surface) = render.surface.get() else {
+        return;
+    };
+
+    let size = surface.size();
+    trace!("using dx12 renderer");
+    let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
+    let res = rtv.with_next_swapchain(device, &swapchain, backbuffer_index as _, |desc| {
+        renderer.draw(
+            device,
+            &swapchain,
+            backbuffer_index,
+            desc,
+            &queue,
+            render.position,
+            size,
+            render.window_size,
+        )
+    });
+    trace!("dx12 render: {:?}", res);
+}
+
+#[inline]
+fn draw_dx11_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
+    let render = &mut *backend.render.lock();
+    let renderer = match render.renderer {
+        Some(Renderer::Dx11(ref mut renderer)) => renderer,
+
+        // drawing on opengl with dxgi swapchain can cause deadlock
+        Some(Renderer::Opengl) => {
+            render.renderer = Some(Renderer::Dx11(None));
+            debug!("switching from opengl to dx11 render");
+            // skip drawing on render changes
+            return;
+        }
+        Some(_) => {
+            trace!("ignoring dx11 rendering");
+            return;
+        }
+        None => {
+            render.renderer = Some(Renderer::Dx11(None));
+            // skip drawing on renderer check
+            return;
+        }
+    };
+
+    let cx = unsafe { device.GetImmediateContext1().unwrap() };
+    let state = render.cx.dx11.get_or_insert_with(|| {
+        let mut state = None;
+        unsafe {
+            let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0 {
+                D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
+            } else {
+                0
+            };
+
+            device
+                .CreateDeviceContextState(
+                    flag,
+                    &[D3D_FEATURE_LEVEL_11_0],
+                    D3D11_SDK_VERSION,
+                    &ID3D11Device::IID,
+                    None,
+                    Some(&mut state),
+                )
+                .expect("CreateDeviceContextState failed");
+        }
+
+        state.unwrap()
+    });
+
+    let mut prev_state = None;
+    unsafe {
+        cx.SwapDeviceContextState(&*state, Some(&mut prev_state));
+    }
+    let prev_state = prev_state.unwrap();
+    defer!(unsafe {
+        cx.SwapDeviceContextState(&prev_state, None);
+    });
+
+    trace!("using dx11 renderer");
+    let renderer = renderer.get_or_insert_with(|| {
+        debug!("initializing dx11 renderer");
+        register_swapchain_destruction_callback(swapchain, dx11::cleanup_swapchain);
+        Dx11Renderer::new(device).expect("renderer creation failed")
+    });
+
+    if let Some(update) = render.surface.take_update() {
+        renderer.update_texture(update);
+    }
+
+    let Some(surface) = render.surface.get() else {
+        return;
+    };
+    let size = surface.size();
+    {
+        let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
+            .expect("failed to get dx11 backbuffer");
+        let mut rtv = None;
+        unsafe { device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv)) }
+            .expect("failed to create rtv");
+        let rtv = rtv.unwrap();
+
+        unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
+        defer!(unsafe { cx.OMSetRenderTargets(None, None) });
+        let _res = renderer.draw(device, &cx, render.position, size, render.window_size);
+        trace!("dx11 render: {:?}", _res);
     }
 }
 
@@ -251,13 +259,14 @@ pub(super) extern "system" fn hooked_present1(
     unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }
 }
 
-fn resize_swapchain(backend: &mut WindowBackend) {
-    let Some(ref renderer) = backend.renderer else {
+fn resize_swapchain(backend: &WindowBackend) {
+    let render = &mut *backend.render.lock();
+    let Some(ref renderer) = render.renderer else {
         return;
     };
 
     if let Renderer::Dx12(_) = *renderer {
-        if let Some(ref mut rtv) = backend.cx.dx12 {
+        if let Some(ref mut rtv) = render.cx.dx12 {
             // invalidate old rtv descriptors
             rtv.reset();
         }

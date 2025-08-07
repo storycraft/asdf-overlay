@@ -16,7 +16,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, renderer::Renderer},
+    backend::{Backends, render::Renderer},
     types::IntDashMap,
 };
 
@@ -49,15 +49,17 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
 
     // We don't know if they are trying clean up entire device, so cleanup everything
     _ = Backends::with_backend(hwnd, |backend| {
-        let Some(Renderer::Dx12(ref mut renderer)) = backend.renderer else {
+        let render = &mut *backend.render.lock();
+
+        let Some(Renderer::Dx12(ref mut renderer)) = render.renderer else {
             return;
         };
         debug!("dx12 renderer cleanup");
 
         QUEUE_MAP.clear();
         renderer.take();
-        backend.cx.dx12.take();
-        backend.set_surface_updated();
+        render.cx.dx12.take();
+        render.set_surface_updated();
     });
 }
 

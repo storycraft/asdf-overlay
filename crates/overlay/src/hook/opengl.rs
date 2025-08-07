@@ -23,7 +23,7 @@ use windows::{
 
 use crate::{
     app::OverlayIpc,
-    backend::{Backends, renderer::Renderer},
+    backend::{Backends, render::Renderer},
     gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
@@ -114,11 +114,12 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             gl_data.renderer.take();
         }
         _ = Backends::with_backend(HWND(gl_data.hwnd as _), |backend| {
-            let Some(Renderer::Opengl) = backend.renderer else {
+            let mut render = backend.render.lock();
+
+            let Some(Renderer::Opengl) = render.renderer else {
                 return;
             };
-
-            backend.set_surface_updated();
+            render.set_surface_updated();
         });
 
         false
@@ -151,7 +152,9 @@ fn draw_overlay(hdc: HDC) {
     #[inline]
     fn inner(hwnd: HWND, renderer: &mut Option<OpenglRenderer>) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
-            match backend.renderer {
+            let render = &mut *backend.render.lock();
+
+            match render.renderer {
                 Some(Renderer::Opengl) => {}
                 Some(_) => {
                     trace!("ignoring opengl rendering");
@@ -159,7 +162,7 @@ fn draw_overlay(hdc: HDC) {
                 }
                 None => {
                     debug!("Found opengl window");
-                    backend.renderer = Some(Renderer::Opengl);
+                    render.renderer = Some(Renderer::Opengl);
                     // wait next swap for possible dxgi swapchain check
                     return;
                 }
@@ -178,7 +181,7 @@ fn draw_overlay(hdc: HDC) {
                 None => {
                     debug!("initializing opengl renderer");
 
-                    renderer.insert(match OpenglRenderer::new(&backend.interop.device) {
+                    renderer.insert(match OpenglRenderer::new(&render.interop.device) {
                         Ok(renderer) => renderer,
                         Err(err) => {
                             error!("renderer setup failed. err: {:?}", err);
@@ -189,24 +192,19 @@ fn draw_overlay(hdc: HDC) {
             };
             trace!("using opengl renderer");
             with_renderer_gl_data(|| {
-                if backend.surface.invalidate_update() {
+                if render.surface.invalidate_update() {
                     if let Err(err) = renderer
-                        .update_texture(backend.surface.get().map(|surface| surface.texture()))
+                        .update_texture(render.surface.get().map(|surface| surface.texture()))
                     {
                         error!("failed to update opengl texture. err: {err:?}");
                         return;
                     }
                 }
-                let Some(surface) = backend.surface.get() else {
+                let Some(surface) = render.surface.get() else {
                     return;
                 };
 
-                let screen = backend.size;
-                let size = surface.size();
-                let position = backend
-                    .layout
-                    .get_or_calc((size.0 as _, size.1 as _), screen);
-                let _res = renderer.draw(position, size, screen);
+                let _res = renderer.draw(render.position, surface.size(), render.window_size);
                 trace!("opengl render: {:?}", _res);
             })
         });

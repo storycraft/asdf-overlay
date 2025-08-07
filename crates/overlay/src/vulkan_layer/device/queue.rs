@@ -6,7 +6,7 @@ use windows::Win32::Foundation::HWND;
 
 use crate::{
     app::OverlayIpc,
-    backend::{Backends, WindowBackend, renderer::Renderer},
+    backend::{Backends, WindowBackend, render::Renderer},
     renderer::vulkan::VulkanRenderer,
     vulkan_layer::{
         device::{
@@ -83,10 +83,11 @@ fn draw_overlay(
     data: &SwapchainData,
     queue: vk::Queue,
     queue_family_index: u32,
-    backend: &mut WindowBackend,
+    backend: &WindowBackend,
     wait_semaphores: &[vk::Semaphore],
 ) -> Option<vk::Semaphore> {
-    let renderer = match backend.renderer {
+    let render = &mut *backend.render.lock();
+    let renderer = match render.renderer {
         Some(Renderer::Vulkan(ref mut renderer)) => renderer,
         Some(_) => {
             trace!("ignoring vulkan rendering");
@@ -94,7 +95,7 @@ fn draw_overlay(
         }
         None => {
             debug!("Found vulkan window");
-            backend.renderer = Some(Renderer::Vulkan(None));
+            render.renderer = Some(Renderer::Vulkan(None));
             // wait next swap for possible dxgi swapchain check
             return None;
         }
@@ -130,11 +131,11 @@ fn draw_overlay(
         )
     });
 
-    if backend.surface.invalidate_update() {
+    if render.surface.invalidate_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         if let Err(err) = renderer.update_texture(
-            backend.surface.get().map(|surface| surface.texture()),
+            render.surface.get().map(|surface| surface.texture()),
             data.format,
             &props,
         ) {
@@ -142,15 +143,16 @@ fn draw_overlay(
             return None;
         }
     }
-    let surface = backend.surface.get()?;
+    let surface = render.surface.get()?;
 
-    let screen = backend.size;
-    let size = surface.size();
-    let position = backend
-        .layout
-        .get_or_calc((size.0 as _, size.1 as _), screen);
-
-    let res = renderer.draw(queue, wait_semaphores, index, position, size, screen);
+    let res = renderer.draw(
+        queue,
+        wait_semaphores,
+        index,
+        render.position,
+        surface.size(),
+        render.window_size,
+    );
     trace!("vulkan render: {:?}", res);
     res.ok().flatten()
 }

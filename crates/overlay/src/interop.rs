@@ -9,6 +9,7 @@ use windows::Win32::{
             D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
             ID3D11DeviceContext,
         },
+        Dxgi::IDXGIAdapter,
     },
 };
 
@@ -18,12 +19,12 @@ pub struct DxInterop {
 }
 
 impl DxInterop {
-    pub(super) fn create() -> anyhow::Result<Self> {
+    pub(super) fn create(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         unsafe {
             let mut device = None;
             let mut cx = None;
             D3D11CreateDevice(
-                None,
+                adapter,
                 D3D_DRIVER_TYPE_HARDWARE,
                 HMODULE(ptr::null_mut()),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT,
