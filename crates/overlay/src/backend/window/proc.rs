@@ -16,6 +16,7 @@ use asdf_overlay_common::event::{
     },
 };
 use core::mem;
+use parking_lot::MutexGuard;
 use scopeguard::defer;
 use tracing::trace;
 use utf16string::{LittleEndian, WString};
@@ -105,7 +106,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, &mut proc, CursorAction::Left, state, lparam);
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Left, state, lparam);
         }
 
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
@@ -113,7 +114,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, &mut proc, CursorAction::Middle, state, lparam);
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Middle, state, lparam);
         }
 
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
@@ -121,7 +122,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, &mut proc, CursorAction::Right, state, lparam);
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Right, state, lparam);
         }
 
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONDBLCLK => {
@@ -132,7 +133,7 @@ fn process_wnd_proc(
             };
             return cursor_event::<1>(
                 backend.hwnd,
-                &mut proc,
+                proc,
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
@@ -146,7 +147,7 @@ fn process_wnd_proc(
         msg::WM_LBUTTONUP => {
             return cursor_event::<0>(
                 backend.hwnd,
-                &mut backend.proc.lock(),
+                backend.proc.lock(),
                 CursorAction::Left,
                 CursorInputState::Released,
                 lparam,
@@ -155,7 +156,7 @@ fn process_wnd_proc(
         msg::WM_MBUTTONUP => {
             return cursor_event::<0>(
                 backend.hwnd,
-                &mut backend.proc.lock(),
+                backend.proc.lock(),
                 CursorAction::Middle,
                 CursorInputState::Released,
                 lparam,
@@ -164,7 +165,7 @@ fn process_wnd_proc(
         msg::WM_RBUTTONUP => {
             return cursor_event::<0>(
                 backend.hwnd,
-                &mut backend.proc.lock(),
+                backend.proc.lock(),
                 CursorAction::Right,
                 CursorInputState::Released,
                 lparam,
@@ -174,7 +175,7 @@ fn process_wnd_proc(
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
             return cursor_event::<1>(
                 backend.hwnd,
-                &mut backend.proc.lock(),
+                backend.proc.lock(),
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
@@ -505,7 +506,7 @@ pub(crate) unsafe extern "system" fn hooked_wnd_proc(
 #[inline]
 fn cursor_event<const BLOCK_RESULT: isize>(
     hwnd: u32,
-    proc: &mut WindowProcData,
+    proc: MutexGuard<WindowProcData>,
     action: CursorAction,
     state: CursorInputState,
     lparam: LPARAM,
@@ -522,6 +523,8 @@ fn cursor_event<const BLOCK_RESULT: isize>(
     ));
 
     if proc.input_blocking() {
+        // prevent deadlock
+        drop(proc);
         match state {
             CursorInputState::Pressed { .. } => unsafe {
                 SetCapture(HWND(hwnd as _));
