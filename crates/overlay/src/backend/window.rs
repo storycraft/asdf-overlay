@@ -41,6 +41,7 @@ impl WindowProcData {
 
     pub fn reset(&mut self) {
         self.layout = OverlayLayout::new();
+        self.position = (0, 0);
         self.listen_input = ListenInputFlags::empty();
         self.blocking_state.change(false);
         self.blocking_cursor = Some(Cursor::Default);

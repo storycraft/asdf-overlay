@@ -42,6 +42,11 @@ impl RenderData {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.surface = SurfaceState::new();
+        self.position = (0, 0);
+    }
+
     pub fn update_surface(&mut self, handle: Option<NonZeroU32>) -> anyhow::Result<()> {
         self.surface.update(&self.interop.device, handle)?;
         Ok(())
