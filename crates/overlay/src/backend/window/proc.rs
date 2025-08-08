@@ -93,14 +93,6 @@ fn process_wnd_proc(
             }
         }
 
-        // set focus to target window instead of child window
-        msg::WM_ACTIVATE | msg::WM_SETFOCUS | msg::WM_KILLFOCUS => {
-            let proc = backend.proc.lock();
-            if proc.input_blocking() {
-                return Some(LRESULT(0));
-            }
-        }
-
         msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
             let mut proc = backend.proc.lock();
             let state = CursorInputState::Pressed {
@@ -337,9 +329,14 @@ fn process_wnd_proc(
             }
         }
 
-        // ignore other mouse inputs
-        msg::WM_POINTERUPDATE => {
-            if backend.proc.lock().input_blocking() {
+        // block other keyboard, mouse event
+        msg::WM_CAPTURECHANGED
+        | msg::WM_ACTIVATE
+        | msg::WM_SETFOCUS
+        | msg::WM_KILLFOCUS
+        | msg::WM_POINTERUPDATE => {
+            let proc = backend.proc.lock();
+            if proc.input_blocking() {
                 return Some(LRESULT(0));
             }
         }
