@@ -176,8 +176,23 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
             }
         };
         trace!("using dx9 renderer");
-        let renderer = renderer
-            .get_or_insert_with(|| Dx9Renderer::new(device).expect("Dx9Renderer creation failed"));
+
+        // renderer device might be changed, check with previous device
+        let renderer = match *renderer {
+            Some((renderer_device, ref mut renderer))
+                if renderer_device == device.as_raw() as _ =>
+            {
+                renderer
+            }
+            _ => {
+                &mut renderer
+                    .insert((
+                        device.as_raw() as _,
+                        Dx9Renderer::new(device).expect("Dx9Renderer creation failed"),
+                    ))
+                    .1
+            }
+        };
 
         let reader = render
             .cx

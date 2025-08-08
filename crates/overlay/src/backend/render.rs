@@ -15,7 +15,7 @@ use crate::{
 pub enum Renderer {
     Dx12(Option<Dx12Renderer>),
     Dx11(Option<Dx11Renderer>),
-    Dx9(Option<Dx9Renderer>),
+    Dx9(Option<(usize, Dx9Renderer)>),
     Opengl,
     Vulkan(Option<Box<VulkanRenderer>>),
 }
