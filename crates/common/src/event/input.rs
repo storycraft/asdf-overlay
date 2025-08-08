@@ -22,7 +22,7 @@ pub enum CursorEvent {
     Enter,
     Leave,
     Action {
-        state: InputState,
+        state: CursorInputState,
         action: CursorAction,
     },
     Move,
@@ -32,9 +32,18 @@ pub enum CursorEvent {
     },
 }
 
+#[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
+pub enum CursorInputState {
+    Pressed {
+        /// Whether if this click should be treated as part of last click of double clicking.
+        double_click: bool,
+    },
+    Released,
+}
+
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum KeyboardInput {
-    Key { key: Key, state: InputState },
+    Key { key: Key, state: KeyInputState },
     Char(char),
     Ime(Ime),
 }
@@ -55,7 +64,7 @@ pub enum ScrollAxis {
 }
 
 #[derive(Debug, Encode, Decode, Clone, Copy, PartialEq, Eq)]
-pub enum InputState {
+pub enum KeyInputState {
     Pressed,
     Released,
 }

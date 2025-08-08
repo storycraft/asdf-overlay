@@ -22,6 +22,7 @@ pub struct WindowProcData {
 
     cursor_state: CursorState,
     pub ime: ImeState,
+    last_click_time: i32,
 }
 
 impl WindowProcData {
@@ -36,6 +37,7 @@ impl WindowProcData {
 
             cursor_state: CursorState::Outside,
             ime: ImeState::Disabled,
+            last_click_time: 0,
         }
     }
 
@@ -97,6 +99,12 @@ impl WindowProcData {
 
             self.blocking_cursor = Some(Cursor::Default);
         }
+    }
+
+    pub fn update_click_time(&mut self, new_time: i32) -> u32 {
+        let delta = (new_time as u32).wrapping_sub(self.last_click_time as _);
+        self.last_click_time = new_time;
+        delta
     }
 }
 

@@ -3,8 +3,8 @@ use asdf_overlay_client::{
         event::{
             ClientEvent, WindowEvent,
             input::{
-                CursorAction, CursorEvent, CursorInput, Ime, InputEvent, InputState, KeyboardInput,
-                ScrollAxis,
+                CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
+                KeyInputState, KeyboardInput, ScrollAxis,
             },
         },
         key::Key,
@@ -17,7 +17,7 @@ use neon::{
     object::Object,
     prelude::Context,
     result::{JsResult, NeonResult},
-    types::{JsFunction, JsNumber, JsObject, JsString},
+    types::{JsBoolean, JsFunction, JsNumber, JsObject, JsString},
 };
 
 pub fn emit_event<'a>(
@@ -87,7 +87,7 @@ fn serialize_keyboard_input<'a>(
             let key = serialize_key(cx, key)?;
             obj.set(cx, "key", key)?;
 
-            let state = serialize_input_state(cx, state);
+            let state = serialize_key_input_state(cx, state);
             obj.set(cx, "state", state)?;
         }
         KeyboardInput::Char(ch) => {
@@ -141,8 +141,9 @@ fn serialize_cursor_input<'a>(
             let kind = cx.string("Action");
             obj.set(cx, "kind", kind)?;
 
-            let state = serialize_input_state(cx, state);
+            let (state, double_click) = serialize_cursor_input_state(cx, state);
             obj.set(cx, "state", state)?;
+            obj.set(cx, "double_click", double_click)?;
 
             let action = match action {
                 CursorAction::Left => cx.string("Left"),
@@ -175,10 +176,25 @@ fn serialize_cursor_input<'a>(
     Ok(obj)
 }
 
-fn serialize_input_state<'a>(cx: &mut impl Context<'a>, state: InputState) -> Handle<'a, JsString> {
+fn serialize_key_input_state<'a>(
+    cx: &mut impl Context<'a>,
+    state: KeyInputState,
+) -> Handle<'a, JsString> {
     match state {
-        InputState::Pressed => cx.string("Pressed"),
-        InputState::Released => cx.string("Released"),
+        KeyInputState::Pressed => cx.string("Pressed"),
+        KeyInputState::Released => cx.string("Released"),
+    }
+}
+
+fn serialize_cursor_input_state<'a>(
+    cx: &mut impl Context<'a>,
+    state: CursorInputState,
+) -> (Handle<'a, JsString>, Handle<'a, JsBoolean>) {
+    match state {
+        CursorInputState::Pressed { double_click } => {
+            (cx.string("Pressed"), cx.boolean(double_click))
+        }
+        CursorInputState::Released => (cx.string("Released"), cx.boolean(false)),
     }
 }
 

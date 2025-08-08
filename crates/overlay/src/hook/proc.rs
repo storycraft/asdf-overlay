@@ -2,7 +2,7 @@ mod input;
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{InputEvent, InputState, KeyboardInput},
+        input::{InputEvent, KeyInputState, KeyboardInput},
     },
     key::Key,
 };
@@ -90,14 +90,14 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             return with_root_backend(msg, |backend| {
-                emit_key_input(backend, msg, InputState::Pressed)
+                emit_key_input(backend, msg, KeyInputState::Pressed)
             })
             .flatten();
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             return with_root_backend(msg, |backend| {
-                emit_key_input(backend, msg, InputState::Released)
+                emit_key_input(backend, msg, KeyInputState::Released)
             })
             .flatten();
         }
@@ -152,7 +152,7 @@ fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Optio
 }
 
 #[inline]
-fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Option<LRESULT> {
+fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> Option<LRESULT> {
     let proc = backend.proc.lock();
     if !proc.listening_keyboard() {
         return None;
