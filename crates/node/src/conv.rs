@@ -143,7 +143,7 @@ fn serialize_cursor_input<'a>(
 
             let (state, double_click) = serialize_cursor_input_state(cx, state);
             obj.set(cx, "state", state)?;
-            obj.set(cx, "double_click", double_click)?;
+            obj.set(cx, "doubleClick", double_click)?;
 
             let action = match action {
                 CursorAction::Left => cx.string("Left"),

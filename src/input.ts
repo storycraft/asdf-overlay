@@ -13,7 +13,7 @@ export type CursorInput = {
   kind: 'Action',
 
   state: InputState,
-  double_click: boolean,
+  doubleClick: boolean,
   action: CursorAction,
 } | {
   kind: 'Move',
