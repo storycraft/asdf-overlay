@@ -19,7 +19,7 @@ use windows::{
     core::BOOL,
 };
 
-use crate::backend::Backends;
+use crate::{backend::Backends, hook::proc::message_reading};
 
 #[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 unsafe extern "system" {
@@ -120,6 +120,7 @@ fn active_hwnd_input_blocked() -> bool {
     let hwnd = unsafe { GetActiveWindow() };
 
     !hwnd.is_invalid()
+        && !message_reading()
         && Backends::with_backend(hwnd, |backend| backend.proc.lock().input_blocking())
             .unwrap_or(false)
 }
