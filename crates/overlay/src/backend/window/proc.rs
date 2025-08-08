@@ -542,7 +542,7 @@ fn cursor_event<const BLOCK_RESULT: isize>(
 
 #[inline]
 fn check_double_click(proc: &mut WindowProcData) -> bool {
-    proc.update_click_time(unsafe { GetMessageTime() }) >= unsafe { GetDoubleClickTime() }
+    proc.update_click_time(unsafe { GetMessageTime() }) <= unsafe { GetDoubleClickTime() }
 }
 
 #[inline]
