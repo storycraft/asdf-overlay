@@ -82,7 +82,7 @@ export function toMouseEvent(
       return {
         type: input.state === 'Pressed' ? 'mouseDown' : 'mouseUp',
         button,
-        clickCount: 1,
+        clickCount: input.doubleClick ? 2 : 1,
         x: input.clientX,
         y: input.clientY,
         globalX: input.windowX,
