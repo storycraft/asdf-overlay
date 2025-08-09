@@ -299,7 +299,8 @@ fn process_wnd_proc(
         | msg::WM_DEADCHAR
         | msg::WM_HOTKEY
         | msg::WM_SYSDEADCHAR
-        | msg::WM_UNICHAR => {
+        | msg::WM_UNICHAR
+        | msg::WM_IME_REQUEST => {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
                 return Some(LRESULT(0));
