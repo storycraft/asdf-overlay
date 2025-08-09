@@ -19,9 +19,9 @@ use windows::Win32::{
             KeyboardAndMouse::{GetCapture, ReleaseCapture, SetFocus},
         },
         WindowsAndMessaging::{
-            self as msg, ClipCursor, GWLP_WNDPROC, GetClipCursor, GetSystemMetrics, PostMessageA,
-            SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetCursor, SetWindowLongPtrA, ShowCursor,
-            WNDPROC,
+            self as msg, ClipCursor, DefWindowProcA, GWLP_WNDPROC, GetClipCursor, GetSystemMetrics,
+            PostMessageA, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetCursor, SetWindowLongPtrA,
+            ShowCursor, WNDPROC,
         },
     },
 };
@@ -200,6 +200,14 @@ impl WindowBackend {
 
                 // give focus to target window
                 _ = SetFocus(Some(HWND(backend.hwnd as _)));
+
+                // In case of ime is already enabled, hide composition windows
+                DefWindowProcA(
+                    HWND(backend.hwnd as _),
+                    msg::WM_IME_SETCONTEXT,
+                    WPARAM(1),
+                    LPARAM(0),
+                );
                 backend.proc.lock().blocking_state = Some(InputBlockData {
                     clip_cursor,
                     old_ime_cx,
