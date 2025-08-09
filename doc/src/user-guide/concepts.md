@@ -3,8 +3,7 @@ To expose consistent interface from the target process, the library introduces s
 These concepts are important as they represents how Asdf Overlay hook and abstracts underlying rendering infrastructure.
 
 ## Window
-Window represents a Win32 window with an HWND.
-Each window can accept inputs and have one Swapchain.
+Each window can accept inputs and have one surface associated to a swapchain.
 
 ## Swapchain
 Swapchain represents collection of framebuffers associated to an window.

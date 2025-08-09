@@ -3,29 +3,40 @@ use crate::{
     app::OverlayIpc,
     backend::{
         BACKENDS, Backends,
-        window::{BlockingState, CursorState, cursor::load_cursor},
+        window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
     },
-    hook::util::original_clip_cursor,
     util::get_client_size,
 };
 use asdf_overlay_common::event::{
     ClientEvent, WindowEvent,
     input::{
-        CursorAction, CursorEvent, CursorInput, InputEvent, InputPosition, InputState, ScrollAxis,
+        ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
+        InputPosition, KeyboardInput, ScrollAxis,
     },
 };
 use core::mem;
+use parking_lot::MutexGuard;
 use scopeguard::defer;
 use tracing::trace;
+use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    Globalization::LCIDToLocaleName,
+    System::SystemServices::{LOCALE_NAME_MAX_LENGTH, SORT_DEFAULT},
     UI::{
         Controls::{self, HOVER_DEFAULT},
-        Input::KeyboardAndMouse::{
-            GetCapture, ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+        Input::{
+            Ime::{
+                self as ime, HIMC, IME_COMPOSITION_STRING, IME_CONVERSION_MODE,
+                ImmGetCompositionStringW, ImmGetContext, ImmGetConversionStatus, ImmReleaseContext,
+            },
+            KeyboardAndMouse::{
+                GetDoubleClickTime, GetKeyboardLayout, ReleaseCapture, SetCapture, TME_LEAVE,
+                TRACKMOUSEEVENT, TrackMouseEvent,
+            },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, GetClipCursor, SetCursor, ShowCursor, WM_NCDESTROY,
+            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, SetCursor, WM_NCDESTROY,
             XBUTTON1,
         },
     },
@@ -40,31 +51,21 @@ fn process_wnd_proc(
 ) -> Option<LRESULT> {
     match msg {
         msg::WM_WINDOWPOSCHANGED => {
-            let render = &mut *backend.render.lock();
             let new_size = get_client_size(HWND(backend.hwnd as _)).unwrap();
+            let mut render = backend.render.lock();
             if render.window_size != new_size {
-                let proc = &mut *backend.proc.lock();
-                let position = proc.layout.calc(
-                    render
-                        .surface
-                        .get()
-                        .map(|surface| surface.size())
-                        .unwrap_or((0, 0)),
-                    new_size,
-                );
-
-                proc.position = position;
-                render.position = position;
                 render.window_size = new_size;
 
                 OverlayIpc::emit_event(ClientEvent::Window {
-                    hwnd: backend.hwnd,
+                    id: backend.hwnd,
                     event: WindowEvent::Resized {
                         width: new_size.0,
                         height: new_size.1,
                     },
                 });
             }
+            drop(render);
+            backend.recalc_position();
         }
 
         // set cursor in client area
@@ -84,58 +85,94 @@ fn process_wnd_proc(
 
         // stop input capture when user request to
         msg::WM_CLOSE => {
-            let mut proc = backend.proc.lock();
-            if proc.input_blocking() {
-                proc.block_input(false, backend.hwnd);
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                backend.block_input(false);
+                return Some(LRESULT(0));
             }
         }
 
         msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
-            return cursor_event::<0>(backend, CursorAction::Left, InputState::Pressed, lparam);
+            let mut proc = backend.proc.lock();
+            let state = CursorInputState::Pressed {
+                double_click: check_double_click(&mut proc),
+            };
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Left, state, lparam);
         }
 
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
-            return cursor_event::<0>(backend, CursorAction::Middle, InputState::Pressed, lparam);
+            let mut proc = backend.proc.lock();
+            let state = CursorInputState::Pressed {
+                double_click: check_double_click(&mut proc),
+            };
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Middle, state, lparam);
         }
 
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
-            return cursor_event::<0>(backend, CursorAction::Right, InputState::Pressed, lparam);
+            let mut proc = backend.proc.lock();
+            let state = CursorInputState::Pressed {
+                double_click: check_double_click(&mut proc),
+            };
+            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Right, state, lparam);
         }
 
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONDBLCLK => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
-
+            let mut proc = backend.proc.lock();
+            let state = CursorInputState::Pressed {
+                double_click: check_double_click(&mut proc),
+            };
             return cursor_event::<1>(
-                backend,
+                backend.hwnd,
+                proc,
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
                     CursorAction::Forward
                 },
-                InputState::Pressed,
+                state,
                 lparam,
             );
         }
 
         msg::WM_LBUTTONUP => {
-            return cursor_event::<0>(backend, CursorAction::Left, InputState::Released, lparam);
+            return cursor_event::<0>(
+                backend.hwnd,
+                backend.proc.lock(),
+                CursorAction::Left,
+                CursorInputState::Released,
+                lparam,
+            );
         }
         msg::WM_MBUTTONUP => {
-            return cursor_event::<0>(backend, CursorAction::Middle, InputState::Released, lparam);
+            return cursor_event::<0>(
+                backend.hwnd,
+                backend.proc.lock(),
+                CursorAction::Middle,
+                CursorInputState::Released,
+                lparam,
+            );
         }
         msg::WM_RBUTTONUP => {
-            return cursor_event::<0>(backend, CursorAction::Right, InputState::Released, lparam);
+            return cursor_event::<0>(
+                backend.hwnd,
+                backend.proc.lock(),
+                CursorAction::Right,
+                CursorInputState::Released,
+                lparam,
+            );
         }
         msg::WM_XBUTTONUP => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
             return cursor_event::<1>(
-                backend,
+                backend.hwnd,
+                backend.proc.lock(),
                 if button == XBUTTON1 {
                     CursorAction::Back
                 } else {
                     CursorAction::Forward
                 },
-                InputState::Pressed,
+                CursorInputState::Released,
                 lparam,
             );
         }
@@ -197,37 +234,6 @@ fn process_wnd_proc(
                     CursorEvent::Move,
                 ));
             }
-
-            match proc.blocking_state {
-                BlockingState::None => {}
-
-                BlockingState::StartBlocking => unsafe {
-                    ShowCursor(true);
-                    SetCursor(proc.blocking_cursor.and_then(load_cursor));
-                    let mut rect = RECT::default();
-                    let clip_cursor = if GetClipCursor(&mut rect).is_ok() {
-                        _ = original_clip_cursor(None);
-                        Some(rect)
-                    } else {
-                        None
-                    };
-                    proc.blocking_state = BlockingState::Blocking { clip_cursor };
-                    return Some(LRESULT(0));
-                },
-
-                BlockingState::Blocking { .. } => return Some(LRESULT(0)),
-
-                BlockingState::StopBlocking { clip_cursor } => unsafe {
-                    ShowCursor(false);
-                    if GetCapture().0 as u32 == backend.hwnd {
-                        _ = ReleaseCapture();
-                    }
-                    if let Some(clip_cursor) = clip_cursor {
-                        _ = original_clip_cursor(Some(&clip_cursor));
-                    }
-                    proc.blocking_state = BlockingState::None;
-                },
-            }
         }
 
         msg::WM_MOUSEWHEEL => {
@@ -274,10 +280,213 @@ fn process_wnd_proc(
             }
         }
 
-        // ignore other mouse inputs
-        msg::WM_POINTERUPDATE => {
-            if backend.proc.lock().input_blocking() {
+        msg::WM_APPCOMMAND => {
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
+        // block other keyboard, mouse event
+        msg::WM_CAPTURECHANGED
+        | msg::WM_ACTIVATE
+        | msg::WM_ACTIVATEAPP
+        | msg::WM_SETFOCUS
+        | msg::WM_KILLFOCUS
+        | msg::WM_POINTERUPDATE
+        | msg::WM_DEADCHAR
+        | msg::WM_HOTKEY
+        | msg::WM_SYSDEADCHAR
+        | msg::WM_UNICHAR
+        | msg::WM_IME_REQUEST => {
+            let proc = backend.proc.lock();
+            if proc.input_blocking() {
                 return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_INPUTLANGCHANGEREQUEST => {
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
+        msg::WM_IME_NOTIFY => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if wparam.0 as u32 == ime::IMN_SETCONVERSIONMODE {
+                OverlayIpc::emit_event(keyboard_input(
+                    backend.hwnd,
+                    KeyboardInput::Ime(Ime::ConversionChanged(with_himc(
+                        backend.hwnd,
+                        ime_conversion_mode,
+                    ))),
+                ))
+            }
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_INPUTLANGCHANGE => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if let Some(lang) = get_lang_id_locale(lparam.0 as u16) {
+                OverlayIpc::emit_event(keyboard_input(
+                    backend.hwnd,
+                    KeyboardInput::Ime(Ime::Changed(lang)),
+                ));
+            }
+
+            if proc.input_blocking() {
+                return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_IME_SETCONTEXT => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            let lang_id = unsafe { GetKeyboardLayout(0) }.0 as u16;
+            OverlayIpc::emit_event(keyboard_input(
+                backend.hwnd,
+                KeyboardInput::Ime(if wparam.0 != 0 {
+                    Ime::Enabled {
+                        lang: get_lang_id_locale(lang_id).unwrap_or_else(|| "en".to_string()),
+                        conversion: with_himc(backend.hwnd, ime_conversion_mode),
+                    }
+                } else {
+                    Ime::Disabled
+                }),
+            ));
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(
+                        HWND(backend.hwnd as _),
+                        msg,
+                        wparam,
+                        // Disable composition, candinate window
+                        LPARAM(0),
+                    )
+                });
+            }
+        }
+
+        msg::WM_IME_STARTCOMPOSITION => {
+            let mut proc = backend.proc.lock();
+            proc.ime = ImeState::Enabled;
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
+        msg::WM_IME_COMPOSITION => {
+            let mut proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if proc.ime != ImeState::Disabled {
+                with_himc(backend.hwnd, |himc| {
+                    let comp = lparam.0 as u32;
+
+                    // cancelled
+                    if comp == 0 {
+                        OverlayIpc::emit_event(keyboard_input(
+                            backend.hwnd,
+                            KeyboardInput::Ime(Ime::Compose {
+                                text: String::new(),
+                                caret: 0,
+                            }),
+                        ));
+                    }
+
+                    if comp & ime::GCS_RESULTSTR.0 != 0 {
+                        if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
+                            proc.ime = ImeState::Enabled;
+                            OverlayIpc::emit_event(keyboard_input(
+                                backend.hwnd,
+                                KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                            ));
+                        }
+                    }
+
+                    if comp & (ime::GCS_COMPSTR.0 | ime::GCS_COMPATTR.0 | ime::GCS_CURSORPOS.0) != 0
+                    {
+                        let caret = if comp & ime::CS_NOMOVECARET == 0
+                            && comp & ime::GCS_CURSORPOS.0 != 0
+                        {
+                            unsafe {
+                                ImmGetCompositionStringW(himc, ime::GCS_CURSORPOS, None, 0) as usize
+                            }
+                        } else {
+                            0
+                        };
+
+                        if let Some(text) = get_ime_string(himc, ime::GCS_COMPSTR) {
+                            proc.ime = ImeState::Compose;
+
+                            OverlayIpc::emit_event(keyboard_input(
+                                backend.hwnd,
+                                KeyboardInput::Ime(Ime::Compose {
+                                    text: text.to_utf8(),
+                                    caret,
+                                }),
+                            ));
+                        }
+                    }
+                });
+            }
+
+            if proc.input_blocking() {
+                return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_IME_ENDCOMPOSITION => {
+            let mut proc = backend.proc.lock();
+            let ime = proc.ime;
+            proc.ime = ImeState::Disabled;
+
+            if ime == ImeState::Compose {
+                let hwnd = HWND(backend.hwnd as _);
+                let himc = unsafe { ImmGetContext(hwnd) };
+                defer!(unsafe {
+                    _ = ImmReleaseContext(hwnd, himc);
+                });
+                if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
+                    OverlayIpc::emit_event(keyboard_input(
+                        backend.hwnd,
+                        KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                    ));
+                }
+            }
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
             }
         }
 
@@ -314,29 +523,31 @@ pub(crate) unsafe extern "system" fn hooked_wnd_proc(
 
 #[inline]
 fn cursor_event<const BLOCK_RESULT: isize>(
-    backend: &WindowBackend,
+    hwnd: u32,
+    proc: MutexGuard<WindowProcData>,
     action: CursorAction,
-    state: InputState,
+    state: CursorInputState,
     lparam: LPARAM,
 ) -> Option<LRESULT> {
-    let proc = backend.proc.lock();
     if !proc.listening_cursor() {
         return None;
     }
 
     OverlayIpc::emit_event(cursor_input(
-        backend.hwnd,
+        hwnd,
         proc.position,
         lparam,
         CursorEvent::Action { action, state },
     ));
 
     if proc.input_blocking() {
+        // prevent deadlock
+        drop(proc);
         match state {
-            InputState::Pressed => unsafe {
-                SetCapture(HWND(backend.hwnd as _));
+            CursorInputState::Pressed { .. } => unsafe {
+                SetCapture(HWND(hwnd as _));
             },
-            InputState::Released => unsafe {
+            CursorInputState::Released => unsafe {
                 _ = ReleaseCapture();
             },
         }
@@ -348,12 +559,12 @@ fn cursor_event<const BLOCK_RESULT: isize>(
 }
 
 #[inline]
-fn cursor_input(
-    hwnd: u32,
-    position: (i32, i32),
-    lparam: LPARAM,
-    event: CursorEvent,
-) -> ClientEvent {
+fn check_double_click(proc: &mut WindowProcData) -> bool {
+    proc.update_click_time(unsafe { GetMessageTime() }) <= unsafe { GetDoubleClickTime() }
+}
+
+#[inline]
+fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEvent) -> ClientEvent {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
     let window = InputPosition {
@@ -365,11 +576,84 @@ fn cursor_input(
         y: window.y - position.1,
     };
     ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event,
             client: surface,
             window,
         })),
     }
+}
+
+#[inline(always)]
+fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
+    ClientEvent::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Keyboard(input)),
+    }
+}
+
+#[inline]
+fn with_himc<R>(hwnd: u32, f: impl FnOnce(HIMC) -> R) -> R {
+    let hwnd = HWND(hwnd as _);
+    let himc = unsafe { ImmGetContext(hwnd) };
+    defer!(unsafe {
+        _ = ImmReleaseContext(hwnd, himc);
+    });
+
+    f(himc)
+}
+
+fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<LittleEndian>> {
+    let byte_size = unsafe { ImmGetCompositionStringW(himc, comp, None, 0) };
+    if byte_size >= 0 {
+        let mut buf = vec![0_u8; byte_size as usize];
+
+        unsafe {
+            ImmGetCompositionStringW(himc, comp, Some(buf.as_mut_ptr().cast()), buf.len() as _)
+        };
+
+        WString::from_utf16le(buf).ok()
+    } else {
+        None
+    }
+}
+
+fn get_lang_id_locale(lang_id: u16) -> Option<String> {
+    let lcid = const { SORT_DEFAULT << 16 } | lang_id as u32;
+
+    let mut buf = [0_u16; LOCALE_NAME_MAX_LENGTH as usize];
+    let size = unsafe { LCIDToLocaleName(lcid, Some(&mut buf), 0) };
+    if size > 0 {
+        Some(
+            WStr::from_utf16le(bytemuck::cast_slice::<_, u8>(&buf[..(size - 1) as usize]))
+                .ok()?
+                .to_utf8(),
+        )
+    } else {
+        None
+    }
+}
+
+fn ime_conversion_mode(himc: HIMC) -> ConversionMode {
+    let mut raw_mode = IME_CONVERSION_MODE(0);
+    _ = unsafe { ImmGetConversionStatus(himc, Some(&mut raw_mode), None) };
+
+    let mut mode = ConversionMode::empty();
+    if raw_mode.contains(ime::IME_CMODE_NATIVE) {
+        mode |= ConversionMode::NATIVE;
+    }
+    if raw_mode.contains(ime::IME_CMODE_FULLSHAPE) {
+        mode |= ConversionMode::FULLSHAPE;
+    }
+    if raw_mode.contains(ime::IME_CMODE_NOCONVERSION) {
+        mode |= ConversionMode::NO_CONVERSION;
+    }
+    if raw_mode.contains(ime::IME_CMODE_HANJACONVERT) {
+        mode |= ConversionMode::HANJA_CONVERT;
+    }
+    if raw_mode.contains(ime::IME_CMODE_KATAKANA) {
+        mode |= ConversionMode::KATAKANA;
+    }
+    mode
 }

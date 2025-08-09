@@ -1,13 +1,8 @@
-use windows::Win32::{
-    Foundation::{CloseHandle, HANDLE},
-    Graphics::Direct3D12::*,
-    System::Threading::{CreateEventA, WaitForSingleObject},
-};
+use windows::Win32::{Foundation::HANDLE, Graphics::Direct3D12::*};
 
 #[derive(Debug)]
 pub struct RendererFence {
     fence: ID3D12Fence,
-    event: HANDLE,
     fence_val: u64,
 }
 
@@ -15,8 +10,7 @@ impl RendererFence {
     pub fn new(device: &ID3D12Device) -> anyhow::Result<Self> {
         Ok(Self {
             fence: unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE)? },
-            event: unsafe { CreateEventA(None, false, false, None)? },
-            fence_val: 1,
+            fence_val: 0,
         })
     }
 
@@ -32,19 +26,10 @@ impl RendererFence {
     pub fn wait_pending(&self) -> anyhow::Result<()> {
         unsafe {
             self.fence
-                .SetEventOnCompletion(self.fence_val, self.event)?;
-            WaitForSingleObject(self.event, u32::MAX);
+                .SetEventOnCompletion(self.fence_val, HANDLE(0 as _))?;
         }
         Ok(())
     }
 }
 
 unsafe impl Send for RendererFence {}
-
-impl Drop for RendererFence {
-    fn drop(&mut self) {
-        unsafe {
-            _ = CloseHandle(self.event);
-        }
-    }
-}

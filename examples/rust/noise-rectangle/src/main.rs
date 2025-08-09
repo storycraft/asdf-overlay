@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let Some(ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Added { .. },
     }) = event.recv().await
     else {
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     sleep(Duration::from_secs(1)).await;
 
     // set initial position
-    conn.window(hwnd)
+    conn.window(id)
         .request(SetPosition {
             x: PercentLength::Length(100.0),
             y: PercentLength::Length(100.0),
@@ -59,14 +59,14 @@ async fn main() -> anyhow::Result<()> {
 
         let update = surface.update_bitmap(i as _, &data)?;
         if let Some(shared) = update {
-            conn.window(hwnd).request(shared).await?;
+            conn.window(id).request(shared).await?;
         }
 
         sleep(Duration::from_millis(10)).await;
     }
 
     // move rectangle
-    conn.window(hwnd)
+    conn.window(id)
         .request(SetPosition {
             x: PercentLength::Length(200.0),
             y: PercentLength::Length(200.0),

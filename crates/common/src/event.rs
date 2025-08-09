@@ -5,7 +5,7 @@ use input::InputEvent;
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum ClientEvent {
-    Window { hwnd: u32, event: WindowEvent },
+    Window { id: u32, event: WindowEvent },
 }
 
 #[derive(Debug, Encode, Decode, Clone)]

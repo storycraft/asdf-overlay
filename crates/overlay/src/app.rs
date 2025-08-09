@@ -45,10 +45,12 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
                     .lock()
                     .layout
                     .set_position(position.x, position.y);
+                backend.recalc_position();
             }
 
             WindowRequest::SetAnchor(anchor) => {
                 backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
+                backend.recalc_position();
             }
 
             WindowRequest::SetMargin(margin) => {
@@ -58,6 +60,7 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
                     margin.bottom,
                     margin.left,
                 );
+                backend.recalc_position();
             }
 
             WindowRequest::ListenInput(cmd) => {
@@ -69,7 +72,7 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
             }
 
             WindowRequest::BlockInput(cmd) => {
-                backend.proc.lock().block_input(cmd.block, backend.hwnd);
+                backend.block_input(cmd.block);
             }
 
             WindowRequest::SetBlockingCursor(cmd) => {
@@ -77,8 +80,10 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
             }
 
             WindowRequest::UpdateSharedHandle(shared) => {
-                if let Err(err) = backend.render.lock().update_surface(shared.handle) {
-                    error!("failed to open shared surface. err: {:?}", err);
+                let res = backend.render.lock().update_surface(shared.handle);
+                match res {
+                    Ok(_) => backend.recalc_position(),
+                    Err(err) => error!("failed to open shared surface. err: {:?}", err),
                 }
             }
         });
@@ -87,12 +92,12 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
     }
 
     loop {
-        let (id, req) = server.recv().await?;
-        trace!("recv id: {id} req: {req:?}");
+        let (req_id, req) = server.recv().await?;
+        trace!("recv id: {req_id} req: {req:?}");
 
         match req {
-            Request::Window { hwnd, request } => {
-                server.reply(id, handle_window_event(hwnd, request)?)?;
+            Request::Window { id, request } => {
+                server.reply(req_id, handle_window_event(id, request)?)?;
             }
         }
     }
@@ -113,7 +118,7 @@ pub async fn app(
         for backend in Backends::iter() {
             let size = backend.render.lock().window_size;
             _ = emitter.emit(ClientEvent::Window {
-                hwnd: *backend.key() as _,
+                id: *backend.key() as _,
                 event: WindowEvent::Added {
                     width: size.0,
                     height: size.1,

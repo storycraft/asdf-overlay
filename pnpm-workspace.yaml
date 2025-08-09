@@ -3,3 +3,4 @@ packages:
   - examples/node/*
 onlyBuiltDependencies:
   - electron
+  - esbuild

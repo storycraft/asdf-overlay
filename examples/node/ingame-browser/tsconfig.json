@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "target": "esnext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "lib": [
       "ESNext"
     ],
@@ -14,13 +14,9 @@
     "strict": true,
     "noImplicitAny": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "allowJs": true
+    "isolatedModules": true
   },
   "exclude": [
-    "./doc/book",
-    "./lib",
-    "./target",
-    "./examples",
+    "out"
   ]
 }

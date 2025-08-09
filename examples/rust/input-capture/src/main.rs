@@ -29,16 +29,14 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     let Some(ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Added { .. },
     }) = event.recv().await
     else {
         bail!("failed to receive main window");
     };
 
-    conn.window(hwnd)
-        .request(BlockInput { block: true })
-        .await?;
+    conn.window(id).request(BlockInput { block: true }).await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);

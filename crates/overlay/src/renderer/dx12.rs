@@ -210,6 +210,7 @@ impl Dx12Renderer {
     }
 
     pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
+        _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
 

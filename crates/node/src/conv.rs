@@ -3,8 +3,8 @@ use asdf_overlay_client::{
         event::{
             ClientEvent, WindowEvent,
             input::{
-                CursorAction, CursorEvent, CursorInput, InputEvent, InputState, KeyboardInput,
-                ScrollAxis,
+                CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
+                KeyInputState, KeyboardInput, ScrollAxis,
             },
         },
         key::Key,
@@ -17,7 +17,7 @@ use neon::{
     object::Object,
     prelude::Context,
     result::{JsResult, NeonResult},
-    types::{JsFunction, JsNumber, JsObject, JsString},
+    types::{JsBoolean, JsFunction, JsNumber, JsObject, JsString},
 };
 
 pub fn emit_event<'a>(
@@ -30,18 +30,18 @@ pub fn emit_event<'a>(
     let builder = call_options.this(emitter);
 
     match event {
-        ClientEvent::Window { hwnd, event } => match event {
+        ClientEvent::Window { id, event } => match event {
             WindowEvent::Added { width, height } => {
                 builder
                     .arg(cx.string("added"))
-                    .arg(cx.number(hwnd))
+                    .arg(cx.number(id))
                     .arg(cx.number(width))
                     .arg(cx.number(height));
             }
             WindowEvent::Resized { width, height } => {
                 builder
                     .arg(cx.string("resized"))
-                    .arg(cx.number(hwnd))
+                    .arg(cx.number(id))
                     .arg(cx.number(width))
                     .arg(cx.number(height));
             }
@@ -49,23 +49,23 @@ pub fn emit_event<'a>(
                 InputEvent::Cursor(input) => {
                     builder
                         .arg(cx.string("cursor_input"))
-                        .arg(cx.number(hwnd))
+                        .arg(cx.number(id))
                         .arg(serialize_cursor_input(cx, input)?);
                 }
                 InputEvent::Keyboard(input) => {
                     builder
                         .arg(cx.string("keyboard_input"))
-                        .arg(cx.number(hwnd))
+                        .arg(cx.number(id))
                         .arg(serialize_keyboard_input(cx, input)?);
                 }
             },
             WindowEvent::InputBlockingEnded => {
                 builder
                     .arg(cx.string("input_blocking_ended"))
-                    .arg(cx.number(hwnd));
+                    .arg(cx.number(id));
             }
             WindowEvent::Destroyed => {
-                builder.arg(cx.string("destroyed")).arg(cx.number(hwnd));
+                builder.arg(cx.string("destroyed")).arg(cx.number(id));
             }
         },
     }
@@ -87,7 +87,7 @@ fn serialize_keyboard_input<'a>(
             let key = serialize_key(cx, key)?;
             obj.set(cx, "key", key)?;
 
-            let state = serialize_input_state(cx, state);
+            let state = serialize_key_input_state(cx, state);
             obj.set(cx, "state", state)?;
         }
         KeyboardInput::Char(ch) => {
@@ -97,6 +97,13 @@ fn serialize_keyboard_input<'a>(
             let mut buf = [0_u8; 4];
             let ch = cx.string(ch.encode_utf8(&mut buf));
             obj.set(cx, "ch", ch)?;
+        }
+        KeyboardInput::Ime(ime) => {
+            let kind = cx.string("Ime");
+            obj.set(cx, "kind", kind)?;
+
+            let ime = serialize_ime(cx, ime)?;
+            obj.set(cx, "ime", ime)?;
         }
     }
 
@@ -134,8 +141,9 @@ fn serialize_cursor_input<'a>(
             let kind = cx.string("Action");
             obj.set(cx, "kind", kind)?;
 
-            let state = serialize_input_state(cx, state);
+            let (state, double_click) = serialize_cursor_input_state(cx, state);
             obj.set(cx, "state", state)?;
+            obj.set(cx, "doubleClick", double_click)?;
 
             let action = match action {
                 CursorAction::Left => cx.string("Left"),
@@ -168,10 +176,25 @@ fn serialize_cursor_input<'a>(
     Ok(obj)
 }
 
-fn serialize_input_state<'a>(cx: &mut impl Context<'a>, state: InputState) -> Handle<'a, JsString> {
+fn serialize_key_input_state<'a>(
+    cx: &mut impl Context<'a>,
+    state: KeyInputState,
+) -> Handle<'a, JsString> {
     match state {
-        InputState::Pressed => cx.string("Pressed"),
-        InputState::Released => cx.string("Released"),
+        KeyInputState::Pressed => cx.string("Pressed"),
+        KeyInputState::Released => cx.string("Released"),
+    }
+}
+
+fn serialize_cursor_input_state<'a>(
+    cx: &mut impl Context<'a>,
+    state: CursorInputState,
+) -> (Handle<'a, JsString>, Handle<'a, JsBoolean>) {
+    match state {
+        CursorInputState::Pressed { double_click } => {
+            (cx.string("Pressed"), cx.boolean(double_click))
+        }
+        CursorInputState::Released => (cx.string("Released"), cx.boolean(false)),
     }
 }
 
@@ -183,6 +206,53 @@ fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObje
 
     let extended = cx.boolean(key.extended);
     obj.set(cx, "extended", extended)?;
+
+    Ok(obj)
+}
+
+fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    let kind = match ime {
+        Ime::Enabled { lang, conversion } => {
+            let lang = cx.string(lang);
+            obj.set(cx, "lang", lang)?;
+
+            let conversion = cx.number(conversion.bits());
+            obj.set(cx, "conversion", conversion)?;
+
+            cx.string("Enabled")
+        }
+        Ime::Changed(lang) => {
+            let lang = cx.string(lang);
+            obj.set(cx, "lang", lang)?;
+
+            cx.string("Changed")
+        }
+        Ime::ConversionChanged(conversion) => {
+            let conversion = cx.number(conversion.bits());
+            obj.set(cx, "conversion", conversion)?;
+
+            cx.string("ConversionChanged")
+        }
+        Ime::Compose { text, caret } => {
+            let text = cx.string(text);
+            obj.set(cx, "text", text)?;
+
+            let caret = cx.number(caret as f64);
+            obj.set(cx, "caret", caret)?;
+
+            cx.string("Compose")
+        }
+        Ime::Commit(text) => {
+            let text = cx.string(text);
+            obj.set(cx, "text", text)?;
+
+            cx.string("Commit")
+        }
+        Ime::Disabled => cx.string("Disabled"),
+    };
+    obj.set(cx, "kind", kind)?;
 
     Ok(obj)
 }

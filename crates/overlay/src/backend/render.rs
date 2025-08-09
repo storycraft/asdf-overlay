@@ -15,7 +15,7 @@ use crate::{
 pub enum Renderer {
     Dx12(Option<Dx12Renderer>),
     Dx11(Option<Dx11Renderer>),
-    Dx9(Option<Dx9Renderer>),
+    Dx9(Option<(usize, Dx9Renderer)>),
     Opengl,
     Vulkan(Option<Box<VulkanRenderer>>),
 }
@@ -40,6 +40,11 @@ impl RenderData {
             renderer: None,
             cx: DrawContext::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.surface = SurfaceState::new();
+        self.position = (0, 0);
     }
 
     pub fn update_surface(&mut self, handle: Option<NonZeroU32>) -> anyhow::Result<()> {

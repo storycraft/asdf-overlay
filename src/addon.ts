@@ -4,11 +4,11 @@ import { CopyRect, Cursor, PercentLength } from './types.js';
 export type Addon = {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
 
-  overlaySetPosition(id: number, hwnd: number, x: PercentLength, y: PercentLength): Promise<void>,
-  overlaySetAnchor(id: number, hwnd: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetPosition(id: number, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetAnchor(id: number, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
   overlaySetMargin(
     id: number,
-    hwnd: number,
+    winId: number,
     top: PercentLength,
     right: PercentLength,
     bottom: PercentLength,
@@ -17,25 +17,25 @@ export type Addon = {
 
   overlayListenInput(
     id: number,
-    hwnd: number,
+    winId: number,
     cursor: boolean,
     keyboard: boolean,
   ): Promise<void>,
 
   overlayBlockInput(
     id: number,
-    hwnd: number,
+    winId: number,
     block: boolean,
   ): Promise<void>,
   overlaySetBlockingCursor(
     id: number,
-    hwnd: number,
+    winId: number,
     cursor?: Cursor,
   ): Promise<void>,
 
-  overlayUpdateBitmap(id: number, hwnd: number, width: number, data: Buffer): Promise<void>,
-  overlayUpdateShtex(id: number, hwnd: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
-  overlayClearSurface(id: number, hwnd: number): Promise<void>,
+  overlayUpdateBitmap(id: number, winId: number, width: number, data: Buffer): Promise<void>,
+  overlayUpdateShtex(id: number, winId: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
+  overlayClearSurface(id: number, winId: number): Promise<void>,
 
   overlayCallNextEvent(
     id: number,

@@ -5,11 +5,11 @@ import { Cursor } from 'asdf-overlay-node';
 import {
   KeyboardInputEvent,
   MouseInputEvent,
-  MouseWheelInputEvent
+  MouseWheelInputEvent,
 } from 'electron';
 
 export function toMouseEvent(
-  input: CursorInput
+  input: CursorInput,
 ): MouseInputEvent | MouseWheelInputEvent | null {
   switch (input.kind) {
     case 'Enter':
@@ -82,7 +82,7 @@ export function toMouseEvent(
       return {
         type: input.state === 'Pressed' ? 'mouseDown' : 'mouseUp',
         button,
-        clickCount: 1,
+        clickCount: input.doubleClick ? 2 : 1,
         x: input.clientX,
         y: input.clientY,
         globalX: input.windowX,
@@ -93,7 +93,7 @@ export function toMouseEvent(
 }
 
 export function toKeyboardInputEvent(
-  input: KeyboardInput
+  input: KeyboardInput,
 ): KeyboardInputEvent | null {
   switch (input.kind) {
     case 'Key': {
@@ -104,15 +104,28 @@ export function toKeyboardInputEvent(
 
       return {
         type: input.state === 'Pressed' ? 'keyDown' : 'keyUp',
-        keyCode
+        keyCode,
       };
     }
 
-    case 'Char':
+    case 'Char': {
       return {
         type: 'char',
-        keyCode: input.ch
+        keyCode: input.ch,
       };
+    }
+
+    case 'Ime': {
+      // TODO:: proper ime handling
+      if (input.ime.kind === 'Commit') {
+        return {
+          type: 'char',
+          keyCode: input.ime.text,
+        };
+      }
+
+      return null;
+    }
   }
 }
 
@@ -273,6 +286,6 @@ const KEYS: Record<number, string | undefined> = {
   219: '[',
   220: '\\',
   221: ']',
-  222: "'",
-  225: 'AltGr'
+  222: '\'',
+  225: 'AltGr',
 };

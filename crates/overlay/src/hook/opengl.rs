@@ -1,17 +1,16 @@
-use core::{cell::Cell, ffi::c_void, mem};
+use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use scopeguard::defer;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
-            Gdi::{HDC, WGL_SWAP_MAIN_PLANE, WindowFromDC},
+            Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
@@ -30,16 +29,9 @@ use crate::{
     wgl,
 };
 
-#[link(name = "gdi32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
-unsafe extern "system" {
-    fn SwapBuffers(hdc: HDC) -> BOOL;
-}
-
 struct Hook {
     wgl_delete_context: DetourHook<WglDeleteContextFn>,
-    swap_buffers: DetourHook<SwapBuffersFn>,
     wgl_swap_buffers: DetourHook<WglSwapBuffersFn>,
-    wgl_swap_layer_buffers: DetourHook<WglSwapLayerBuffersFn>,
 }
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
@@ -62,23 +54,13 @@ pub fn hook(dummy_hwnd: HWND) {
             let wgl_delete_context =
                 DetourHook::attach(addrs.delete_context, hooked_wgl_delete_context as _)?;
 
-            debug!("hooking SwapBuffers");
-            let swap_buffers =
-                DetourHook::attach(SwapBuffers as SwapBuffersFn, hooked_swap_buffers as _)?;
-
             debug!("hooking WglSwapBuffers");
             let wgl_swap_buffers =
                 DetourHook::attach(addrs.swap_buffers, hooked_wgl_swap_buffers as _)?;
 
-            debug!("hooking WglSwapLayerBuffers");
-            let wgl_swap_layer_buffers =
-                DetourHook::attach(addrs.swap_layer_buffers, hooked_wgl_swap_layer_buffers as _)?;
-
             Ok::<_, anyhow::Error>(Hook {
                 wgl_delete_context,
-                swap_buffers,
                 wgl_swap_buffers,
-                wgl_swap_layer_buffers,
             })
         })?;
 
@@ -131,21 +113,6 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     }
 
     unsafe { HOOK.wait().wgl_delete_context.original_fn()(hglrc) }
-}
-
-#[inline]
-fn with_gl_call_count<R>(f: impl FnOnce(u32) -> R) -> R {
-    thread_local! {
-        static SWAP_CALL_COUNT: Cell<u32> = const { Cell::new(0) };
-    }
-
-    let last_call_count = SWAP_CALL_COUNT.get();
-    SWAP_CALL_COUNT.set(last_call_count + 1);
-    defer!({
-        SWAP_CALL_COUNT.set(last_call_count);
-    });
-
-    f(last_call_count)
 }
 
 fn draw_overlay(hdc: HDC) {
@@ -245,53 +212,20 @@ fn draw_overlay(hdc: HDC) {
 }
 
 #[tracing::instrument]
-extern "system" fn hooked_swap_buffers(hdc: HDC) -> BOOL {
-    trace!("SwapBuffers called");
-
-    with_gl_call_count(move |last_call_count| {
-        if last_call_count == 0 {
-            draw_overlay(hdc);
-        }
-
-        unsafe { HOOK.wait().swap_buffers.original_fn()(hdc) }
-    })
-}
-
-#[tracing::instrument]
 extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
-    with_gl_call_count(move |last_call_count| {
-        if last_call_count == 0 {
-            draw_overlay(hdc);
-        }
+    draw_overlay(hdc);
 
-        unsafe { HOOK.wait().wgl_swap_buffers.original_fn()(hdc) }
-    })
+    unsafe { HOOK.wait().wgl_swap_buffers.original_fn()(hdc) }
 }
 
-#[tracing::instrument]
-extern "system" fn hooked_wgl_swap_layer_buffers(hdc: HDC, plane: u32) -> BOOL {
-    trace!("SwapLayerBuffers called");
-
-    with_gl_call_count(move |last_call_count| {
-        if last_call_count == 0 && plane == WGL_SWAP_MAIN_PLANE {
-            draw_overlay(hdc);
-        }
-
-        unsafe { HOOK.wait().wgl_swap_layer_buffers.original_fn()(hdc, plane) }
-    })
-}
-
-type SwapBuffersFn = unsafe extern "system" fn(HDC) -> BOOL;
 type WglSwapBuffersFn = unsafe extern "system" fn(HDC) -> BOOL;
-type WglSwapLayerBuffersFn = unsafe extern "system" fn(HDC, u32) -> BOOL;
 type WglDeleteContextFn = unsafe extern "system" fn(HGLRC) -> BOOL;
 
 struct WglAddrs {
     delete_context: WglDeleteContextFn,
     swap_buffers: WglSwapBuffersFn,
-    swap_layer_buffers: WglSwapLayerBuffersFn,
 }
 
 #[tracing::instrument]
@@ -314,19 +248,9 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     let swap_buffers =
         unsafe { mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapBuffersFn>(func) };
 
-    let func = unsafe {
-        GetProcAddress(opengl32module, s!("wglSwapLayerBuffers"))
-            .context("wglSwapLayerBuffers not found")?
-    };
-    debug!("wglSwapLayerBuffers found: {:p}", func);
-    let swap_layer_buffers = unsafe {
-        mem::transmute::<unsafe extern "system" fn() -> isize, WglSwapLayerBuffersFn>(func)
-    };
-
     Ok(WglAddrs {
         delete_context,
         swap_buffers,
-        swap_layer_buffers,
     })
 }
 

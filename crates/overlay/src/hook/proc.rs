@@ -1,24 +1,26 @@
 mod input;
+
 use asdf_overlay_common::{
     event::{
         ClientEvent, WindowEvent,
-        input::{InputEvent, InputState, KeyboardInput},
+        input::{InputEvent, KeyInputState, KeyboardInput},
     },
     key::Key,
 };
-pub use input::util;
-
 use asdf_overlay_hook::DetourHook;
+use core::cell::Cell;
 use once_cell::sync::OnceCell;
 use scopeguard::defer;
 use tracing::{debug, trace};
-use utf16string::{LittleEndian, WString};
-use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    UI::{
-        Input::Ime::{GCS_RESULTSTR, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext},
-        WindowsAndMessaging::{self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG},
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        UI::WindowsAndMessaging::{
+            self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE,
+            PM_REMOVE,
+        },
     },
+    core::BOOL,
 };
 
 use crate::{
@@ -28,23 +30,62 @@ use crate::{
 
 #[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 unsafe extern "system" {
+    fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;
+    fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;
+
+    fn PeekMessageA(
+        lpmsg: *mut MSG,
+        hwnd: HWND,
+        wmsgfiltermin: u32,
+        wmsgfiltermax: u32,
+        wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+    ) -> BOOL;
+    fn PeekMessageW(
+        lpmsg: *mut MSG,
+        hwnd: HWND,
+        wmsgfiltermin: u32,
+        wmsgfiltermax: u32,
+        wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+    ) -> BOOL;
+
     fn DispatchMessageA(msg: *const MSG) -> LRESULT;
     fn DispatchMessageW(msg: *const MSG) -> LRESULT;
 }
 
 struct Hook {
+    get_message_a: DetourHook<GetMessageFn>,
+    get_message_w: DetourHook<GetMessageFn>,
+
+    peek_message_a: DetourHook<PeekMessageFn>,
+    peek_message_w: DetourHook<PeekMessageFn>,
+
     dispatch_message_a: DetourHook<DispatchMessageFn>,
     dispatch_message_w: DetourHook<DispatchMessageFn>,
 }
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
+type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
+type PeekMessageFn =
+    unsafe extern "system" fn(*mut MSG, HWND, u32, u32, PEEK_MESSAGE_REMOVE_TYPE) -> BOOL;
 type DispatchMessageFn = unsafe extern "system" fn(*const MSG) -> LRESULT;
 
 pub fn hook() -> anyhow::Result<()> {
     input::hook()?;
 
     HOOK.get_or_try_init(|| unsafe {
+        debug!("hooking GetMessageA");
+        let get_message_a = DetourHook::attach(GetMessageA as _, hooked_get_message_a as _)?;
+
+        debug!("hooking GetMessageW");
+        let get_message_w = DetourHook::attach(GetMessageW as _, hooked_get_message_w as _)?;
+
+        debug!("hooking PeekMessageA");
+        let peek_message_a = DetourHook::attach(PeekMessageA as _, hooked_peek_message_a as _)?;
+
+        debug!("hooking PeekMessageW");
+        let peek_message_w = DetourHook::attach(PeekMessageW as _, hooked_peek_message_w as _)?;
+
         debug!("hooking DispatchMessageA");
         let dispatch_message_a =
             DetourHook::attach(DispatchMessageA as _, hooked_dispatch_message_a as _)?;
@@ -54,12 +95,131 @@ pub fn hook() -> anyhow::Result<()> {
             DetourHook::attach(DispatchMessageW as _, hooked_dispatch_message_w as _)?;
 
         Ok::<_, anyhow::Error>(Hook {
+            get_message_a,
+            get_message_w,
+
+            peek_message_a,
+            peek_message_w,
+
             dispatch_message_a,
             dispatch_message_w,
         })
     })?;
 
     Ok(())
+}
+
+thread_local! {
+    static MESSAGE_READING: Cell<bool> = const { Cell::new(false) };
+}
+
+#[inline]
+fn message_reading() -> bool {
+    MESSAGE_READING.get()
+}
+
+#[inline]
+fn set_message_read<R>(f: impl FnOnce() -> R) -> R {
+    let last = MESSAGE_READING.replace(true);
+    defer!(MESSAGE_READING.set(last));
+    f()
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_message_a(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+) -> BOOL {
+    trace!("GetMessageA called");
+    set_message_read(|| unsafe {
+        let ret =
+            HOOK.wait().get_message_a.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
+        on_message_read(&*lpmsg);
+        ret
+    })
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_message_w(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+) -> BOOL {
+    trace!("GetMessageW called");
+    set_message_read(|| unsafe {
+        let ret =
+            HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
+        on_message_read(&*lpmsg);
+        ret
+    })
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_peek_message_a(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+    wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+) -> BOOL {
+    trace!("PeekMessageA called");
+    set_message_read(|| unsafe {
+        let ret = HOOK.wait().peek_message_a.original_fn()(
+            lpmsg,
+            hwnd,
+            wmsgfiltermin,
+            wmsgfiltermax,
+            wremovemsg,
+        );
+        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
+            on_message_read(&*lpmsg);
+        }
+        ret
+    })
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_peek_message_w(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+    wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+) -> BOOL {
+    trace!("PeekMessageW called");
+    set_message_read(|| unsafe {
+        let ret = HOOK.wait().peek_message_w.original_fn()(
+            lpmsg,
+            hwnd,
+            wmsgfiltermin,
+            wmsgfiltermax,
+            wremovemsg,
+        );
+        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
+            on_message_read(&*lpmsg);
+        }
+        ret
+    })
+}
+
+fn on_message_read(msg: &MSG) {
+    if msg.hwnd.is_invalid() {
+        return;
+    }
+
+    _ = Backends::with_backend(msg.hwnd, |backend| {
+        let mut proc_queue = backend.proc_queue.lock();
+        if proc_queue.is_empty() {
+            return;
+        }
+
+        for f in proc_queue.drain(..) {
+            f(backend);
+        }
+    });
 }
 
 #[tracing::instrument]
@@ -90,62 +250,42 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
         return None;
     }
 
-    let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-    Backends::with_backend(root_hwnd, |backend| processs_dispatch_message(backend, msg)).flatten()
-}
-
-#[inline]
-fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESULT> {
+    // Keyboard messages only dispatched to focused window.
+    // Listening on DispatchMessage hook allow to hook keyboard messages going to child window
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            return emit_key_input(backend, msg, InputState::Pressed);
+            return with_root_backend(msg, |backend| {
+                emit_key_input(backend, msg, KeyInputState::Pressed)
+            })
+            .flatten();
         }
 
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            return emit_key_input(backend, msg, InputState::Released);
+            return with_root_backend(msg, |backend| {
+                emit_key_input(backend, msg, KeyInputState::Released)
+            })
+            .flatten();
         }
 
         // unicode characters are handled in WM_IME_COMPOSITION
         msg::WM_CHAR | msg::WM_SYSCHAR => {
-            let proc = backend.proc.lock();
-            if !proc.listening_keyboard() {
-                return None;
-            }
+            return with_root_backend(msg, |backend| {
+                let proc = backend.proc.lock();
+                if !proc.listening_keyboard() {
+                    return None;
+                }
 
-            if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
-            }
-
-            if proc.input_blocking() {
-                return Some(LRESULT(0));
-            }
-        }
-        msg::WM_IME_COMPOSITION if msg.lParam.0 as u32 == GCS_RESULTSTR.0 => {
-            let proc = backend.proc.lock();
-            if !proc.listening_keyboard() {
-                return None;
-            }
-
-            if let Some(str) = get_ime_string(HWND(backend.hwnd as _)) {
-                for ch in str.chars() {
+                if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
                     OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                 }
-            }
 
-            if proc.input_blocking() {
-                return Some(LRESULT(0));
-            }
-        }
-
-        // ignore remaining keyboard inputs
-        msg::WM_APPCOMMAND
-        | msg::WM_DEADCHAR
-        | msg::WM_HOTKEY
-        | msg::WM_SYSDEADCHAR
-        | msg::WM_UNICHAR => {
-            if backend.proc.lock().input_blocking() {
-                return Some(LRESULT(0));
-            }
+                if proc.input_blocking() {
+                    Some(LRESULT(0))
+                } else {
+                    None
+                }
+            })
+            .flatten();
         }
 
         _ => {}
@@ -155,7 +295,13 @@ fn processs_dispatch_message(backend: &WindowBackend, msg: &MSG) -> Option<LRESU
 }
 
 #[inline]
-fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Option<LRESULT> {
+fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
+    let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
+    Backends::with_backend(root_hwnd, f)
+}
+
+#[inline]
+fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> Option<LRESULT> {
     let proc = backend.proc.lock();
     if !proc.listening_keyboard() {
         return None;
@@ -170,16 +316,18 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: InputState) -> Opti
 
     if proc.input_blocking() {
         drop(proc);
-        Some(unsafe { DefWindowProcA(msg.hwnd, msg.message, msg.wParam, msg.lParam) })
+        Some(unsafe {
+            DefWindowProcA(HWND(backend.hwnd as _), msg.message, msg.wParam, msg.lParam)
+        })
     } else {
         None
     }
 }
 
 #[inline(always)]
-fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
+fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
     ClientEvent::Window {
-        hwnd,
+        id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }
 }
@@ -188,30 +336,4 @@ fn keyboard_input(hwnd: u32, input: KeyboardInput) -> ClientEvent {
 fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
     let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
     Key::new(wparam.0 as _, flags & 0x01 == 0x01)
-}
-
-#[inline]
-fn get_ime_string(hwnd: HWND) -> Option<WString<LittleEndian>> {
-    let himc = unsafe { ImmGetContext(hwnd) };
-    defer!(unsafe {
-        _ = ImmReleaseContext(hwnd, himc);
-    });
-
-    let byte_size = unsafe { ImmGetCompositionStringW(himc, GCS_RESULTSTR, None, 0) };
-    if byte_size >= 0 {
-        let mut buf = vec![0_u8; byte_size as usize];
-
-        unsafe {
-            ImmGetCompositionStringW(
-                himc,
-                GCS_RESULTSTR,
-                Some(buf.as_mut_ptr().cast()),
-                buf.len() as _,
-            )
-        };
-
-        WString::from_utf16le(buf).ok()
-    } else {
-        None
-    }
 }

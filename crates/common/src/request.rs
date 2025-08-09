@@ -6,7 +6,7 @@ use crate::{cursor::Cursor, size::PercentLength};
 
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum Request {
-    Window { hwnd: u32, request: WindowRequest },
+    Window { id: u32, request: WindowRequest },
 }
 
 #[derive(Debug, Encode, Decode, Clone, derive_more::From)]
