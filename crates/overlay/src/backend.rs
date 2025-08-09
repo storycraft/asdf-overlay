@@ -2,6 +2,7 @@ pub mod render;
 pub mod window;
 
 use core::mem;
+use std::collections::VecDeque;
 
 use anyhow::Context;
 use asdf_overlay_common::event::{ClientEvent, WindowEvent};
@@ -11,13 +12,26 @@ use parking_lot::Mutex;
 use tracing::trace;
 use window::proc::hooked_wnd_proc;
 use windows::Win32::{
-    Foundation::HWND,
-    UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC},
+    Foundation::{HWND, LPARAM, RECT, WPARAM},
+    UI::{
+        Input::{
+            Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
+            KeyboardAndMouse::{GetCapture, ReleaseCapture, SetFocus},
+        },
+        WindowsAndMessaging::{
+            self as msg, ClipCursor, GWLP_WNDPROC, GetClipCursor, GetSystemMetrics, PostMessageA,
+            SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetCursor, SetWindowLongPtrA, ShowCursor,
+            WNDPROC,
+        },
+    },
 };
 
 use crate::{
     app::OverlayIpc,
-    backend::{render::RenderData, window::WindowProcData},
+    backend::{
+        render::RenderData,
+        window::{InputBlockData, WindowProcData, cursor::load_cursor},
+    },
     interop::DxInterop,
     types::IntDashMap,
     util::get_client_size,
@@ -80,6 +94,7 @@ impl Backends {
                     original_proc,
                     proc: Mutex::new(WindowProcData::new()),
                     render: Mutex::new(RenderData::new(interop, window_size)),
+                    proc_queue: Mutex::new(VecDeque::new()),
                 })
             })?
             .downgrade();
@@ -104,12 +119,15 @@ impl Backends {
     }
 }
 
+pub type ProcDispatchFn = Box<dyn FnOnce(&WindowBackend) + Send>;
+
 #[non_exhaustive]
 pub struct WindowBackend {
     pub hwnd: u32,
-    pub original_proc: WNDPROC,
+    pub(crate) original_proc: WNDPROC,
     pub proc: Mutex<WindowProcData>,
     pub render: Mutex<RenderData>,
+    pub(crate) proc_queue: Mutex<VecDeque<ProcDispatchFn>>,
 }
 
 impl WindowBackend {
@@ -118,6 +136,7 @@ impl WindowBackend {
         trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
         self.render.lock().reset();
         self.proc.lock().reset();
+        self.block_input(false);
     }
 
     pub fn recalc_position(&self) {
@@ -134,5 +153,78 @@ impl WindowBackend {
 
         proc.position = position;
         render.position = position;
+    }
+
+    pub fn execute_gui(&self, f: impl FnOnce(&WindowBackend) + Send + 'static) {
+        let mut proc_queue = self.proc_queue.lock();
+        proc_queue.push_back(Box::new(f));
+        unsafe {
+            _ = PostMessageA(
+                Some(HWND(self.hwnd as _)),
+                msg::WM_NULL,
+                WPARAM(0),
+                LPARAM(0),
+            );
+        }
+    }
+
+    pub fn block_input(&self, block: bool) {
+        if block == self.proc.lock().blocking_state.is_some() {
+            return;
+        }
+
+        if block {
+            self.execute_gui(|backend| unsafe {
+                if backend.proc.lock().blocking_state.is_some() {
+                    return;
+                }
+
+                ShowCursor(true);
+                SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
+                let clip_cursor = {
+                    let mut rect = RECT::default();
+                    _ = GetClipCursor(&mut rect);
+                    let screen = RECT {
+                        left: 0,
+                        top: 0,
+                        right: GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                        bottom: GetSystemMetrics(SM_CYVIRTUALSCREEN),
+                    };
+                    _ = ClipCursor(None);
+
+                    if rect != screen { Some(rect) } else { None }
+                };
+
+                let old_ime_cx =
+                    ImmAssociateContext(HWND(backend.hwnd as _), ImmCreateContext()).0 as usize;
+
+                // give focus to target window
+                _ = SetFocus(Some(HWND(backend.hwnd as _)));
+                backend.proc.lock().blocking_state = Some(InputBlockData {
+                    clip_cursor,
+                    old_ime_cx,
+                });
+            });
+        } else {
+            self.execute_gui(|backend| unsafe {
+                ShowCursor(false);
+                if GetCapture().0 as u32 == backend.hwnd {
+                    _ = ReleaseCapture();
+                }
+
+                let Some(data) = backend.proc.lock().blocking_state.take() else {
+                    return;
+                };
+                _ = ClipCursor(data.clip_cursor.as_ref().map(|r| r as _));
+                let ime_cx =
+                    ImmAssociateContext(HWND(backend.hwnd as _), HIMC(data.old_ime_cx as _));
+                _ = ImmDestroyContext(ime_cx);
+
+                OverlayIpc::emit_event(ClientEvent::Window {
+                    id: backend.hwnd,
+                    event: WindowEvent::InputBlockingEnded,
+                });
+            });
+        }
     }
 }

@@ -1,5 +1,3 @@
-pub mod util;
-
 use core::ffi::c_void;
 
 use asdf_overlay_hook::DetourHook;
@@ -7,7 +5,7 @@ use once_cell::sync::OnceCell;
 use tracing::debug;
 use windows::{
     Win32::{
-        Foundation::{POINT, RECT},
+        Foundation::{HWND, POINT, RECT},
         UI::{
             Input::{
                 HRAWINPUT, KeyboardAndMouse::GetActiveWindow, RAW_INPUT_DATA_COMMAND_FLAGS,
@@ -19,11 +17,15 @@ use windows::{
     core::BOOL,
 };
 
-use crate::{backend::Backends, hook::proc::message_reading};
+use crate::{
+    backend::{Backends, window::InputBlockData},
+    hook::proc::message_reading,
+};
 
 #[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 unsafe extern "system" {
     fn ClipCursor(lprect: *const RECT) -> BOOL;
+    fn GetClipCursor(lprect: *mut RECT) -> BOOL;
     fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetPhysicalCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetKeyboardState(buf: *mut u8) -> BOOL;
@@ -41,6 +43,7 @@ unsafe extern "system" {
 
 struct Hook {
     clip_cursor: DetourHook<ClipCursorFn>,
+    get_clip_cursor: DetourHook<GetClipCursorFn>,
     get_cursor_pos: DetourHook<GetCursorPos>,
     get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
     get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
@@ -52,6 +55,7 @@ struct Hook {
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
+type GetClipCursorFn = unsafe extern "system" fn(*mut RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetPhysicalCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetAsyncKeyStateFn = unsafe extern "system" fn(i32) -> i16;
@@ -70,6 +74,9 @@ pub fn hook() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking ClipCursor");
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
+
+        debug!("hooking GetClipCursor");
+        let get_clip_cursor = DetourHook::attach(GetClipCursor as _, hooked_get_clip_cursor as _)?;
 
         debug!("hooking GetCursorPos");
         let get_physical_cursor_pos =
@@ -102,6 +109,7 @@ pub fn hook() -> anyhow::Result<()> {
 
         Ok::<_, anyhow::Error>(Hook {
             clip_cursor,
+            get_clip_cursor,
             get_cursor_pos,
             get_physical_cursor_pos,
             get_async_key_state,
@@ -116,13 +124,28 @@ pub fn hook() -> anyhow::Result<()> {
 }
 
 #[inline]
-fn active_hwnd_input_blocked() -> bool {
+fn active_hwnd_can_block() -> Option<HWND> {
     let hwnd = unsafe { GetActiveWindow() };
 
-    !hwnd.is_invalid()
-        && !message_reading()
-        && Backends::with_backend(hwnd, |backend| backend.proc.lock().input_blocking())
-            .unwrap_or(false)
+    if !hwnd.is_invalid() && !message_reading() {
+        Some(hwnd)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn active_hwnd_with<R>(f: impl FnOnce(&mut InputBlockData) -> R) -> Option<R> {
+    Backends::with_backend(active_hwnd_can_block()?, |backend| {
+        let mut proc = backend.proc.lock();
+        Some(f(proc.blocking_state.as_mut()?))
+    })
+    .flatten()
+}
+
+#[inline]
+fn active_hwnd_input_blocked() -> bool {
+    active_hwnd_with(|_| ()).is_some()
 }
 
 #[inline]
@@ -136,11 +159,26 @@ fn foreground_hwnd_input_blocked() -> bool {
 
 #[tracing::instrument]
 extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
-    if active_hwnd_input_blocked() {
+    if active_hwnd_with(|data| {
+        data.clip_cursor = unsafe { lprect.as_ref() }.copied();
+    })
+    .is_some()
+    {
         return BOOL(1);
     }
 
     unsafe { HOOK.wait().clip_cursor.original_fn()(lprect) }
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
+    match active_hwnd_with(|data| data.clip_cursor).flatten() {
+        Some(rect) => {
+            unsafe { lprect.write(rect) };
+            BOOL(1)
+        }
+        None => unsafe { HOOK.wait().get_clip_cursor.original_fn()(lprect) },
+    }
 }
 
 #[tracing::instrument]

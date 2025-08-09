@@ -3,9 +3,8 @@ use crate::{
     app::OverlayIpc,
     backend::{
         BACKENDS, Backends,
-        window::{BlockingState, CursorState, ImeState, WindowProcData, cursor::load_cursor},
+        window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
     },
-    hook::util::original_clip_cursor,
     util::get_client_size,
 };
 use asdf_overlay_common::event::{
@@ -21,24 +20,23 @@ use scopeguard::defer;
 use tracing::trace;
 use utf16string::{LittleEndian, WString};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
             Ime::{
                 CS_NOMOVECARET, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC,
-                IME_COMPOSITION_STRING, ISC_SHOWUICOMPOSITIONWINDOW, ImmAssociateContext,
-                ImmCreateContext, ImmDestroyContext, ImmGetCompositionStringW, ImmGetContext,
-                ImmReleaseContext,
+                IME_COMPOSITION_STRING, ISC_SHOWUICOMPOSITIONWINDOW, ImmGetCompositionStringW,
+                ImmGetContext, ImmReleaseContext,
             },
             KeyboardAndMouse::{
-                GetCapture, GetDoubleClickTime, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
-                TRACKMOUSEEVENT, TrackMouseEvent,
+                GetDoubleClickTime, ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT,
+                TrackMouseEvent,
             },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GetClipCursor, GetMessageTime, SetCursor,
-            ShowCursor, WM_NCDESTROY, XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, SetCursor, WM_NCDESTROY,
+            XBUTTON1,
         },
     },
 };
@@ -86,9 +84,9 @@ fn process_wnd_proc(
 
         // stop input capture when user request to
         msg::WM_CLOSE => {
-            let mut proc = backend.proc.lock();
-            if proc.input_blocking() {
-                proc.block_input(false, backend.hwnd);
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                backend.block_input(false);
                 return Some(LRESULT(0));
             }
         }
@@ -235,54 +233,6 @@ fn process_wnd_proc(
                     CursorEvent::Move,
                 ));
             }
-
-            let blocking_state = proc.blocking_state;
-            drop(proc);
-            match blocking_state {
-                BlockingState::None => {}
-
-                BlockingState::StartBlocking => unsafe {
-                    ShowCursor(true);
-                    SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
-                    let mut rect = RECT::default();
-                    let clip_cursor = if GetClipCursor(&mut rect).is_ok() {
-                        _ = original_clip_cursor(None);
-                        Some(rect)
-                    } else {
-                        None
-                    };
-
-                    let old_ime_cx =
-                        ImmAssociateContext(HWND(backend.hwnd as _), ImmCreateContext()).0 as usize;
-
-                    // give focus to target window
-                    _ = SetFocus(Some(HWND(backend.hwnd as _)));
-                    backend.proc.lock().blocking_state = BlockingState::Blocking {
-                        clip_cursor,
-                        old_ime_cx,
-                    };
-                    return Some(LRESULT(0));
-                },
-
-                BlockingState::Blocking { .. } => return Some(LRESULT(0)),
-
-                BlockingState::StopBlocking {
-                    clip_cursor,
-                    old_ime_cx,
-                } => unsafe {
-                    ShowCursor(false);
-                    if GetCapture().0 as u32 == backend.hwnd {
-                        _ = ReleaseCapture();
-                    }
-                    if let Some(clip_cursor) = clip_cursor {
-                        _ = original_clip_cursor(Some(&clip_cursor));
-                    }
-                    let ime_cx =
-                        ImmAssociateContext(HWND(backend.hwnd as _), HIMC(old_ime_cx as _));
-                    _ = ImmDestroyContext(ime_cx);
-                    backend.proc.lock().blocking_state = BlockingState::None;
-                },
-            }
         }
 
         msg::WM_MOUSEWHEEL => {
@@ -329,12 +279,25 @@ fn process_wnd_proc(
             }
         }
 
+        msg::WM_APPCOMMAND => {
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
         // block other keyboard, mouse event
         msg::WM_CAPTURECHANGED
         | msg::WM_ACTIVATE
         | msg::WM_SETFOCUS
         | msg::WM_KILLFOCUS
-        | msg::WM_POINTERUPDATE => {
+        | msg::WM_POINTERUPDATE
+        | msg::WM_DEADCHAR
+        | msg::WM_HOTKEY
+        | msg::WM_SYSDEADCHAR
+        | msg::WM_UNICHAR => {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
                 return Some(LRESULT(0));

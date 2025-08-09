@@ -72,7 +72,7 @@ async fn run(mut server: IpcServerConn) -> anyhow::Result<()> {
             }
 
             WindowRequest::BlockInput(cmd) => {
-                backend.proc.lock().block_input(cmd.block, backend.hwnd);
+                backend.block_input(cmd.block);
             }
 
             WindowRequest::SetBlockingCursor(cmd) => {

@@ -1,5 +1,4 @@
 mod input;
-use core::cell::Cell;
 
 use asdf_overlay_common::{
     event::{
@@ -8,9 +7,8 @@ use asdf_overlay_common::{
     },
     key::Key,
 };
-pub use input::util;
-
 use asdf_overlay_hook::DetourHook;
+use core::cell::Cell;
 use once_cell::sync::OnceCell;
 use scopeguard::defer;
 use tracing::{debug, trace};
@@ -19,6 +17,7 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         UI::WindowsAndMessaging::{
             self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE,
+            PM_REMOVE,
         },
     },
     core::BOOL,
@@ -135,7 +134,10 @@ extern "system" fn hooked_get_message_a(
 ) -> BOOL {
     trace!("GetMessageA called");
     set_message_read(|| unsafe {
-        HOOK.wait().get_message_a.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
+        let ret =
+            HOOK.wait().get_message_a.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
+        on_message_read(&*lpmsg);
+        ret
     })
 }
 
@@ -148,7 +150,10 @@ extern "system" fn hooked_get_message_w(
 ) -> BOOL {
     trace!("GetMessageW called");
     set_message_read(|| unsafe {
-        HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
+        let ret =
+            HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
+        on_message_read(&*lpmsg);
+        ret
     })
 }
 
@@ -162,13 +167,17 @@ extern "system" fn hooked_peek_message_a(
 ) -> BOOL {
     trace!("PeekMessageA called");
     set_message_read(|| unsafe {
-        HOOK.wait().peek_message_a.original_fn()(
+        let ret = HOOK.wait().peek_message_a.original_fn()(
             lpmsg,
             hwnd,
             wmsgfiltermin,
             wmsgfiltermax,
             wremovemsg,
-        )
+        );
+        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
+            on_message_read(&*lpmsg);
+        }
+        ret
     })
 }
 
@@ -182,14 +191,35 @@ extern "system" fn hooked_peek_message_w(
 ) -> BOOL {
     trace!("PeekMessageW called");
     set_message_read(|| unsafe {
-        HOOK.wait().peek_message_w.original_fn()(
+        let ret = HOOK.wait().peek_message_w.original_fn()(
             lpmsg,
             hwnd,
             wmsgfiltermin,
             wmsgfiltermax,
             wremovemsg,
-        )
+        );
+        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
+            on_message_read(&*lpmsg);
+        }
+        ret
     })
+}
+
+fn on_message_read(msg: &MSG) {
+    if msg.hwnd.is_invalid() {
+        return;
+    }
+
+    _ = Backends::with_backend(msg.hwnd, |backend| {
+        let mut proc_queue = backend.proc_queue.lock();
+        if proc_queue.is_empty() {
+            return;
+        }
+
+        for f in proc_queue.drain(..) {
+            f(backend);
+        }
+    });
 }
 
 #[tracing::instrument]
@@ -250,22 +280,6 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
                 }
 
                 if proc.input_blocking() {
-                    Some(LRESULT(0))
-                } else {
-                    None
-                }
-            })
-            .flatten();
-        }
-
-        // ignore remaining keyboard inputs
-        msg::WM_APPCOMMAND
-        | msg::WM_DEADCHAR
-        | msg::WM_HOTKEY
-        | msg::WM_SYSDEADCHAR
-        | msg::WM_UNICHAR => {
-            return with_root_backend(msg, |backend| {
-                if backend.proc.lock().input_blocking() {
                     Some(LRESULT(0))
                 } else {
                     None

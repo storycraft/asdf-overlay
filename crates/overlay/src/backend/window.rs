@@ -1,15 +1,9 @@
-mod cursor;
+pub mod cursor;
 pub mod proc;
 
 use super::WindowBackend;
-use crate::{app::OverlayIpc, layout::OverlayLayout};
-use asdf_overlay_common::{
-    cursor::Cursor,
-    event::{
-        ClientEvent, WindowEvent,
-        input::{CursorEvent, CursorInput, InputEvent, InputPosition},
-    },
-};
+use crate::layout::OverlayLayout;
+use asdf_overlay_common::cursor::Cursor;
 use windows::Win32::Foundation::RECT;
 
 pub struct WindowProcData {
@@ -17,7 +11,7 @@ pub struct WindowProcData {
     pub position: (i32, i32),
 
     pub listen_input: ListenInputFlags,
-    blocking_state: BlockingState,
+    pub(crate) blocking_state: Option<InputBlockData>,
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
@@ -32,7 +26,7 @@ impl WindowProcData {
             position: (0, 0),
 
             listen_input: ListenInputFlags::empty(),
-            blocking_state: BlockingState::None,
+            blocking_state: None,
             blocking_cursor: Some(Cursor::Default),
 
             cursor_state: CursorState::Outside,
@@ -45,60 +39,22 @@ impl WindowProcData {
         self.layout = OverlayLayout::new();
         self.position = (0, 0);
         self.listen_input = ListenInputFlags::empty();
-        self.blocking_state.change(false);
         self.blocking_cursor = Some(Cursor::Default);
     }
 
     #[inline]
     pub fn listening_cursor(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.input_blocking()
+        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_some()
     }
 
     #[inline]
     pub fn listening_keyboard(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::KEYBOARD)
-            || self.blocking_state.input_blocking()
+        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_some()
     }
 
     #[inline]
     pub fn input_blocking(&self) -> bool {
-        self.blocking_state.input_blocking()
-    }
-
-    pub fn block_input(&mut self, block: bool, hwnd: u32) {
-        if !self.blocking_state.change(block) {
-            return;
-        }
-
-        if !block {
-            if let CursorState::Inside(x, y) = self.cursor_state {
-                self.cursor_state = CursorState::Outside;
-
-                let window = InputPosition {
-                    x: x as _,
-                    y: y as _,
-                };
-                let surface = InputPosition {
-                    x: window.x - self.position.0,
-                    y: window.y - self.position.1,
-                };
-                OverlayIpc::emit_event(ClientEvent::Window {
-                    id: hwnd,
-                    event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                        event: CursorEvent::Leave,
-                        window,
-                        client: surface,
-                    })),
-                });
-            }
-
-            OverlayIpc::emit_event(ClientEvent::Window {
-                id: hwnd,
-                event: WindowEvent::InputBlockingEnded,
-            });
-
-            self.blocking_cursor = Some(Cursor::Default);
-        }
+        self.blocking_state.is_some()
     }
 
     pub fn update_click_time(&mut self, new_time: i32) -> u32 {
@@ -108,25 +64,10 @@ impl WindowProcData {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum BlockingState {
-    // Not Blocking
-    None,
-
-    // Start blocking, setup cursor and ime
-    StartBlocking,
-
-    // Blocking
-    Blocking {
-        clip_cursor: Option<RECT>,
-        old_ime_cx: usize,
-    },
-
-    // End blocking, cleanup
-    StopBlocking {
-        clip_cursor: Option<RECT>,
-        old_ime_cx: usize,
-    },
+#[derive(Clone, Copy)]
+pub struct InputBlockData {
+    pub clip_cursor: Option<RECT>,
+    pub old_ime_cx: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -147,41 +88,5 @@ bitflags::bitflags! {
     pub struct ListenInputFlags: u8 {
         const CURSOR = 0b00000001;
         const KEYBOARD = 0b00000010;
-    }
-}
-
-impl BlockingState {
-    #[inline]
-    fn input_blocking(self) -> bool {
-        matches!(self, Self::StartBlocking | Self::Blocking { .. })
-    }
-
-    /// Change blocking state
-    fn change(&mut self, blocking: bool) -> bool {
-        if self.input_blocking() == blocking {
-            return false;
-        }
-
-        *self = match *self {
-            BlockingState::None => BlockingState::StartBlocking,
-            BlockingState::StartBlocking => BlockingState::None,
-            // TODO
-            BlockingState::Blocking {
-                clip_cursor,
-                old_ime_cx,
-            } => BlockingState::StopBlocking {
-                clip_cursor,
-                old_ime_cx,
-            },
-            BlockingState::StopBlocking {
-                clip_cursor,
-                old_ime_cx,
-            } => BlockingState::Blocking {
-                clip_cursor,
-                old_ime_cx,
-            },
-        };
-
-        true
     }
 }
