@@ -179,8 +179,7 @@
 <p>To expose consistent interface from the target process, the library introduces some concepts.
 These concepts are important as they represents how Asdf Overlay hook and abstracts underlying rendering infrastructure.</p>
 <h2 id="window"><a class="header" href="#window">Window</a></h2>
-<p>Window represents a Win32 window with an HWND.
-Each window can accept inputs and have one Swapchain.</p>
+<p>Each window can accept inputs and have one surface associated to a swapchain.</p>
 <h2 id="swapchain"><a class="header" href="#swapchain">Swapchain</a></h2>
 <p>Swapchain represents collection of framebuffers associated to an window.
 The actual implementation varies by GPU backends.</p>
