@@ -21,6 +21,7 @@ scopeguard = "1.2.0"
 derive_more = { version = "2", features = ["debug", "from"] }
 num-traits = "0.2.19"
 num-derive = "0.4.2"
+bitflags = "2.9.1"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

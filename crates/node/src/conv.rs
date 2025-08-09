@@ -214,7 +214,27 @@ fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObje
     let obj = cx.empty_object();
 
     let kind = match ime {
-        Ime::Enabled => cx.string("Enabled"),
+        Ime::Enabled { lang, conversion } => {
+            let lang = cx.string(lang);
+            obj.set(cx, "lang", lang)?;
+
+            let conversion = cx.number(conversion.bits());
+            obj.set(cx, "conversion", conversion)?;
+
+            cx.string("Enabled")
+        }
+        Ime::Changed(lang) => {
+            let lang = cx.string(lang);
+            obj.set(cx, "lang", lang)?;
+
+            cx.string("Changed")
+        }
+        Ime::ConversionChanged(conversion) => {
+            let conversion = cx.number(conversion.bits());
+            obj.set(cx, "conversion", conversion)?;
+
+            cx.string("ConversionChanged")
+        }
         Ime::Compose { text, caret } => {
             let text = cx.string(text);
             obj.set(cx, "text", text)?;

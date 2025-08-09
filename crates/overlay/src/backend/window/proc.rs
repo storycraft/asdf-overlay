@@ -10,28 +10,29 @@ use crate::{
 use asdf_overlay_common::event::{
     ClientEvent, WindowEvent,
     input::{
-        CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, InputPosition,
-        KeyboardInput, ScrollAxis,
+        ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
+        InputPosition, KeyboardInput, ScrollAxis,
     },
 };
 use core::mem;
 use parking_lot::MutexGuard;
 use scopeguard::defer;
 use tracing::trace;
-use utf16string::{LittleEndian, WString};
+use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    Globalization::LCIDToLocaleName,
+    System::SystemServices::{LOCALE_NAME_MAX_LENGTH, SORT_DEFAULT},
     UI::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
             Ime::{
-                CS_NOMOVECARET, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC,
-                IME_COMPOSITION_STRING, ISC_SHOWUICOMPOSITIONWINDOW, ImmGetCompositionStringW,
-                ImmGetContext, ImmReleaseContext,
+                self as ime, HIMC, IME_COMPOSITION_STRING, IME_CONVERSION_MODE,
+                ImmGetCompositionStringW, ImmGetContext, ImmGetConversionStatus, ImmReleaseContext,
             },
             KeyboardAndMouse::{
-                GetDoubleClickTime, ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT,
-                TrackMouseEvent,
+                GetDoubleClickTime, GetKeyboardLayout, ReleaseCapture, SetCapture, TME_LEAVE,
+                TRACKMOUSEEVENT, TrackMouseEvent,
             },
         },
         WindowsAndMessaging::{
@@ -291,6 +292,7 @@ fn process_wnd_proc(
         // block other keyboard, mouse event
         msg::WM_CAPTURECHANGED
         | msg::WM_ACTIVATE
+        | msg::WM_ACTIVATEAPP
         | msg::WM_SETFOCUS
         | msg::WM_KILLFOCUS
         | msg::WM_POINTERUPDATE
@@ -304,16 +306,69 @@ fn process_wnd_proc(
             }
         }
 
+        msg::WM_INPUTLANGCHANGEREQUEST => {
+            let input_blocking = backend.proc.lock().input_blocking();
+            if input_blocking {
+                return Some(unsafe {
+                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
+                });
+            }
+        }
+
+        msg::WM_IME_NOTIFY => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if wparam.0 as u32 == ime::IMN_SETCONVERSIONMODE {
+                OverlayIpc::emit_event(keyboard_input(
+                    backend.hwnd,
+                    KeyboardInput::Ime(Ime::ConversionChanged(with_himc(
+                        backend.hwnd,
+                        ime_conversion_mode,
+                    ))),
+                ))
+            }
+
+            if proc.input_blocking() {
+                drop(proc);
+                return Some(LRESULT(0));
+            }
+        }
+
+        msg::WM_INPUTLANGCHANGE => {
+            let proc = backend.proc.lock();
+            if !proc.listening_keyboard() {
+                return None;
+            }
+
+            if let Some(lang) = get_lang_id_locale(lparam.0 as u16) {
+                OverlayIpc::emit_event(keyboard_input(
+                    backend.hwnd,
+                    KeyboardInput::Ime(Ime::Changed(lang)),
+                ));
+            }
+
+            if proc.input_blocking() {
+                return Some(LRESULT(0));
+            }
+        }
+
         msg::WM_IME_SETCONTEXT => {
             let proc = backend.proc.lock();
             if !proc.listening_keyboard() {
                 return None;
             }
 
+            let lang_id = unsafe { GetKeyboardLayout(0) }.0 as u16;
             OverlayIpc::emit_event(keyboard_input(
                 backend.hwnd,
                 KeyboardInput::Ime(if wparam.0 != 0 {
-                    Ime::Enabled
+                    Ime::Enabled {
+                        lang: get_lang_id_locale(lang_id).unwrap_or_else(|| "en".to_string()),
+                        conversion: with_himc(backend.hwnd, ime_conversion_mode),
+                    }
                 } else {
                     Ime::Disabled
                 }),
@@ -326,7 +381,8 @@ fn process_wnd_proc(
                         HWND(backend.hwnd as _),
                         msg,
                         wparam,
-                        LPARAM(lparam.0 & !(ISC_SHOWUICOMPOSITIONWINDOW as isize)),
+                        // Disable composition, candinate window
+                        LPARAM(0),
                     )
                 });
             }
@@ -350,54 +406,55 @@ fn process_wnd_proc(
             }
 
             if proc.ime != ImeState::Disabled {
-                let hwnd = HWND(backend.hwnd as _);
-                let himc = unsafe { ImmGetContext(hwnd) };
-                defer!(unsafe {
-                    _ = ImmReleaseContext(hwnd, himc);
-                });
+                with_himc(backend.hwnd, |himc| {
+                    let comp = lparam.0 as u32;
 
-                let comp = lparam.0 as u32;
-
-                // cancelled
-                if comp == 0 {
-                    OverlayIpc::emit_event(keyboard_input(
-                        backend.hwnd,
-                        KeyboardInput::Ime(Ime::Compose {
-                            text: String::new(),
-                            caret: 0,
-                        }),
-                    ));
-                }
-
-                if comp & GCS_RESULTSTR.0 != 0 {
-                    if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
-                        proc.ime = ImeState::Enabled;
-                        OverlayIpc::emit_event(keyboard_input(
-                            backend.hwnd,
-                            KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
-                        ));
-                    }
-                }
-
-                if comp & (GCS_COMPSTR.0 | GCS_COMPATTR.0 | GCS_CURSORPOS.0) != 0 {
-                    let caret = if comp & CS_NOMOVECARET == 0 && comp & GCS_CURSORPOS.0 != 0 {
-                        unsafe { ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0) as usize }
-                    } else {
-                        0
-                    };
-
-                    if let Some(text) = get_ime_string(himc, GCS_COMPSTR) {
-                        proc.ime = ImeState::Compose;
-
+                    // cancelled
+                    if comp == 0 {
                         OverlayIpc::emit_event(keyboard_input(
                             backend.hwnd,
                             KeyboardInput::Ime(Ime::Compose {
-                                text: text.to_utf8(),
-                                caret,
+                                text: String::new(),
+                                caret: 0,
                             }),
                         ));
                     }
-                }
+
+                    if comp & ime::GCS_RESULTSTR.0 != 0 {
+                        if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
+                            proc.ime = ImeState::Enabled;
+                            OverlayIpc::emit_event(keyboard_input(
+                                backend.hwnd,
+                                KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                            ));
+                        }
+                    }
+
+                    if comp & (ime::GCS_COMPSTR.0 | ime::GCS_COMPATTR.0 | ime::GCS_CURSORPOS.0) != 0
+                    {
+                        let caret = if comp & ime::CS_NOMOVECARET == 0
+                            && comp & ime::GCS_CURSORPOS.0 != 0
+                        {
+                            unsafe {
+                                ImmGetCompositionStringW(himc, ime::GCS_CURSORPOS, None, 0) as usize
+                            }
+                        } else {
+                            0
+                        };
+
+                        if let Some(text) = get_ime_string(himc, ime::GCS_COMPSTR) {
+                            proc.ime = ImeState::Compose;
+
+                            OverlayIpc::emit_event(keyboard_input(
+                                backend.hwnd,
+                                KeyboardInput::Ime(Ime::Compose {
+                                    text: text.to_utf8(),
+                                    caret,
+                                }),
+                            ));
+                        }
+                    }
+                });
             }
 
             if proc.input_blocking() {
@@ -416,7 +473,7 @@ fn process_wnd_proc(
                 defer!(unsafe {
                     _ = ImmReleaseContext(hwnd, himc);
                 });
-                if let Some(text) = get_ime_string(himc, GCS_RESULTSTR) {
+                if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
                     OverlayIpc::emit_event(keyboard_input(
                         backend.hwnd,
                         KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
@@ -536,6 +593,16 @@ fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
 }
 
 #[inline]
+fn with_himc<R>(hwnd: u32, f: impl FnOnce(HIMC) -> R) -> R {
+    let hwnd = HWND(hwnd as _);
+    let himc = unsafe { ImmGetContext(hwnd) };
+    defer!(unsafe {
+        _ = ImmReleaseContext(hwnd, himc);
+    });
+
+    f(himc)
+}
+
 fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<LittleEndian>> {
     let byte_size = unsafe { ImmGetCompositionStringW(himc, comp, None, 0) };
     if byte_size >= 0 {
@@ -549,4 +616,43 @@ fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<Li
     } else {
         None
     }
+}
+
+fn get_lang_id_locale(lang_id: u16) -> Option<String> {
+    let lcid = const { SORT_DEFAULT << 16 } | lang_id as u32;
+
+    let mut buf = [0_u16; LOCALE_NAME_MAX_LENGTH as usize];
+    let size = unsafe { LCIDToLocaleName(lcid, Some(&mut buf), 0) };
+    if size > 0 {
+        Some(
+            WStr::from_utf16le(bytemuck::cast_slice::<_, u8>(&buf[..(size - 1) as usize]))
+                .ok()?
+                .to_utf8(),
+        )
+    } else {
+        None
+    }
+}
+
+fn ime_conversion_mode(himc: HIMC) -> ConversionMode {
+    let mut raw_mode = IME_CONVERSION_MODE(0);
+    _ = unsafe { ImmGetConversionStatus(himc, Some(&mut raw_mode), None) };
+
+    let mut mode = ConversionMode::empty();
+    if raw_mode.contains(ime::IME_CMODE_NATIVE) {
+        mode |= ConversionMode::NATIVE;
+    }
+    if raw_mode.contains(ime::IME_CMODE_FULLSHAPE) {
+        mode |= ConversionMode::FULLSHAPE;
+    }
+    if raw_mode.contains(ime::IME_CMODE_NOCONVERSION) {
+        mode |= ConversionMode::NO_CONVERSION;
+    }
+    if raw_mode.contains(ime::IME_CMODE_HANJACONVERT) {
+        mode |= ConversionMode::HANJA_CONVERT;
+    }
+    if raw_mode.contains(ime::IME_CMODE_KATAKANA) {
+        mode |= ConversionMode::KATAKANA;
+    }
+    mode
 }

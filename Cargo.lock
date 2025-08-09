@@ -156,6 +156,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bincode",
+ "bitflags",
  "dashmap",
  "derive_more",
  "num-derive",
