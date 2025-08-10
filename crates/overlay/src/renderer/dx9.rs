@@ -31,7 +31,6 @@ impl Vertex {
 
 pub struct Dx9Renderer {
     size: (u32, u32),
-    texture_size: (u32, u32),
 
     texture: Option<IDirect3DTexture9>,
     vertex_buffer: IDirect3DVertexBuffer9,
@@ -45,7 +44,7 @@ impl Dx9Renderer {
             let mut vertex_buffer = None;
             device.CreateVertexBuffer(
                 mem::size_of::<[Vertex; 4]>() as u32,
-                (D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC) as _,
+                (D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC | D3DUSAGE_DONOTCLIP) as _,
                 Vertex::FVF,
                 D3DPOOL_DEFAULT,
                 &mut vertex_buffer,
@@ -55,7 +54,6 @@ impl Dx9Renderer {
             let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
 
             Ok(Self {
-                texture_size: (2, 2),
                 size: (0, 0),
 
                 texture: None,
@@ -84,18 +82,17 @@ impl Dx9Renderer {
             Some(ref mut texture) => texture,
             None => {
                 self.size = size;
-                self.texture_size = (size.0.next_power_of_two(), size.1.next_power_of_two());
                 let mut texture = None;
                 unsafe {
                     device.CreateTexture(
-                        self.texture_size.0,
-                        self.texture_size.1,
+                        size.0,
+                        size.1,
                         1,
                         D3DUSAGE_DYNAMIC as _,
                         D3DFMT_A8R8G8B8,
                         D3DPOOL_DEFAULT,
                         &mut texture,
-                        ptr::null_mut(),
+                        0 as _,
                     )?;
                     self.texture
                         .insert(texture.context("cannot create texture")?)
@@ -150,19 +147,11 @@ impl Dx9Renderer {
                 (self.size.0 as f32 / screen.0 as f32) * 2.0,
                 -(self.size.1 as f32 / screen.1 as f32) * 2.0,
             );
-            let texture_size = (
-                self.size.0 as f32 / self.texture_size.0 as f32,
-                self.size.1 as f32 / self.texture_size.1 as f32,
-            );
-
             [
-                Vertex::new((pos.0, pos.1 + size.1), (0.0, texture_size.1)), // bottom left
-                Vertex::new(pos, (0.0, 0.0)),                                // top left
-                Vertex::new(
-                    (pos.0 + size.0, pos.1 + size.1),
-                    (texture_size.0, texture_size.1),
-                ), // bottom right
-                Vertex::new((pos.0 + size.0, pos.1), (texture_size.0, 0.0)), // top right
+                Vertex::new((pos.0, pos.1 + size.1), (0.0, 1.0)), // bottom left
+                Vertex::new(pos, (0.0, 0.0)),                     // top left
+                Vertex::new((pos.0 + size.0, pos.1 + size.1), (1.0, 1.0)), // bottom right
+                Vertex::new((pos.0 + size.0, pos.1), (1.0, 0.0)), // top right
             ]
         };
 
