@@ -3,12 +3,11 @@ pub mod dx12;
 
 use windows::Win32::Graphics::Direct3D11::ID3DDeviceContextState;
 
-use crate::{backend::render::cx::dx12::RtvDescriptors, reader::SharedHandleReader};
+use crate::backend::render::cx::dx12::RtvDescriptors;
 
 pub struct DrawContext {
     pub dx11: Option<ID3DDeviceContextState>,
     pub dx12: Option<RtvDescriptors>,
-    pub fallback_reader: Option<SharedHandleReader>,
 }
 
 impl DrawContext {
@@ -16,7 +15,6 @@ impl DrawContext {
         Self {
             dx11: None,
             dx12: None,
-            fallback_reader: None,
         }
     }
 }

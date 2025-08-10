@@ -20,7 +20,6 @@ use windows::{
 
 use crate::{
     backend::{Backends, render::Renderer},
-    reader::SharedHandleReader,
     renderer::dx9::Dx9Renderer,
 };
 
@@ -194,11 +193,6 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
             }
         };
 
-        let reader = render
-            .cx
-            .fallback_reader
-            .get_or_insert_with(|| SharedHandleReader::new().unwrap());
-
         if render.surface.invalidate_update() && render.surface.get().is_none() {
             renderer.reset_texture();
         }
@@ -206,17 +200,16 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
             return;
         };
 
-        let surface_size = surface.size();
         let interop = &mut render.interop;
-        match reader.with_mapped(
+        match renderer.update_texture(
+            device,
+            surface.size(),
             &interop.device,
-            surface.mutex(),
             interop.cx.get_mut(),
             surface.texture(),
-            surface_size,
-            |mapped| renderer.update_texture(device, surface_size, mapped),
+            surface.mutex(),
         ) {
-            Ok(Some(_)) => {
+            Ok(_) => {
                 if unsafe { device.BeginScene() }.is_err() {
                     return;
                 }
@@ -225,9 +218,8 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
                 trace!("dx9 render: {:?}", _res);
                 unsafe { _ = device.EndScene() };
             }
-            Ok(None) => {}
             Err(err) => {
-                error!("failed to copy shtex to dx9 texture. err: {err:?}");
+                error!("failed to update dx9 texture. err: {err:?}");
             }
         }
     });
