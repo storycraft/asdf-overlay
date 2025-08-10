@@ -5,7 +5,22 @@ use core::{
 
 use anyhow::Context;
 use scopeguard::defer;
-use windows::Win32::Graphics::{Direct3D9::*, Direct3D11::D3D11_MAPPED_SUBRESOURCE};
+use windows::Win32::{
+    Foundation::HANDLE,
+    Graphics::{
+        Direct3D9::*,
+        Direct3D11::{
+            D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC,
+            D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
+        },
+        Dxgi::{
+            Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
+            IDXGIKeyedMutex,
+        },
+    },
+};
+
+use crate::util::with_keyed_mutex;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -32,7 +47,7 @@ impl Vertex {
 pub struct Dx9Renderer {
     size: (u32, u32),
 
-    texture: Option<IDirect3DTexture9>,
+    texture: Option<Dx9Texture>,
     vertex_buffer: IDirect3DVertexBuffer9,
     state_block: IDirect3DStateBlock9,
 }
@@ -72,7 +87,10 @@ impl Dx9Renderer {
         &mut self,
         device: &IDirect3DDevice9,
         size: (u32, u32),
-        mapped: &D3D11_MAPPED_SUBRESOURCE,
+        d3d11_device: &ID3D11Device,
+        d3d11_cx: &ID3D11DeviceContext,
+        src_texture: &ID3D11Texture2D,
+        mutex: Option<&IDXGIKeyedMutex>,
     ) -> anyhow::Result<()> {
         if self.size != size {
             self.reset_texture();
@@ -82,41 +100,61 @@ impl Dx9Renderer {
             Some(ref mut texture) => texture,
             None => {
                 self.size = size;
-                let mut texture = None;
-                unsafe {
-                    device.CreateTexture(
-                        size.0,
-                        size.1,
-                        1,
-                        D3DUSAGE_DYNAMIC as _,
-                        D3DFMT_A8R8G8B8,
-                        D3DPOOL_DEFAULT,
-                        &mut texture,
-                        0 as _,
-                    )?;
-                    self.texture
-                        .insert(texture.context("cannot create texture")?)
-                }
+                self.texture.insert(
+                    if let Ok((texture, handle)) = create_shared_texture(device, size) {
+                        let mut shared_texture = None;
+                        unsafe {
+                            d3d11_device
+                                .OpenSharedResource::<ID3D11Texture2D>(handle, &mut shared_texture)
+                                .context("failed to open shared texture")?;
+                        }
+
+                        Dx9Texture::SharedTexture(texture, shared_texture.unwrap())
+                    } else {
+                        let (texture, staging) =
+                            create_fallback_texture(device, d3d11_device, size)?;
+                        Dx9Texture::Fallback(texture, staging)
+                    },
+                )
             }
         };
 
-        let mut rect = D3DLOCKED_RECT::default();
-        unsafe {
-            texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
-            defer!({
-                _ = texture.UnlockRect(0);
-            });
+        match *texture {
+            Dx9Texture::SharedTexture(_, ref d3d11_texture) => {
+                with_keyed_mutex(mutex, || unsafe {
+                    d3d11_cx.CopyResource(d3d11_texture, src_texture);
+                    d3d11_cx.Flush();
+                })?;
+            }
 
-            for y in 0..size.1 as isize {
-                let line_size = size.0 as usize * 4;
-                let src_offset = y * mapped.RowPitch as isize;
-                let dest_offset = y * rect.Pitch as isize;
+            Dx9Texture::Fallback(ref texture, ref staging) => {
+                dbg!("fallback");
+                with_keyed_mutex(mutex, || {
+                    unsafe { d3d11_cx.CopyResource(staging, src_texture) };
+                })?;
 
-                copy_nonoverlapping(
-                    mapped.pData.cast::<u8>().byte_offset(src_offset),
-                    rect.pBits.cast::<u8>().byte_offset(dest_offset),
-                    line_size,
-                );
+                let mut rect = D3DLOCKED_RECT::default();
+                unsafe {
+                    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+                    d3d11_cx.Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+                    texture.LockRect(0, &mut rect, ptr::null(), D3DLOCK_DISCARD as _)?;
+                    defer!({
+                        d3d11_cx.Unmap(staging, 0);
+                        _ = texture.UnlockRect(0);
+                    });
+
+                    for y in 0..size.1 as isize {
+                        let line_size = size.0 as usize * 4;
+                        let src_offset = y * mapped.RowPitch as isize;
+                        let dest_offset = y * rect.Pitch as isize;
+
+                        copy_nonoverlapping(
+                            mapped.pData.cast::<u8>().byte_offset(src_offset),
+                            rect.pBits.cast::<u8>().byte_offset(dest_offset),
+                            line_size,
+                        );
+                    }
+                }
             }
         }
 
@@ -134,8 +172,10 @@ impl Dx9Renderer {
             return Ok(());
         }
 
-        let Some(ref texture) = self.texture else {
-            return Ok(());
+        let texture = match self.texture {
+            Some(Dx9Texture::SharedTexture(ref texture, _)) => texture,
+            Some(Dx9Texture::Fallback(ref texture, _)) => texture,
+            None => return Ok(()),
         };
 
         let vertices = {
@@ -229,3 +269,81 @@ impl Dx9Renderer {
 
 unsafe impl Send for Dx9Renderer {}
 unsafe impl Sync for Dx9Renderer {}
+
+enum Dx9Texture {
+    SharedTexture(IDirect3DTexture9, ID3D11Texture2D),
+    Fallback(IDirect3DTexture9, ID3D11Texture2D),
+}
+
+fn create_shared_texture(
+    device: &IDirect3DDevice9,
+    size: (u32, u32),
+) -> anyhow::Result<(IDirect3DTexture9, HANDLE)> {
+    let mut texture = None;
+    let mut handle = HANDLE::default();
+    unsafe {
+        device
+            .CreateTexture(
+                size.0,
+                size.1,
+                1,
+                0,
+                D3DFMT_A8R8G8B8,
+                D3DPOOL_DEFAULT,
+                &mut texture,
+                &mut handle,
+            )
+            .context("cannot create texture")?;
+    }
+
+    Ok((texture.unwrap(), handle))
+}
+
+fn create_fallback_texture(
+    device: &IDirect3DDevice9,
+    d3d11_device: &ID3D11Device,
+    size: (u32, u32),
+) -> anyhow::Result<(IDirect3DTexture9, ID3D11Texture2D)> {
+    let mut texture = None;
+    unsafe {
+        device
+            .CreateTexture(
+                size.0,
+                size.1,
+                1,
+                D3DUSAGE_DYNAMIC as _,
+                D3DFMT_A8R8G8B8,
+                D3DPOOL_DEFAULT,
+                &mut texture,
+                0 as _,
+            )
+            .context("cannot create texture")?;
+    }
+
+    let mut staging = None;
+    unsafe {
+        d3d11_device
+            .CreateTexture2D(
+                &D3D11_TEXTURE2D_DESC {
+                    Width: size.0,
+                    Height: size.1,
+                    MipLevels: 1,
+                    ArraySize: 1,
+                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    Usage: D3D11_USAGE_STAGING,
+                    BindFlags: 0,
+                    CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as _,
+                    MiscFlags: 0,
+                },
+                None,
+                Some(&mut staging),
+            )
+            .context("cannot create staging texture")?
+    };
+
+    Ok((texture.unwrap(), staging.unwrap()))
+}

@@ -13,7 +13,6 @@ mod wgl {
 mod app;
 mod backend;
 mod hook;
-mod reader;
 mod renderer;
 mod resources;
 mod texture;
