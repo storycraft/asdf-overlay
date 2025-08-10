@@ -128,7 +128,6 @@ impl Dx9Renderer {
             }
 
             Dx9Texture::Fallback(ref texture, ref staging) => {
-                dbg!("fallback");
                 with_keyed_mutex(mutex, || {
                     unsafe { d3d11_cx.CopyResource(staging, src_texture) };
                 })?;
