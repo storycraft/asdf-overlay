@@ -15,7 +15,7 @@ use windows::{
 pub struct OverlaySurface {
     texture: ID3D11Texture2D,
     resource: IDXGIResource,
-    mutex: IDXGIKeyedMutex,
+    mutex: Option<IDXGIKeyedMutex>,
     size: (u32, u32),
 }
 
@@ -32,7 +32,7 @@ impl OverlaySurface {
             texture.GetDesc(&mut desc);
 
             let resource = texture.cast::<IDXGIResource>().unwrap();
-            let mutex = texture.cast::<IDXGIKeyedMutex>().unwrap();
+            let mutex = texture.cast::<IDXGIKeyedMutex>().ok();
             Ok(Self {
                 texture,
                 resource,
@@ -43,8 +43,8 @@ impl OverlaySurface {
     }
 
     #[inline]
-    pub const fn mutex(&self) -> &IDXGIKeyedMutex {
-        &self.mutex
+    pub const fn mutex(&self) -> Option<&IDXGIKeyedMutex> {
+        self.mutex.as_ref()
     }
 
     #[inline]

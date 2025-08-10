@@ -4,6 +4,8 @@ use windows::Win32::Graphics::{
     Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGIKeyedMutex},
 };
 
+use crate::util::with_keyed_mutex;
+
 pub struct SharedHandleReader {
     staging: Option<ID3D11Texture2D>,
     size: (u32, u32),
@@ -20,7 +22,7 @@ impl SharedHandleReader {
     pub fn with_mapped<R>(
         &mut self,
         device: &ID3D11Device,
-        mutex: &IDXGIKeyedMutex,
+        mutex: Option<&IDXGIKeyedMutex>,
         cx: &ID3D11DeviceContext,
         src: &ID3D11Texture2D,
         size: (u32, u32),
@@ -66,14 +68,9 @@ impl SharedHandleReader {
                 }
             };
 
-            {
-                mutex.AcquireSync(0, u32::MAX)?;
-                defer!({
-                    _ = mutex.ReleaseSync(0);
-                });
-
+            with_keyed_mutex(mutex, || {
                 cx.CopyResource(staging, src);
-            }
+            })?;
 
             {
                 let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
