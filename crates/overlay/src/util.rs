@@ -6,6 +6,7 @@ use scopeguard::defer;
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Graphics::Dxgi::IDXGIKeyedMutex,
         UI::WindowsAndMessaging::{
             CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect,
             RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
@@ -78,5 +79,23 @@ pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
         });
 
         Ok(f(hwnd))
+    }
+}
+
+#[inline]
+pub fn with_keyed_mutex<R>(
+    mutex: Option<&IDXGIKeyedMutex>,
+    f: impl FnOnce() -> R,
+) -> windows::core::Result<R> {
+    match mutex {
+        Some(mutex) => {
+            unsafe { mutex.AcquireSync(0, u32::MAX)? };
+            defer!(unsafe {
+                _ = mutex.ReleaseSync(0);
+            });
+
+            Ok(f())
+        }
+        None => Ok(f()),
     }
 }

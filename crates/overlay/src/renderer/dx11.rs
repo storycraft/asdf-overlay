@@ -14,7 +14,7 @@ use windows::{
     core::{BOOL, Interface},
 };
 
-use crate::{renderer::dx::shaders, texture::OverlayTextureState};
+use crate::{renderer::dx::shaders, texture::OverlayTextureState, util::with_keyed_mutex};
 
 const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
     Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
@@ -30,7 +30,7 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
 };
 
 struct Dx11Tex {
-    mutex: IDXGIKeyedMutex,
+    mutex: Option<IDXGIKeyedMutex>,
     view: ID3D11ShaderResourceView,
 }
 
@@ -181,10 +181,10 @@ impl Dx11Renderer {
 
             cx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
-            mutex.AcquireSync(0, u32::MAX)?;
-            cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
-            cx.Draw(4, 0);
-            _ = mutex.ReleaseSync(0);
+            with_keyed_mutex(mutex.as_ref(), || {
+                cx.PSSetShaderResources(0, Some(&[Some(view.clone())]));
+                cx.Draw(4, 0);
+            })?;
         }
 
         Ok(())
@@ -215,8 +215,7 @@ fn open_shared_texture(
         return Ok(None);
     }
 
-    let mutex = texture.cast::<IDXGIKeyedMutex>()?;
-
+    let mutex = texture.cast::<IDXGIKeyedMutex>().ok();
     let mut view = None;
     unsafe {
         device.CreateShaderResourceView(
