@@ -10,16 +10,16 @@ mod wgl {
 
 pub mod backend;
 pub mod event_sink;
-mod hook;
 pub mod renderer;
+
+mod hook;
+mod interop;
+mod layout;
 mod resources;
+mod surface;
 mod texture;
 mod types;
 mod util;
-
-pub mod interop;
-pub mod layout;
-pub mod surface;
 
 use anyhow::{Context, bail};
 use once_cell::sync::OnceCell;
