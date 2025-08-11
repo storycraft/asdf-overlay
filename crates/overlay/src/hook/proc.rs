@@ -25,7 +25,19 @@ use crate::{
     backend::{Backends, WindowBackend},
 };
 
-#[link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
+#[cfg_attr(
+    not(target_arch = "x86"),
+    link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")
+)]
+#[cfg_attr(
+    target_arch = "x86",
+    link(
+        name = "user32.dll",
+        kind = "raw-dylib",
+        modifiers = "+verbatim",
+        import_name_type = "undecorated"
+    )
+)]
 unsafe extern "system" {
     fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;
     fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;

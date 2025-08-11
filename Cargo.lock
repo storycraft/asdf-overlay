@@ -126,7 +126,6 @@ dependencies = [
  "tracing",
  "utf16string",
  "windows",
- "windows-link",
  "winres",
 ]
 

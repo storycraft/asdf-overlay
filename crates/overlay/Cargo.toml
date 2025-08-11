@@ -1,6 +1,6 @@
 [package]
 name = "asdf-overlay"
-description = "Asdf Overlay Dll"
+description = "Asdf Overlay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,7 +22,6 @@ dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 ash = { version = "0.38.0", default-features = false, features = ["std"] }
 array-util = "1.0.2"
-windows-link = "0.1.1"
 bytemuck = "1.22.0"
 utf16string = "0.2.0"
 bitflags = "2.9.1"
