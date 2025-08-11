@@ -8,9 +8,9 @@ mod wgl {
     include!(concat!(env!("OUT_DIR"), "/wgl_bindings.rs"));
 }
 
-pub mod event_sink;
 pub mod backend;
-pub mod hook;
+pub mod event_sink;
+mod hook;
 pub mod renderer;
 mod resources;
 mod texture;
@@ -21,7 +21,7 @@ pub mod interop;
 pub mod layout;
 pub mod surface;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 use once_cell::sync::OnceCell;
 use windows::Win32::Foundation::HINSTANCE;
 
@@ -37,5 +37,6 @@ pub fn initialize(hinstance: usize) -> anyhow::Result<()> {
         bail!("Already initialized");
     }
 
+    hook::install(HINSTANCE(hinstance as _)).context("hook initialization failed")?;
     Ok(())
 }

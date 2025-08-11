@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 
+#[cfg(debug_assertions)]
 mod dbg;
+
 mod server;
 
 extern crate asdf_overlay_vulkan_layer;
@@ -9,7 +11,7 @@ use anyhow::Context;
 use asdf_overlay::{
     backend::{Backends, window::ListenInputFlags},
     event_sink::OverlayEventSink,
-    hook,
+    initialize,
 };
 use asdf_overlay_common::{
     ipc::create_ipc_addr,
@@ -220,8 +222,8 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     let create_server = move || create_ipc_server(create_ipc_addr(pid, module_handle), false);
 
     thread::spawn(move || {
-        // setup hook
-        hook::install(HINSTANCE(module_handle as _)).expect("hook initialization failed");
+        // initialize overlay
+        initialize(module_handle as _).expect("initialization failed");
         debug!("hook installed");
 
         rt.block_on(run_server(server, create_server))
