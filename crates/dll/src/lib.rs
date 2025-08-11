@@ -146,7 +146,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip(create_server))]
-pub async fn run_server(
+async fn run_server(
     mut server: NamedPipeServer,
     mut create_server: impl FnMut() -> anyhow::Result<NamedPipeServer>,
 ) {
