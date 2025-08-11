@@ -51,7 +51,7 @@ fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
 fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
     let [x64_path, x86_path, aarch64_path] = cargo_artifacts(
         cargo_args,
-        "asdf-overlay",
+        "asdf-overlay-dll",
         [
             "x86_64-pc-windows-msvc",
             "i686-pc-windows-msvc",

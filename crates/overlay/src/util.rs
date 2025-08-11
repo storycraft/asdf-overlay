@@ -4,18 +4,14 @@ use std::ffi::CString;
 use anyhow::bail;
 use scopeguard::defer;
 use windows::{
-    Win32::{
+    core::{s, Interface, PCSTR}, Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Dxgi::IDXGIKeyedMutex,
         UI::WindowsAndMessaging::{
-            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect,
-            RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
+            CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect, RegisterClassA, UnregisterClassA, CS_OWNDC, HWND_MESSAGE, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP
         },
-    },
-    core::{Interface, PCSTR, s},
+    }
 };
-
-use crate::INSTANCE;
 
 // Cloning COM objects for ManuallyDrop<Option<T>> never decrease ref count and leak wtf
 // as per: https://github.com/microsoft/windows-rs/blob/83d4e0b4d49d004f52523614f292bc1526142052/crates/samples/windows/direct3d12/src/main.rs#L493
@@ -30,7 +26,7 @@ pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     Ok((rect.right as u32, rect.bottom as u32))
 }
 
-pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
+pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
     extern "system" fn window_proc(
         hwnd: HWND,
         msg: u32,
@@ -41,11 +37,8 @@ pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
     }
 
     unsafe {
-        let instance = INSTANCE.get().copied().unwrap_or_default();
         let class_name =
-            CString::new(format!("asdf-overlay-{instance} dummy window class")).unwrap();
-        let hinstance = HINSTANCE(instance as _);
-
+            CString::new(format!("asdf-overlay-{} dummy window class", hinstance.0 as usize)).unwrap();
         if RegisterClassA(&WNDCLASSA {
             style: CS_OWNDC,
             hInstance: hinstance,
@@ -69,9 +62,9 @@ pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
             0,
             2,
             2,
+            Some(HWND_MESSAGE),
             None,
             None,
-            Some(hinstance),
             None,
         )?;
         defer!({

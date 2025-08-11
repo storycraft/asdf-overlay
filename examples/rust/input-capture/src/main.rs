@@ -3,10 +3,8 @@ use std::env;
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
-    common::{
-        event::{ClientEvent, WindowEvent},
-        request::BlockInput,
-    },
+    common::request::BlockInput,
+    event::{ClientEvent, WindowEvent},
     inject,
 };
 

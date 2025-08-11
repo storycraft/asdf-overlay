@@ -4,7 +4,10 @@ mod shaders;
 use core::mem;
 
 use anyhow::Context;
-use ash::{Device, vk};
+use ash::{
+    Device,
+    vk::{self, Format},
+};
 use scopeguard::defer;
 use shaders::{FRAGMENT_SHADER, VERTEX_SHADER};
 use windows::{
@@ -15,7 +18,7 @@ use windows::{
     core::Interface,
 };
 
-use crate::{renderer::vulkan::frame::FrameData, vulkan_layer::device::swapchain::SwapchainData};
+use crate::renderer::vulkan::frame::FrameData;
 
 pub struct VulkanRenderer {
     device: Device,
@@ -37,7 +40,8 @@ impl VulkanRenderer {
     pub fn new(
         device: Device,
         queue_family_index: u32,
-        swapchain_data: &SwapchainData,
+        image_size: (u32, u32),
+        format: Format,
         swapchain_images: &[vk::Image],
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(&device)?;
@@ -47,13 +51,8 @@ impl VulkanRenderer {
             create_texture_descriptor_set(&device, descriptor_pool, texture_layout)?;
 
         let pipeline_layout = create_pipeline_layout(&device, texture_layout)?;
-        let render_pass = create_render_pass(&device, swapchain_data.format)?;
-        let pipeline = create_pipeline(
-            &device,
-            swapchain_data.image_size,
-            pipeline_layout,
-            render_pass,
-        )?;
+        let render_pass = create_render_pass(&device, format)?;
+        let pipeline = create_pipeline(&device, image_size, pipeline_layout, render_pass)?;
         let mut frame_data = Vec::with_capacity(swapchain_images.len());
         for &swapchain_image in swapchain_images {
             frame_data.push(
@@ -62,8 +61,8 @@ impl VulkanRenderer {
                     queue_family_index,
                     render_pass,
                     swapchain_image,
-                    swapchain_data.format,
-                    swapchain_data.image_size,
+                    format,
+                    image_size,
                 )
                 .context("failed to create SwapchainImageData")?,
             );

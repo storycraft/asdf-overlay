@@ -1,14 +1,11 @@
 use asdf_overlay_client::{
-    common::{
-        event::{
-            ClientEvent, WindowEvent,
-            input::{
-                CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
-                KeyInputState, KeyboardInput, ScrollAxis,
-            },
+    common::size::PercentLength,
+    event::{
+        ClientEvent, WindowEvent,
+        input::{
+            CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, Key,
+            KeyInputState, KeyboardInput, ScrollAxis,
         },
-        key::Key,
-        size::PercentLength,
     },
     ty::{CopyRect, Rect},
 };

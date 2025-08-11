@@ -31,7 +31,7 @@ use windows::{
 };
 
 use crate::{
-    app::OverlayIpc,
+    event_sink::OverlayEventSink,
     backend::{
         Backends, WindowBackend,
         render::{
@@ -222,10 +222,10 @@ pub(super) extern "system" fn hooked_present(
 ) -> HRESULT {
     trace!("Present called");
 
-    if OverlayIpc::connected() && flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+    if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
         if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+            if let Err(_err) = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
                 draw_overlay(backend, swapchain);
             }) {
                 error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -245,10 +245,10 @@ pub(super) extern "system" fn hooked_present1(
 ) -> HRESULT {
     trace!("Present1 called");
 
-    if OverlayIpc::connected() && flags & DXGI_PRESENT_TEST != DXGI_PRESENT_TEST {
+    if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
         if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            if let Err(_err) = Backends::with_or_init_backend(hwnd, |backend| {
+            if let Err(_err) = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
                 draw_overlay(backend, swapchain);
             }) {
                 error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -286,7 +286,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
     if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd, resize_swapchain);
+        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
     }
 
     unsafe {
@@ -309,7 +309,7 @@ pub(super) extern "system" fn hooked_resize_buffers1(
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
     if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd, resize_swapchain);
+        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
     }
 
     unsafe {

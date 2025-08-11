@@ -16,11 +16,14 @@ repository = "https://github.com/storycraft/asdf-overlay"
 
 [workspace.dependencies]
 asdf-overlay = { version = "0.8.1", path = "./crates/overlay" }
+asdf-overlay-dll = { version = "0.8.1", path = "./crates/dll" }
 asdf-overlay-hook = { version = "0.8.1", path = "./crates/hook" }
 asdf-overlay-client = { version = "0.8.1", path = "./crates/client" }
 asdf-overlay-common = { version = "0.8.1", path = "./crates/common" }
+asdf-overlay-event = { version = "0.8.1", path = "./crates/event" }
+asdf-overlay-vulkan-layer = { version = "0.8.1", path = "./crates/vulkan-layer" }
 
-tokio = "1.44.2"
+tokio = "1.47.1"
 
 [workspace.dependencies.windows]
 version = "0.61.1"

@@ -1,7 +1,7 @@
 use ash::vk::{self, Handle};
 use once_cell::sync::Lazy;
 
-use crate::types::IntDashMap;
+use crate::map::IntDashMap;
 
 // PhyiscalDevice -> PhysicalDeviceMemoryProperties
 pub(super) static PHYSICAL_DEVICE_MAP: Lazy<IntDashMap<u64, vk::PhysicalDeviceMemoryProperties>> =

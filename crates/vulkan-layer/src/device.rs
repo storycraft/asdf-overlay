@@ -8,7 +8,7 @@ use core::{
     slice,
 };
 
-use crate::types::IntDashMap;
+use crate::map::IntDashMap;
 
 use super::{proc_table, resolve_proc};
 use ash::{

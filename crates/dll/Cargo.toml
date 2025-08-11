@@ -1,0 +1,36 @@
+[package]
+name = "asdf-overlay-dll"
+description = "Asdf Overlay Dll"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors = ["storycraft <storycraft@pancake.sh>"]
+readme = "../../README.md"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+asdf-overlay = { workspace = true }
+asdf-overlay-common = { workspace = true }
+asdf-overlay-event = { workspace = true, features = ["bincode"] }
+asdf-overlay-vulkan-layer = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+anyhow = "1.0.97"
+bincode = "2.0.1"
+parking_lot = { version = "0.12.3", features = ["hardware-lock-elision"] }
+scopeguard = "1.2.0"
+tracing-subscriber = "0.3"
+
+[dependencies.windows]
+workspace = true
+features = ["Win32_Security", "Win32_System_Diagnostics_Debug"]
+
+[dependencies.tracing]
+version = "0.1"
+features = ["max_level_trace", "release_max_level_off"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-pc-windows-msvc"]

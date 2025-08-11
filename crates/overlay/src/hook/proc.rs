@@ -1,11 +1,8 @@
 mod input;
 
-use asdf_overlay_common::{
-    event::{
-        ClientEvent, WindowEvent,
-        input::{InputEvent, KeyInputState, KeyboardInput},
-    },
-    key::Key,
+use asdf_overlay_event::{
+    ClientEvent, WindowEvent,
+    input::{InputEvent, Key, KeyInputState, KeyboardInput},
 };
 use asdf_overlay_hook::DetourHook;
 use core::cell::Cell;
@@ -24,7 +21,7 @@ use windows::{
 };
 
 use crate::{
-    app::OverlayIpc,
+    event_sink::OverlayEventSink,
     backend::{Backends, WindowBackend},
 };
 
@@ -210,7 +207,7 @@ fn on_message_read(msg: &MSG) {
         return;
     }
 
-    _ = Backends::with_backend(msg.hwnd, |backend| {
+    _ = Backends::with_backend(msg.hwnd.0 as _, |backend| {
         let mut proc_queue = backend.proc_queue.lock();
         if proc_queue.is_empty() {
             return;
@@ -276,7 +273,7 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
                 }
 
                 if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                    OverlayIpc::emit_event(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                    OverlayEventSink::emit(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
                 }
 
                 if proc.input_blocking() {
@@ -297,7 +294,11 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
 #[inline]
 fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
     let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-    Backends::with_backend(root_hwnd, f)
+    if root_hwnd.is_invalid() {
+        return None;
+    }
+
+    Backends::with_backend(root_hwnd.0 as _, f)
 }
 
 #[inline]
@@ -308,7 +309,7 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> O
     }
 
     if let Some(key) = to_key(msg.wParam, msg.lParam) {
-        OverlayIpc::emit_event(keyboard_input(
+        OverlayEventSink::emit(keyboard_input(
             backend.hwnd,
             KeyboardInput::Key { key, state },
         ));

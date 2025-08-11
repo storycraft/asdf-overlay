@@ -2,20 +2,17 @@ pub mod physical_device;
 pub mod surface;
 
 use core::{
-    ffi::{CStr, c_char, c_void},
+    ffi::{c_char, c_void, CStr},
     mem,
     ptr::NonNull,
 };
 
-use crate::{
-    types::IntDashMap,
-    vulkan_layer::{device, instance::physical_device::PHYSICAL_DEVICE_MAP},
-};
+use crate::{device, instance::physical_device::PHYSICAL_DEVICE_MAP, map::IntDashMap};
 
 use super::{proc_table, resolve_proc};
 use ash::{
-    Instance,
     vk::{self, BaseInStructure, Handle},
+    Instance,
 };
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};

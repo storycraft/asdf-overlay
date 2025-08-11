@@ -1,20 +1,18 @@
 use core::slice;
 
-use ash::vk::{self, Handle};
-use tracing::{debug, error, trace};
-use windows::Win32::Foundation::HWND;
-
-use crate::{
-    app::OverlayIpc,
+use asdf_overlay::{
     backend::{Backends, WindowBackend, render::Renderer},
     renderer::vulkan::VulkanRenderer,
-    vulkan_layer::{
-        device::{
-            DISPATCH_TABLE, DispatchTable, get_queue_data,
-            swapchain::{SwapchainData, get_swapchain_data},
-        },
-        instance::physical_device::get_physical_device_memory_properties,
+};
+use ash::vk::{self, Handle};
+use tracing::{debug, error, trace};
+
+use crate::{
+    device::{
+        DISPATCH_TABLE, DispatchTable, get_queue_data,
+        swapchain::{SwapchainData, get_swapchain_data},
     },
+    instance::physical_device::get_physical_device_memory_properties,
 };
 
 pub(super) extern "system" fn present(
@@ -25,50 +23,45 @@ pub(super) extern "system" fn present(
 
     let queue_data = get_queue_data(queue).unwrap();
     let mut table = DISPATCH_TABLE.get_mut(&queue_data.device.as_raw()).unwrap();
-    if OverlayIpc::connected() {
-        let info = unsafe { &*info };
-        let wait_semaphores = unsafe {
-            slice::from_raw_parts(info.p_wait_semaphores, info.wait_semaphore_count as _)
-        };
-        let swapchains =
-            unsafe { slice::from_raw_parts(info.p_swapchains, info.swapchain_count as _) };
-        let indices =
-            unsafe { slice::from_raw_parts(info.p_image_indices, info.swapchain_count as _) };
+    let info = unsafe { &*info };
+    let wait_semaphores =
+        unsafe { slice::from_raw_parts(info.p_wait_semaphores, info.wait_semaphore_count as _) };
+    let swapchains = unsafe { slice::from_raw_parts(info.p_swapchains, info.swapchain_count as _) };
+    let indices = unsafe { slice::from_raw_parts(info.p_image_indices, info.swapchain_count as _) };
 
-        for i in 0..info.swapchain_count as usize {
-            let swapchain = swapchains[i];
-            let index = indices[i];
-            let data = get_swapchain_data(swapchain);
+    for i in 0..info.swapchain_count as usize {
+        let swapchain = swapchains[i];
+        let index = indices[i];
+        let data = get_swapchain_data(swapchain);
 
-            if let Err(err) = Backends::with_or_init_backend(HWND(data.hwnd as _), |backend| {
-                let semaphore = draw_overlay(
-                    &table,
-                    swapchain,
-                    index,
-                    &data,
-                    queue,
-                    queue_data.family_index,
-                    backend,
-                    wait_semaphores,
-                );
+        if let Err(err) = Backends::with_or_init_backend(data.hwnd, |backend| {
+            let semaphore = draw_overlay(
+                &table,
+                swapchain,
+                index,
+                &data,
+                queue,
+                queue_data.family_index,
+                backend,
+                wait_semaphores,
+            );
 
-                if let Some(semaphore) = semaphore {
-                    table.semaphore_buf.push(semaphore);
-                }
-            }) {
-                error!("Backends::with_or_init_backend failed. err: {err:?}");
+            if let Some(semaphore) = semaphore {
+                table.semaphore_buf.push(semaphore);
             }
+        }) {
+            error!("Backends::with_or_init_backend failed. err: {err:?}");
         }
+    }
 
-        if !table.semaphore_buf.is_empty() {
-            let present_info = vk::PresentInfoKHR::default()
-                .swapchains(swapchains)
-                .image_indices(indices)
-                .wait_semaphores(&table.semaphore_buf);
-            let res = unsafe { (table.queue_present.unwrap())(queue, &present_info) };
-            table.semaphore_buf.clear();
-            return res;
-        }
+    if !table.semaphore_buf.is_empty() {
+        let present_info = vk::PresentInfoKHR::default()
+            .swapchains(swapchains)
+            .image_indices(indices)
+            .wait_semaphores(&table.semaphore_buf);
+        let res = unsafe { (table.queue_present.unwrap())(queue, &present_info) };
+        table.semaphore_buf.clear();
+        return res;
     }
 
     unsafe { (table.queue_present.unwrap())(queue, info) }
@@ -126,8 +119,14 @@ fn draw_overlay(
         };
 
         Box::new(
-            VulkanRenderer::new(table.device.clone(), queue_family_index, data, &images)
-                .expect("renderer creation failed"),
+            VulkanRenderer::new(
+                table.device.clone(),
+                queue_family_index,
+                data.image_size,
+                data.format,
+                &images,
+            )
+            .expect("renderer creation failed"),
         )
     });
 

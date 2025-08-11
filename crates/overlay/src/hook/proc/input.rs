@@ -136,7 +136,7 @@ fn active_hwnd_can_block() -> Option<HWND> {
 
 #[inline]
 fn active_hwnd_with<R>(f: impl FnOnce(&mut InputBlockData) -> R) -> Option<R> {
-    Backends::with_backend(active_hwnd_can_block()?, |backend| {
+    Backends::with_backend(active_hwnd_can_block()?.0 as _, |backend| {
         let mut proc = backend.proc.lock();
         Some(f(proc.blocking_state.as_mut()?))
     })
@@ -153,7 +153,7 @@ fn foreground_hwnd_input_blocked() -> bool {
     let hwnd = unsafe { GetForegroundWindow() };
 
     !hwnd.is_invalid()
-        && Backends::with_backend(hwnd, |backend| backend.proc.lock().input_blocking())
+        && Backends::with_backend(hwnd.0 as _, |backend| backend.proc.lock().input_blocking())
             .unwrap_or(false)
 }
 

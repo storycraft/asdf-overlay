@@ -2,7 +2,7 @@ use ash::vk::{self, Handle};
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 
-use crate::{types::IntDashMap, vulkan_layer::instance::DISPATCH_TABLE};
+use crate::{instance::DISPATCH_TABLE, map::IntDashMap};
 
 // Surface -> HWND
 static SURFACE_MAP: Lazy<IntDashMap<u64, u32>> = Lazy::new(IntDashMap::default);
