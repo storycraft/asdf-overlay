@@ -20,7 +20,7 @@ pub struct WindowProcData {
 }
 
 impl WindowProcData {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             layout: OverlayLayout::new(),
             position: (0, 0),
