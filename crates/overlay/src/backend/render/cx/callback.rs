@@ -4,7 +4,7 @@ use windows::{
     core::Interface,
 };
 
-pub fn register_swapchain_destruction_callback<F: FnOnce(&IDXGISwapChain1)>(
+pub fn register_swapchain_destruction_callback<F: FnOnce(&IDXGISwapChain1) + Send + 'static>(
     swapchain: &IDXGISwapChain1,
     f: F,
 ) {
