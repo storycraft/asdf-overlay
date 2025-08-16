@@ -2,7 +2,7 @@ pub mod physical_device;
 pub mod surface;
 
 use core::{
-    ffi::{c_char, c_void, CStr},
+    ffi::{CStr, c_char, c_void},
     mem,
     ptr::NonNull,
 };
@@ -11,8 +11,8 @@ use crate::{device, instance::physical_device::PHYSICAL_DEVICE_MAP, map::IntDash
 
 use super::{proc_table, resolve_proc};
 use ash::{
-    vk::{self, BaseInStructure, Handle},
     Instance,
+    vk::{self, BaseInStructure, Handle},
 };
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};

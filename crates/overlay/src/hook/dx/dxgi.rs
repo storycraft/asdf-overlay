@@ -31,7 +31,6 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{
         Backends, WindowBackend,
         render::{
@@ -39,6 +38,7 @@ use crate::{
             cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
         },
     },
+    event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
     renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
 };

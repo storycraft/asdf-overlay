@@ -19,8 +19,8 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{Backends, render::Renderer},
+    event_sink::OverlayEventSink,
     renderer::dx9::Dx9Renderer,
 };
 

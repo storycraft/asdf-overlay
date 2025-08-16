@@ -1,10 +1,10 @@
 use super::WindowBackend;
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{
         BACKENDS, Backends,
         window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
     },
+    event_sink::OverlayEventSink,
     util::get_client_size,
 };
 use asdf_overlay_event::{

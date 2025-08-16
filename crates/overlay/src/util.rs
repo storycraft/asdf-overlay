@@ -4,13 +4,15 @@ use std::ffi::CString;
 use anyhow::bail;
 use scopeguard::defer;
 use windows::{
-    core::{s, Interface, PCSTR}, Win32::{
+    Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Dxgi::IDXGIKeyedMutex,
         UI::WindowsAndMessaging::{
-            CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect, RegisterClassA, UnregisterClassA, CS_OWNDC, HWND_MESSAGE, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP
+            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect, HWND_MESSAGE,
+            RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
         },
-    }
+    },
+    core::{Interface, PCSTR, s},
 };
 
 // Cloning COM objects for ManuallyDrop<Option<T>> never decrease ref count and leak wtf
@@ -37,8 +39,11 @@ pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> an
     }
 
     unsafe {
-        let class_name =
-            CString::new(format!("asdf-overlay-{} dummy window class", hinstance.0 as usize)).unwrap();
+        let class_name = CString::new(format!(
+            "asdf-overlay-{} dummy window class",
+            hinstance.0 as usize
+        ))
+        .unwrap();
         if RegisterClassA(&WNDCLASSA {
             style: CS_OWNDC,
             hInstance: hinstance,

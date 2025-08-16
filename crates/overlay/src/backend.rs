@@ -27,11 +27,11 @@ use windows::Win32::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{
         render::RenderData,
         window::{InputBlockData, WindowProcData, cursor::load_cursor},
     },
+    event_sink::OverlayEventSink,
     interop::DxInterop,
     types::IntDashMap,
     util::get_client_size,

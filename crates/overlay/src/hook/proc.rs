@@ -21,8 +21,8 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{Backends, WindowBackend},
+    event_sink::OverlayEventSink,
 };
 
 #[cfg_attr(

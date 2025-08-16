@@ -21,8 +21,8 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
     backend::{Backends, render::Renderer},
+    event_sink::OverlayEventSink,
     gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
