@@ -1,0 +1,15 @@
+[package]
+name = "asdf-overlay-event"
+description = "Asdf Overlay event"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors = ["storycraft <storycraft@pancake.sh>"]
+
+[features]
+bincode = ["dep:bincode"]
+
+[dependencies]
+bincode = { version = "2.0.1", optional = true, features = ["derive"] }
+bitflags = "2.9.1"

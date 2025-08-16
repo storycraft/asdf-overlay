@@ -21,8 +21,8 @@ use windows::{
 };
 
 use crate::{
-    app::OverlayIpc,
     backend::{Backends, render::Renderer},
+    event_sink::OverlayEventSink,
     gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
@@ -95,7 +95,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             _ = wglMakeCurrent(HDC(hdc as _), HGLRC(gl_data.hglrc as _));
             gl_data.renderer.take();
         }
-        _ = Backends::with_backend(HWND(gl_data.hwnd as _), |backend| {
+        _ = Backends::with_backend(gl_data.hwnd, |backend| {
             let mut render = backend.render.lock();
 
             let Some(Renderer::Opengl) = render.renderer else {
@@ -117,7 +117,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
 fn draw_overlay(hdc: HDC) {
     #[inline]
-    fn inner(hwnd: HWND, renderer: &mut Option<OpenglRenderer>) {
+    fn inner(hwnd: u32, renderer: &mut Option<OpenglRenderer>) {
         let res = Backends::with_or_init_backend(hwnd, |backend| {
             let render = &mut *backend.render.lock();
 
@@ -184,7 +184,7 @@ fn draw_overlay(hdc: HDC) {
         }
     }
 
-    if !OverlayIpc::connected() {
+    if !OverlayEventSink::connected() {
         return;
     }
 
@@ -208,7 +208,7 @@ fn draw_overlay(hdc: HDC) {
             })
         }
     };
-    inner(HWND(data.hwnd as _), &mut data.renderer);
+    inner(data.hwnd, &mut data.renderer);
 }
 
 #[tracing::instrument]

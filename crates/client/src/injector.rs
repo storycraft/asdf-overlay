@@ -31,7 +31,19 @@ use windows::{
     core::PCSTR,
 };
 
-#[link(name = "kernel32.dll", kind = "raw-dylib", modifiers = "+verbatim")]
+#[cfg_attr(
+    not(target_arch = "x86"),
+    link(name = "kernel32.dll", kind = "raw-dylib", modifiers = "+verbatim")
+)]
+#[cfg_attr(
+    target_arch = "x86",
+    link(
+        name = "kernel32.dll",
+        kind = "raw-dylib",
+        modifiers = "+verbatim",
+        import_name_type = "undecorated"
+    )
+)]
 unsafe extern "system" {
     fn LoadLibraryW(lplibfilename: PCSTR) -> HMODULE;
 }

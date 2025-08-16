@@ -7,10 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::{
-    types::IntDashMap,
-    vulkan_layer::{device, instance::physical_device::PHYSICAL_DEVICE_MAP},
-};
+use crate::{device, instance::physical_device::PHYSICAL_DEVICE_MAP, map::IntDashMap};
 
 use super::{proc_table, resolve_proc};
 use ash::{

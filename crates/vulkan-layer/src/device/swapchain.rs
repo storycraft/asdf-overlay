@@ -1,13 +1,9 @@
+use asdf_overlay::backend::{Backends, render::Renderer};
 use ash::vk::{self, AllocationCallbacks, Handle};
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
-use windows::Win32::Foundation::HWND;
 
-use crate::{
-    backend::{Backends, render::Renderer},
-    types::IntDashMap,
-    vulkan_layer::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd},
-};
+use crate::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap};
 
 #[derive(Clone, Copy)]
 pub struct SwapchainData {
@@ -77,7 +73,7 @@ pub(super) extern "system" fn destroy_swapchain(
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
     let data = get_swapchain_data(swapchain);
 
-    _ = Backends::with_backend(HWND(data.hwnd as _), |backend| {
+    _ = Backends::with_backend(data.hwnd, |backend| {
         let mut render = backend.render.lock();
 
         let Some(Renderer::Vulkan(ref mut renderer)) = render.renderer else {

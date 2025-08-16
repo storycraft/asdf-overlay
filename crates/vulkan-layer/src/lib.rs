@@ -1,5 +1,6 @@
 pub mod device;
 pub mod instance;
+mod map;
 
 use core::ffi::c_void;
 

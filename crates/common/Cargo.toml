@@ -8,20 +8,16 @@ repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]
+asdf-overlay-event = { workspace = true, features = ["bincode"] }
 tokio = { workspace = true, features = ["io-util", "rt", "sync", "net"] }
 
 bincode = { version = "2.0.1", features = ["derive"] }
 winapi = { version = "0.3", features = ["winerror"] }
 anyhow = "1.0.97"
 parking_lot = "0.12.3"
-dashmap = "6.1.0"
 async-stream = "0.3.6"
 rustc-hash = "2.1.1"
 scopeguard = "1.2.0"
 derive_more = { version = "2", features = ["debug", "from"] }
 num-traits = "0.2.19"
 num-derive = "0.4.2"
-bitflags = "2.9.1"
-
-[package.metadata.docs.rs]
-targets = ["x86_64-pc-windows-msvc"]

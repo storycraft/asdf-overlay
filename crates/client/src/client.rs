@@ -1,6 +1,11 @@
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};
+use asdf_overlay_common::{
+    ipc::{ClientToServerPacket, Frame, ServerRequest},
+    request::{Request, WindowRequestItem},
+};
+use asdf_overlay_event::ClientEvent;
 use bincode::Decode;
 use dashmap::DashMap;
 use tokio::{
@@ -9,14 +14,6 @@ use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
-
-use crate::{
-    event::ClientEvent,
-    ipc::ClientToServerPacket,
-    request::{Request, WindowRequestItem},
-};
-
-use super::{Frame, ServerRequest};
 
 pub struct IpcClientConn {
     next_id: u32,

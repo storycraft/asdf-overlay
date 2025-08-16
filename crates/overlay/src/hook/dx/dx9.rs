@@ -20,6 +20,7 @@ use windows::{
 
 use crate::{
     backend::{Backends, render::Renderer},
+    event_sink::OverlayEventSink,
     renderer::dx9::Dx9Renderer,
 };
 
@@ -65,16 +66,18 @@ pub(super) extern "system" fn hooked_present(
 ) -> HRESULT {
     trace!("Present called");
 
-    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-    let mut hwnd = dest_window_override;
-    if hwnd.is_invalid() {
-        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        let mut params = D3DPRESENT_PARAMETERS::default();
-        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
-        hwnd = params.hDeviceWindow;
-    }
-    if !hwnd.is_invalid() {
-        draw_overlay(hwnd, device);
+    if OverlayEventSink::connected() {
+        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+        let mut hwnd = dest_window_override;
+        if hwnd.is_invalid() {
+            let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+            let mut params = D3DPRESENT_PARAMETERS::default();
+            unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+            hwnd = params.hDeviceWindow;
+        }
+        if !hwnd.is_invalid() {
+            draw_overlay(hwnd, device);
+        }
     }
 
     unsafe {
@@ -134,16 +137,18 @@ pub(super) extern "system" fn hooked_present_ex(
 ) -> HRESULT {
     trace!("PresentEx called");
 
-    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-    let mut hwnd = dest_window_override;
-    if hwnd.is_invalid() {
-        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        let mut params = D3DPRESENT_PARAMETERS::default();
-        unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
-        hwnd = params.hDeviceWindow;
-    }
-    if !hwnd.is_invalid() {
-        draw_overlay(hwnd, device);
+    if OverlayEventSink::connected() {
+        let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+        let mut hwnd = dest_window_override;
+        if hwnd.is_invalid() {
+            let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+            let mut params = D3DPRESENT_PARAMETERS::default();
+            unsafe { swapchain.GetPresentParameters(&mut params) }.unwrap();
+            hwnd = params.hDeviceWindow;
+        }
+        if !hwnd.is_invalid() {
+            draw_overlay(hwnd, device);
+        }
     }
 
     unsafe {
@@ -159,7 +164,7 @@ pub(super) extern "system" fn hooked_present_ex(
 }
 
 fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
-    let res = Backends::with_or_init_backend(hwnd, |backend| {
+    let res = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
         let render = &mut *backend.render.lock();
         let renderer = match render.renderer {
             Some(Renderer::Dx9(ref mut renderer)) => renderer,
@@ -239,7 +244,7 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
     }
 
     if !hwnd.is_invalid() {
-        _ = Backends::with_backend(hwnd, |backend| {
+        _ = Backends::with_backend(hwnd.0 as _, |backend| {
             let render = &mut *backend.render.lock();
             let Some(Renderer::Dx9(ref mut renderer)) = render.renderer else {
                 return;

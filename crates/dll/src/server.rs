@@ -1,3 +1,8 @@
+use asdf_overlay_common::{
+    ipc::{ClientResponse, ClientToServerPacket, Frame, ServerRequest},
+    request::Request,
+};
+use asdf_overlay_event::ClientEvent;
 use bincode::Encode;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
@@ -5,9 +10,6 @@ use tokio::{
     sync::mpsc::{UnboundedSender, unbounded_channel},
     task::JoinHandle,
 };
-
-use super::{ClientResponse, ClientToServerPacket, Frame, ServerRequest};
-use crate::{event::ClientEvent, request::Request};
 
 pub struct IpcServerConn {
     rx: ReadHalf<NamedPipeServer>,

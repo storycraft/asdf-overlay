@@ -1,14 +1,15 @@
 pub mod input;
 
-use bincode::{Decode, Encode};
 use input::InputEvent;
 
-#[derive(Debug, Encode, Decode, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub enum ClientEvent {
     Window { id: u32, event: WindowEvent },
 }
 
-#[derive(Debug, Encode, Decode, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub enum WindowEvent {
     // Window is hooked and added
     Added { width: u32, height: u32 },

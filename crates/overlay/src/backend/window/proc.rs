@@ -1,13 +1,13 @@
 use super::WindowBackend;
 use crate::{
-    app::OverlayIpc,
     backend::{
         BACKENDS, Backends,
         window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
     },
+    event_sink::OverlayEventSink,
     util::get_client_size,
 };
-use asdf_overlay_common::event::{
+use asdf_overlay_event::{
     ClientEvent, WindowEvent,
     input::{
         ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
@@ -56,7 +56,7 @@ fn process_wnd_proc(
             if render.window_size != new_size {
                 render.window_size = new_size;
 
-                OverlayIpc::emit_event(ClientEvent::Window {
+                OverlayEventSink::emit(ClientEvent::Window {
                     id: backend.hwnd,
                     event: WindowEvent::Resized {
                         width: new_size.0,
@@ -184,7 +184,7 @@ fn process_wnd_proc(
             }
 
             proc.cursor_state = CursorState::Outside;
-            OverlayIpc::emit_event(cursor_input(
+            OverlayEventSink::emit(cursor_input(
                 backend.hwnd,
                 proc.position,
                 lparam,
@@ -208,7 +208,7 @@ fn process_wnd_proc(
                     }
                     CursorState::Outside => {
                         proc.cursor_state = CursorState::Inside(x, y);
-                        OverlayIpc::emit_event(cursor_input(
+                        OverlayEventSink::emit(cursor_input(
                             backend.hwnd,
                             proc.position,
                             lparam,
@@ -227,7 +227,7 @@ fn process_wnd_proc(
                     }
                 }
 
-                OverlayIpc::emit_event(cursor_input(
+                OverlayEventSink::emit(cursor_input(
                     backend.hwnd,
                     proc.position,
                     lparam,
@@ -243,7 +243,7 @@ fn process_wnd_proc(
             }
 
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            OverlayIpc::emit_event(cursor_input(
+            OverlayEventSink::emit(cursor_input(
                 backend.hwnd,
                 proc.position,
                 lparam,
@@ -265,7 +265,7 @@ fn process_wnd_proc(
             }
 
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-            OverlayIpc::emit_event(cursor_input(
+            OverlayEventSink::emit(cursor_input(
                 backend.hwnd,
                 proc.position,
                 lparam,
@@ -323,7 +323,7 @@ fn process_wnd_proc(
             }
 
             if wparam.0 as u32 == ime::IMN_SETCONVERSIONMODE {
-                OverlayIpc::emit_event(keyboard_input(
+                OverlayEventSink::emit(keyboard_input(
                     backend.hwnd,
                     KeyboardInput::Ime(Ime::ConversionChanged(with_himc(
                         backend.hwnd,
@@ -345,7 +345,7 @@ fn process_wnd_proc(
             }
 
             if let Some(lang) = get_lang_id_locale(lparam.0 as u16) {
-                OverlayIpc::emit_event(keyboard_input(
+                OverlayEventSink::emit(keyboard_input(
                     backend.hwnd,
                     KeyboardInput::Ime(Ime::Changed(lang)),
                 ));
@@ -363,7 +363,7 @@ fn process_wnd_proc(
             }
 
             let lang_id = unsafe { GetKeyboardLayout(0) }.0 as u16;
-            OverlayIpc::emit_event(keyboard_input(
+            OverlayEventSink::emit(keyboard_input(
                 backend.hwnd,
                 KeyboardInput::Ime(if wparam.0 != 0 {
                     Ime::Enabled {
@@ -408,11 +408,11 @@ fn process_wnd_proc(
 
             if proc.ime != ImeState::Disabled {
                 with_himc(backend.hwnd, |himc| {
-                    let comp = lparam.0 as u32;
+                    let comp = IME_COMPOSITION_STRING(lparam.0 as _);
 
                     // cancelled
-                    if comp == 0 {
-                        OverlayIpc::emit_event(keyboard_input(
+                    if comp == IME_COMPOSITION_STRING(0) {
+                        OverlayEventSink::emit(keyboard_input(
                             backend.hwnd,
                             KeyboardInput::Ime(Ime::Compose {
                                 text: String::new(),
@@ -421,20 +421,19 @@ fn process_wnd_proc(
                         ));
                     }
 
-                    if comp & ime::GCS_RESULTSTR.0 != 0 {
+                    if comp.contains(ime::GCS_RESULTSTR) {
                         if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
                             proc.ime = ImeState::Enabled;
-                            OverlayIpc::emit_event(keyboard_input(
+                            OverlayEventSink::emit(keyboard_input(
                                 backend.hwnd,
                                 KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
                             ));
                         }
                     }
 
-                    if comp & (ime::GCS_COMPSTR.0 | ime::GCS_COMPATTR.0 | ime::GCS_CURSORPOS.0) != 0
-                    {
-                        let caret = if comp & ime::CS_NOMOVECARET == 0
-                            && comp & ime::GCS_CURSORPOS.0 != 0
+                    if comp.contains(ime::GCS_COMPSTR | ime::GCS_COMPATTR | ime::GCS_CURSORPOS) {
+                        let caret = if !comp.contains(IME_COMPOSITION_STRING(ime::CS_NOMOVECARET))
+                            && comp.contains(ime::GCS_CURSORPOS)
                         {
                             unsafe {
                                 ImmGetCompositionStringW(himc, ime::GCS_CURSORPOS, None, 0) as usize
@@ -446,7 +445,7 @@ fn process_wnd_proc(
                         if let Some(text) = get_ime_string(himc, ime::GCS_COMPSTR) {
                             proc.ime = ImeState::Compose;
 
-                            OverlayIpc::emit_event(keyboard_input(
+                            OverlayEventSink::emit(keyboard_input(
                                 backend.hwnd,
                                 KeyboardInput::Ime(Ime::Compose {
                                     text: text.to_utf8(),
@@ -475,7 +474,7 @@ fn process_wnd_proc(
                     _ = ImmReleaseContext(hwnd, himc);
                 });
                 if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
-                    OverlayIpc::emit_event(keyboard_input(
+                    OverlayEventSink::emit(keyboard_input(
                         backend.hwnd,
                         KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
                     ));
@@ -533,7 +532,7 @@ fn cursor_event<const BLOCK_RESULT: isize>(
         return None;
     }
 
-    OverlayIpc::emit_event(cursor_input(
+    OverlayEventSink::emit(cursor_input(
         hwnd,
         proc.position,
         lparam,

@@ -10,15 +10,15 @@ use std::{path::PathBuf, sync::LazyLock};
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
     OverlayDll,
+    client::{IpcClientConn, IpcClientEventStream},
     common::{
         cursor::Cursor,
-        event::ClientEvent,
-        ipc::client::{IpcClientConn, IpcClientEventStream},
         request::{
             BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
             UpdateSharedHandle,
         },
     },
+    event::ClientEvent,
     inject,
     surface::OverlaySurface,
 };

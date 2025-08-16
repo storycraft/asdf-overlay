@@ -66,7 +66,7 @@ impl SurfaceState {
     const fn new() -> Self {
         Self {
             inner: None,
-            updated: false,
+            updated: true,
         }
     }
 

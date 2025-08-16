@@ -1,5 +1,5 @@
 use crate::{MANAGER, runtime};
-use asdf_overlay_client::common::ipc::client::IpcClientConn;
+use asdf_overlay_client::client::IpcClientConn;
 use neon::{
     prelude::{Context, FunctionContext},
     result::JsResult,

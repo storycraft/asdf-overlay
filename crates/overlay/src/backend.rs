@@ -5,7 +5,7 @@ use core::mem;
 use std::collections::VecDeque;
 
 use anyhow::Context;
-use asdf_overlay_common::event::{ClientEvent, WindowEvent};
+use asdf_overlay_event::{ClientEvent, WindowEvent};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -27,11 +27,11 @@ use windows::Win32::{
 };
 
 use crate::{
-    app::OverlayIpc,
     backend::{
         render::RenderData,
         window::{InputBlockData, WindowProcData, cursor::load_cursor},
     },
+    event_sink::OverlayEventSink,
     interop::DxInterop,
     types::IntDashMap,
     util::get_client_size,
@@ -51,26 +51,25 @@ impl Backends {
     }
 
     #[must_use]
-    pub fn with_backend<R>(hwnd: HWND, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
-        Some(f(&*BACKENDS.map.get(&(hwnd.0 as u32))?))
+    pub fn with_backend<R>(id: u32, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
+        Some(f(&*BACKENDS.map.get(&id)?))
     }
 
     pub fn with_or_init_backend<R>(
-        hwnd: HWND,
+        id: u32,
         f: impl FnOnce(&WindowBackend) -> R,
     ) -> anyhow::Result<R> {
-        let key = hwnd.0 as u32;
-        if let Some(backend) = BACKENDS.map.get(&key) {
+        if let Some(backend) = BACKENDS.map.get(&id) {
             return Ok(f(&backend));
         }
 
         let backend = BACKENDS
             .map
-            .entry(key)
+            .entry(id)
             .or_try_insert_with(|| {
                 let original_proc: WNDPROC = unsafe {
                     mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
-                        hwnd,
+                        HWND(id as _),
                         GWLP_WNDPROC,
                         hooked_wnd_proc as usize as _,
                     ) as _)
@@ -79,10 +78,10 @@ impl Backends {
                 let interop =
                     DxInterop::create(None).context("failed to create backend interop dxdevice")?;
 
-                let window_size = get_client_size(hwnd)?;
+                let window_size = get_client_size(HWND(id as _))?;
 
-                OverlayIpc::emit_event(ClientEvent::Window {
-                    id: key,
+                OverlayEventSink::emit(ClientEvent::Window {
+                    id,
                     event: WindowEvent::Added {
                         width: window_size.0,
                         height: window_size.1,
@@ -90,7 +89,7 @@ impl Backends {
                 });
 
                 Ok::<_, anyhow::Error>(WindowBackend {
-                    hwnd: key,
+                    hwnd: id,
                     original_proc,
                     proc: Mutex::new(WindowProcData::new()),
                     render: Mutex::new(RenderData::new(interop, window_size)),
@@ -106,7 +105,7 @@ impl Backends {
         let key = hwnd.0 as u32;
         BACKENDS.map.remove(&key);
 
-        OverlayIpc::emit_event(ClientEvent::Window {
+        OverlayEventSink::emit(ClientEvent::Window {
             id: key,
             event: WindowEvent::Destroyed,
         });
@@ -228,7 +227,7 @@ impl WindowBackend {
                     ImmAssociateContext(HWND(backend.hwnd as _), HIMC(data.old_ime_cx as _));
                 _ = ImmDestroyContext(ime_cx);
 
-                OverlayIpc::emit_event(ClientEvent::Window {
+                OverlayEventSink::emit(ClientEvent::Window {
                     id: backend.hwnd,
                     event: WindowEvent::InputBlockingEnded,
                 });

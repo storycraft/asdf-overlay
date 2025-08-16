@@ -25,6 +25,3 @@ mimalloc = "0.1.46"
 bytemuck = "1.22.0"
 futures = "0.3.31"
 num = "0.4.3"
-
-[package.metadata.docs.rs]
-targets = ["x86_64-pc-windows-msvc"]

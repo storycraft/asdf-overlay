@@ -1,18 +1,19 @@
+pub mod client;
 pub mod injector;
 pub mod surface;
 pub mod ty;
 
 pub use asdf_overlay_common as common;
+pub use asdf_overlay_event as event;
 
 use core::time::Duration;
 use std::path::Path;
 
 use anyhow::{Context, bail};
-use asdf_overlay_common::ipc::{
-    client::{IpcClientConn, IpcClientEventStream},
-    create_ipc_addr,
-};
+use asdf_overlay_common::ipc::create_ipc_addr;
 use tokio::{net::windows::named_pipe::ClientOptions, select, time::sleep};
+
+use crate::client::{IpcClientConn, IpcClientEventStream};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OverlayDll<'a> {

@@ -12,7 +12,7 @@ pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
     };
 
     // We don't know if they are trying clean up entire device, so cleanup everything
-    _ = Backends::with_backend(hwnd, |backend| {
+    _ = Backends::with_backend(hwnd.0 as _, |backend| {
         let render = &mut *backend.render.lock();
         let Some(Renderer::Dx11(ref mut renderer)) = render.renderer else {
             return;
