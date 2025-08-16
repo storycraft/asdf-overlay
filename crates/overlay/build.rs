@@ -44,6 +44,9 @@ fn create_rc() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_env = "msvc")]
+    static_vcruntime::metabuild();
+
     let dest = env::var("OUT_DIR")?;
 
     create_gl_bindings(&dest)?;
