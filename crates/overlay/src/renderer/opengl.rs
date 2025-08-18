@@ -180,6 +180,8 @@ impl GlInterop {
                 gl::BindTexture(gl::TEXTURE_2D, texture);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as _);
                 gl::BindTexture(gl::TEXTURE_2D, last_id as _);
             }
 
@@ -324,11 +326,8 @@ impl MemoryObjectTexture {
             gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_TILING_EXT,
-                gl::OPTIMAL_TILING_EXT as _,
-            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as _);
 
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);
