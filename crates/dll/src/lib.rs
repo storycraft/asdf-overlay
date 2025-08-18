@@ -141,7 +141,6 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
             }
         }
     }
-    conn.close().await?;
     Ok(())
 }
 

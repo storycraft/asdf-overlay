@@ -8,14 +8,12 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
     sync::mpsc::{UnboundedSender, unbounded_channel},
-    task::JoinHandle,
 };
 
 pub struct IpcServerConn {
     rx: ReadHalf<NamedPipeServer>,
     buf: Vec<u8>,
     chan: UnboundedSender<ClientToServerPacket>,
-    write_task: JoinHandle<anyhow::Result<()>>,
 }
 
 impl IpcServerConn {
@@ -23,7 +21,7 @@ impl IpcServerConn {
         let (rx, mut tx) = split(server);
         let (chan_tx, mut chan_rx) = unbounded_channel();
 
-        let write_task = tokio::spawn({
+        tokio::spawn({
             async move {
                 let mut buf = Vec::new();
                 while let Some(packet) = chan_rx.recv().await {
@@ -41,7 +39,7 @@ impl IpcServerConn {
                     buf.clear();
                 }
 
-                Ok(())
+                Ok::<_, anyhow::Error>(())
             }
         });
 
@@ -49,7 +47,6 @@ impl IpcServerConn {
             rx,
             buf: Vec::new(),
             chan: chan_tx,
-            write_task,
         })
     }
 
@@ -76,13 +73,6 @@ impl IpcServerConn {
                 id,
                 data: bincode::encode_to_vec(data, bincode::config::standard())?,
             }));
-
-        Ok(())
-    }
-
-    pub async fn close(self) -> anyhow::Result<()> {
-        drop(self.chan);
-        self.write_task.await??;
 
         Ok(())
     }
