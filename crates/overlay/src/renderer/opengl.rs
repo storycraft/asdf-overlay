@@ -335,6 +335,9 @@ impl MemoryObjectTexture {
                 gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
                 handle,
             );
+            if gl::GetError() != gl::NO_ERROR {
+                bail!("ImportMemoryWin32HandleEXT failed");
+            }
 
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
