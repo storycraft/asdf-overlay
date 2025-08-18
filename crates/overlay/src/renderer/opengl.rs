@@ -329,6 +329,8 @@ impl MemoryObjectTexture {
             let mut memory_object = 0;
             gl::CreateMemoryObjectsEXT(1, &mut memory_object);
 
+            // reset previous error before
+            _ = gl::GetError();
             gl::ImportMemoryWin32HandleEXT(
                 memory_object,
                 0,
