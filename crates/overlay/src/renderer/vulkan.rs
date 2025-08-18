@@ -406,9 +406,9 @@ fn create_sampler(device: &Device) -> anyhow::Result<vk::Sampler> {
                 &vk::SamplerCreateInfo::default()
                     .mag_filter(vk::Filter::NEAREST)
                     .min_filter(vk::Filter::NEAREST)
-                    .address_mode_u(vk::SamplerAddressMode::REPEAT)
-                    .address_mode_v(vk::SamplerAddressMode::REPEAT)
-                    .address_mode_w(vk::SamplerAddressMode::REPEAT),
+                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                    .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE),
                 None,
             )
             .context("failed to create Sampler")

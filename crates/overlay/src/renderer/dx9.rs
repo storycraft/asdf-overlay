@@ -253,8 +253,8 @@ impl Dx9Renderer {
             device.SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE.0 as _)?;
             device.SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_NONE.0 as _)?;
             device.SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_NONE.0 as _)?;
-            device.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP.0 as _)?;
-            device.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP.0 as _)?;
 
             device.SetStreamSource(0, &self.vertex_buffer, 0, mem::size_of::<Vertex>() as u32)?;
             device.SetFVF(Vertex::FVF)?;

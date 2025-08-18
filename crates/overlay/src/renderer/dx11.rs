@@ -18,9 +18,9 @@ use crate::{renderer::dx::shaders, texture::OverlayTextureState, util::with_keye
 
 const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
     Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
-    AddressU: D3D11_TEXTURE_ADDRESS_BORDER,
-    AddressV: D3D11_TEXTURE_ADDRESS_BORDER,
-    AddressW: D3D11_TEXTURE_ADDRESS_BORDER,
+    AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
+    AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
+    AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,
     MipLODBias: 0.0,
     MaxAnisotropy: 0,
     ComparisonFunc: D3D11_COMPARISON_NEVER,
