@@ -1,6 +1,6 @@
 pub mod data;
 
-use core::ffi::c_void;
+use core::ffi::{CStr, c_void};
 
 use crate::{
     gl::{
@@ -164,7 +164,9 @@ enum GlInterop {
 
 impl GlInterop {
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
-        if gl::ImportMemoryWin32HandleEXT::is_loaded() {
+        if gl::ImportMemoryWin32HandleEXT::is_loaded()
+            && gl_extension_fully_supported("GL_EXT_memory_object_win32")
+        {
             Ok(Self::MemoryObject { texture: None })
         } else if wgl::DXOpenDeviceNV::is_loaded() {
             let dx_device_handle = unsafe { wgl::DXOpenDeviceNV(device.as_raw()) };
@@ -300,6 +302,20 @@ impl Drop for GlInterop {
     }
 }
 
+fn gl_extension_fully_supported(name: &str) -> bool {
+    let mut extensions = 0;
+    unsafe { gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut extensions) };
+
+    for i in 0..extensions {
+        let ext = unsafe { CStr::from_ptr(gl::GetStringi(gl::EXTENSIONS, i as _).cast()) };
+        if ext.to_bytes() == name.as_bytes() {
+            return true;
+        }
+    }
+
+    false
+}
+
 struct MemoryObjectTexture {
     memory_object: GLuint,
     id: GLuint,
@@ -319,6 +335,9 @@ impl MemoryObjectTexture {
                 gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
                 handle,
             );
+            if gl::GetError() != gl::NO_ERROR {
+                bail!("ImportMemoryWin32HandleEXT failed");
+            }
 
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
