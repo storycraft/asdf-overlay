@@ -138,7 +138,7 @@ fn draw_overlay(hdc: HDC) {
                 let mut luid = LUID::default();
                 unsafe {
                     _ = gl::GetError();
-                    gl::GetUnsignedBytevEXT(gl::DEVICE_UUID_EXT, &mut luid as *mut _ as _);
+                    gl::GetUnsignedBytevEXT(gl::DEVICE_LUID_EXT, &mut luid as *mut _ as _);
                     if gl::GetError() != gl::NO_ERROR {
                         return None;
                     }
