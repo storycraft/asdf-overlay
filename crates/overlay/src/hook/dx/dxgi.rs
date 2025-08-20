@@ -48,31 +48,31 @@ use super::{HOOK, dx12::get_queue_for};
 
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
-            if let Err(_err) = Backends::with_or_init_backend(
-                hwnd.0 as _,
-                || {
-                    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
-                    let luid = unsafe { device.GetAdapterLuid() };
-                    unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
-                },
-                |backend| {
-                    draw_dx12_overlay(backend, &device, swapchain);
-                },
-            ) {
-                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-            }
-        } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() } {
-            if let Err(_err) = Backends::with_or_init_backend(
-                hwnd.0 as _,
-                || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
-                |backend| {
-                    draw_dx11_overlay(backend, &device, swapchain);
-                },
-            ) {
-                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-            }
+    let Ok(hwnd) = (unsafe { swapchain.GetHwnd() }) else {
+        return;
+    };
+
+    if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
+        if let Err(_err) = Backends::with_or_init_backend(
+            hwnd.0 as _,
+            || {
+                None
+            },
+            |backend| {
+                draw_dx12_overlay(backend, &device, swapchain);
+            },
+        ) {
+            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+        }
+    } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() } {
+        if let Err(_err) = Backends::with_or_init_backend(
+            hwnd.0 as _,
+            || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
+            |backend| {
+                draw_dx11_overlay(backend, &device, swapchain);
+            },
+        ) {
+            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
         }
     }
 }
