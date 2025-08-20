@@ -56,7 +56,9 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
         if let Err(_err) = Backends::with_or_init_backend(
             hwnd.0 as _,
             || {
-                None
+                let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+                let luid = unsafe { device.GetAdapterLuid() };
+                unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
             },
             |backend| {
                 draw_dx12_overlay(backend, &device, swapchain);
