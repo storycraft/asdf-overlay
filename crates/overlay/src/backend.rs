@@ -13,6 +13,7 @@ use tracing::trace;
 use window::proc::hooked_wnd_proc;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
+    Graphics::Dxgi::IDXGIAdapter,
     UI::{
         Input::{
             Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
@@ -57,6 +58,7 @@ impl Backends {
 
     pub fn with_or_init_backend<R>(
         id: u32,
+        adapter_fn: impl FnOnce() -> Option<IDXGIAdapter>,
         f: impl FnOnce(&WindowBackend) -> R,
     ) -> anyhow::Result<R> {
         if let Some(backend) = BACKENDS.map.get(&id) {
@@ -75,8 +77,8 @@ impl Backends {
                     ) as _)
                 };
 
-                let interop =
-                    DxInterop::create(None).context("failed to create backend interop dxdevice")?;
+                let interop = DxInterop::create(adapter_fn().as_ref())
+                    .context("failed to create backend interop dxdevice")?;
 
                 let window_size = get_client_size(HWND(id as _))?;
 

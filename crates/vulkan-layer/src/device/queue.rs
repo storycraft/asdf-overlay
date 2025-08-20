@@ -1,4 +1,4 @@
-use core::slice;
+use core::{ptr, slice};
 
 use asdf_overlay::{
     backend::{Backends, WindowBackend, render::Renderer},
@@ -6,13 +6,17 @@ use asdf_overlay::{
 };
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
+use windows::Win32::{
+    Foundation::LUID,
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory4},
+};
 
 use crate::{
     device::{
         DISPATCH_TABLE, DispatchTable, get_queue_data,
         swapchain::{SwapchainData, get_swapchain_data},
     },
-    instance::physical_device::get_physical_device_memory_properties,
+    instance::physical_device::{get_physical_device_luid, get_physical_device_memory_properties},
 };
 
 pub(super) extern "system" fn present(
@@ -34,22 +38,39 @@ pub(super) extern "system" fn present(
         let index = indices[i];
         let data = get_swapchain_data(swapchain);
 
-        if let Err(err) = Backends::with_or_init_backend(data.hwnd, |backend| {
-            let semaphore = draw_overlay(
-                &table,
-                swapchain,
-                index,
-                &data,
-                queue,
-                queue_data.family_index,
-                backend,
-                wait_semaphores,
-            );
+        let physical_device = table.physical_device;
+        if let Err(err) = Backends::with_or_init_backend(
+            data.hwnd,
+            || {
+                let mut luid = LUID::default();
+                unsafe {
+                    ptr::copy_nonoverlapping::<[u8; 8]>(
+                        &get_physical_device_luid(physical_device)?,
+                        &mut luid as *mut _ as _,
+                        1,
+                    );
+                }
+                let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
 
-            if let Some(semaphore) = semaphore {
-                table.semaphore_buf.push(semaphore);
-            }
-        }) {
+                unsafe { factory.EnumAdapterByLuid(luid).ok() }
+            },
+            |backend| {
+                let semaphore = draw_overlay(
+                    &table,
+                    swapchain,
+                    index,
+                    &data,
+                    queue,
+                    queue_data.family_index,
+                    backend,
+                    wait_semaphores,
+                );
+
+                if let Some(semaphore) = semaphore {
+                    table.semaphore_buf.push(semaphore);
+                }
+            },
+        ) {
             error!("Backends::with_or_init_backend failed. err: {err:?}");
         }
     }

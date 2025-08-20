@@ -8,8 +8,9 @@ use once_cell::sync::{Lazy, OnceCell};
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::{HMODULE, HWND},
+        Foundation::{HMODULE, HWND, LUID},
         Graphics::{
+            Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
             Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
@@ -26,6 +27,7 @@ use crate::{
     gl,
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
+    util::find_adapter_by_luid,
     wgl,
 };
 
@@ -118,63 +120,83 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 fn draw_overlay(hdc: HDC) {
     #[inline]
     fn inner(hwnd: u32, renderer: &mut Option<OpenglRenderer>) {
-        let res = Backends::with_or_init_backend(hwnd, |backend| {
-            let render = &mut *backend.render.lock();
-
-            match render.renderer {
-                Some(Renderer::Opengl) => {}
-                Some(_) => {
-                    trace!("ignoring opengl rendering");
-                    return;
-                }
-                None => {
-                    debug!("Found opengl window");
-                    render.renderer = Some(Renderer::Opengl);
-                    // wait next swap for possible dxgi swapchain check
-                    return;
-                }
+        if !gl::GetIntegerv::is_loaded() {
+            debug!("setting up opengl");
+            if let Err(err) = setup_gl() {
+                error!("opengl setup failed. err: {:?}", err);
+                return;
             }
+        }
 
-            if !gl::GetIntegerv::is_loaded() {
-                debug!("setting up opengl");
-                if let Err(err) = setup_gl() {
-                    error!("opengl setup failed. err: {:?}", err);
-                    return;
+        let res = Backends::with_or_init_backend(
+            hwnd,
+            || {
+                if !gl::GetUnsignedBytevEXT::is_loaded() {
+                    return None;
                 }
-            }
 
-            let renderer = match renderer {
-                Some(renderer) => renderer,
-                None => {
-                    debug!("initializing opengl renderer");
-
-                    renderer.insert(match OpenglRenderer::new(&render.interop.device) {
-                        Ok(renderer) => renderer,
-                        Err(err) => {
-                            error!("renderer setup failed. err: {:?}", err);
-                            return;
-                        }
-                    })
+                let mut luid = LUID::default();
+                unsafe {
+                    _ = gl::GetError();
+                    gl::GetUnsignedBytevEXT(gl::DEVICE_UUID_EXT, &mut luid as *mut _ as _);
+                    if gl::GetError() != gl::NO_ERROR {
+                        return None;
+                    }
                 }
-            };
-            trace!("using opengl renderer");
-            with_renderer_gl_data(|| {
-                if render.surface.invalidate_update() {
-                    if let Err(err) = renderer
-                        .update_texture(render.surface.get().map(|surface| surface.texture()))
-                    {
-                        error!("failed to update opengl texture. err: {err:?}");
+
+                let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>().ok()? };
+                find_adapter_by_luid(&factory, luid)
+            },
+            |backend| {
+                let render = &mut *backend.render.lock();
+
+                match render.renderer {
+                    Some(Renderer::Opengl) => {}
+                    Some(_) => {
+                        trace!("ignoring opengl rendering");
+                        return;
+                    }
+                    None => {
+                        debug!("Found opengl window");
+                        render.renderer = Some(Renderer::Opengl);
+                        // wait next swap for possible dxgi swapchain check
                         return;
                     }
                 }
-                let Some(surface) = render.surface.get() else {
-                    return;
-                };
 
-                let _res = renderer.draw(render.position, surface.size(), render.window_size);
-                trace!("opengl render: {:?}", _res);
-            })
-        });
+                let renderer = match renderer {
+                    Some(renderer) => renderer,
+                    None => {
+                        debug!("initializing opengl renderer");
+
+                        renderer.insert(match OpenglRenderer::new(&render.interop.device) {
+                            Ok(renderer) => renderer,
+                            Err(err) => {
+                                error!("renderer setup failed. err: {:?}", err);
+                                return;
+                            }
+                        })
+                    }
+                };
+                trace!("using opengl renderer");
+                with_renderer_gl_data(|| {
+                    if render.surface.invalidate_update() {
+                        if let Err(err) = renderer
+                            .update_texture(render.surface.get().map(|surface| surface.texture()))
+                        {
+                            error!("failed to update opengl texture. err: {err:?}");
+                            return;
+                        }
+                    }
+                    let Some(surface) = render.surface.get() else {
+                        return;
+                    };
+
+                    let _res = renderer.draw(render.position, surface.size(), render.window_size);
+                    trace!("opengl render: {:?}", _res);
+                })
+            },
+        );
 
         match res {
             Ok(_) => {}

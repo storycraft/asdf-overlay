@@ -23,11 +23,12 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIFactory1, IDXGISwapChain1, IDXGISwapChain3,
+                IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIFactory4, IDXGISwapChain1,
+                IDXGISwapChain3,
             },
         },
     },
-    core::{BOOL, HRESULT, IUnknown, Interface},
+    core::{BOOL, HRESULT, Interface},
 };
 
 use crate::{
@@ -45,13 +46,34 @@ use crate::{
 
 use super::{HOOK, dx12::get_queue_for};
 
-#[tracing::instrument(skip(backend))]
-fn draw_overlay(backend: &WindowBackend, swapchain: &IDXGISwapChain1) {
-    let device = unsafe { swapchain.GetDevice::<IUnknown>() }.unwrap();
-    if let Ok(device) = device.cast::<ID3D12Device>() {
-        draw_dx12_overlay(backend, &device, swapchain);
-    } else if let Ok(device) = device.cast::<ID3D11Device1>() {
-        draw_dx11_overlay(backend, &device, swapchain);
+#[tracing::instrument]
+fn draw_overlay(swapchain: &IDXGISwapChain1) {
+    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+        if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
+            if let Err(_err) = Backends::with_or_init_backend(
+                hwnd.0 as _,
+                || {
+                    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+                    let luid = unsafe { device.GetAdapterLuid() };
+                    unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
+                },
+                |backend| {
+                    draw_dx12_overlay(backend, &device, swapchain);
+                },
+            ) {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+            }
+        } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() } {
+            if let Err(_err) = Backends::with_or_init_backend(
+                hwnd.0 as _,
+                || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
+                |backend| {
+                    draw_dx11_overlay(backend, &device, swapchain);
+                },
+            ) {
+                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+            }
+        }
     }
 }
 
@@ -224,13 +246,7 @@ pub(super) extern "system" fn hooked_present(
 
     if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            if let Err(_err) = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
-                draw_overlay(backend, swapchain);
-            }) {
-                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-            }
-        }
+        draw_overlay(swapchain);
     }
 
     unsafe { HOOK.present.wait().original_fn()(this, sync_interval, flags) }
@@ -247,13 +263,7 @@ pub(super) extern "system" fn hooked_present1(
 
     if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-            if let Err(_err) = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
-                draw_overlay(backend, swapchain);
-            }) {
-                error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-            }
-        }
+        draw_overlay(swapchain);
     }
 
     unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }

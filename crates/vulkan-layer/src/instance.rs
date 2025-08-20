@@ -12,7 +12,7 @@ use crate::{device, instance::physical_device::PHYSICAL_DEVICE_MAP, map::IntDash
 use super::{proc_table, resolve_proc};
 use ash::{
     Instance,
-    vk::{self, BaseInStructure, Handle},
+    vk::{self, BaseInStructure, Handle, PhysicalDeviceIDProperties, PhysicalDeviceProperties2},
 };
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
@@ -122,12 +122,21 @@ extern "system" fn create_instance(
     let instance = unsafe { *instance };
     let table = DispatchTable::new(next_get_instance_proc_addr, instance);
     for &physical_device in &table.physical_devices {
-        let props = unsafe {
+        let mem_props = unsafe {
             table
                 .instance
                 .get_physical_device_memory_properties(physical_device)
         };
-        PHYSICAL_DEVICE_MAP.insert(physical_device.as_raw(), props);
+
+        let mut id_prop = PhysicalDeviceIDProperties::default();
+        let mut prop = PhysicalDeviceProperties2::default().push_next(&mut id_prop);
+        unsafe {
+            table
+                .instance
+                .get_physical_device_properties2(physical_device, &mut prop)
+        };
+
+        PHYSICAL_DEVICE_MAP.insert(physical_device.as_raw(), (mem_props, id_prop.device_luid));
     }
 
     DISPATCH_TABLE.insert(instance.as_raw(), table);
