@@ -16,3 +16,10 @@ once_cell = "1.21.3"
 dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 ash = { version = "0.38.0", default-features = false, features = ["std"] }
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi"
+]

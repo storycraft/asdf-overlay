@@ -1,18 +1,23 @@
-use core::slice;
+use core::{ptr, slice};
 
 use asdf_overlay::{
     backend::{Backends, WindowBackend, render::Renderer},
+    event_sink::OverlayEventSink,
     renderer::vulkan::VulkanRenderer,
 };
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
+use windows::Win32::{
+    Foundation::LUID,
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory4},
+};
 
 use crate::{
     device::{
         DISPATCH_TABLE, DispatchTable, get_queue_data,
         swapchain::{SwapchainData, get_swapchain_data},
     },
-    instance::physical_device::get_physical_device_memory_properties,
+    instance::physical_device::{get_physical_device_luid, get_physical_device_memory_properties},
 };
 
 pub(super) extern "system" fn present(
@@ -23,45 +28,68 @@ pub(super) extern "system" fn present(
 
     let queue_data = get_queue_data(queue).unwrap();
     let mut table = DISPATCH_TABLE.get_mut(&queue_data.device.as_raw()).unwrap();
-    let info = unsafe { &*info };
-    let wait_semaphores =
-        unsafe { slice::from_raw_parts(info.p_wait_semaphores, info.wait_semaphore_count as _) };
-    let swapchains = unsafe { slice::from_raw_parts(info.p_swapchains, info.swapchain_count as _) };
-    let indices = unsafe { slice::from_raw_parts(info.p_image_indices, info.swapchain_count as _) };
 
-    for i in 0..info.swapchain_count as usize {
-        let swapchain = swapchains[i];
-        let index = indices[i];
-        let data = get_swapchain_data(swapchain);
+    if OverlayEventSink::connected() {
+        let info = unsafe { &*info };
+        let wait_semaphores = unsafe {
+            slice::from_raw_parts(info.p_wait_semaphores, info.wait_semaphore_count as _)
+        };
+        let swapchains =
+            unsafe { slice::from_raw_parts(info.p_swapchains, info.swapchain_count as _) };
+        let indices =
+            unsafe { slice::from_raw_parts(info.p_image_indices, info.swapchain_count as _) };
 
-        if let Err(err) = Backends::with_or_init_backend(data.hwnd, |backend| {
-            let semaphore = draw_overlay(
-                &table,
-                swapchain,
-                index,
-                &data,
-                queue,
-                queue_data.family_index,
-                backend,
-                wait_semaphores,
-            );
+        for i in 0..info.swapchain_count as usize {
+            let swapchain = swapchains[i];
+            let index = indices[i];
+            let data = get_swapchain_data(swapchain);
 
-            if let Some(semaphore) = semaphore {
-                table.semaphore_buf.push(semaphore);
+            let physical_device = table.physical_device;
+            if let Err(err) = Backends::with_or_init_backend(
+                data.hwnd,
+                || {
+                    let mut luid = LUID::default();
+                    unsafe {
+                        ptr::copy_nonoverlapping::<[u8; 8]>(
+                            &get_physical_device_luid(physical_device)?,
+                            &mut luid as *mut _ as _,
+                            1,
+                        );
+                    }
+                    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+
+                    unsafe { factory.EnumAdapterByLuid(luid).ok() }
+                },
+                |backend| {
+                    let semaphore = draw_overlay(
+                        &table,
+                        swapchain,
+                        index,
+                        &data,
+                        queue,
+                        queue_data.family_index,
+                        backend,
+                        wait_semaphores,
+                    );
+
+                    if let Some(semaphore) = semaphore {
+                        table.semaphore_buf.push(semaphore);
+                    }
+                },
+            ) {
+                error!("Backends::with_or_init_backend failed. err: {err:?}");
             }
-        }) {
-            error!("Backends::with_or_init_backend failed. err: {err:?}");
         }
-    }
 
-    if !table.semaphore_buf.is_empty() {
-        let present_info = vk::PresentInfoKHR::default()
-            .swapchains(swapchains)
-            .image_indices(indices)
-            .wait_semaphores(&table.semaphore_buf);
-        let res = unsafe { (table.queue_present.unwrap())(queue, &present_info) };
-        table.semaphore_buf.clear();
-        return res;
+        if !table.semaphore_buf.is_empty() {
+            let present_info = vk::PresentInfoKHR::default()
+                .swapchains(swapchains)
+                .image_indices(indices)
+                .wait_semaphores(&table.semaphore_buf);
+            let res = unsafe { (table.queue_present.unwrap())(queue, &present_info) };
+            table.semaphore_buf.clear();
+            return res;
+        }
     }
 
     unsafe { (table.queue_present.unwrap())(queue, info) }

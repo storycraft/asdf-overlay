@@ -229,6 +229,7 @@ dependencies = [
  "nohash-hasher",
  "once_cell",
  "tracing",
+ "windows",
 ]
 
 [[package]]

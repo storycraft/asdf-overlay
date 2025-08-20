@@ -5,8 +5,8 @@ use anyhow::bail;
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Dxgi::IDXGIKeyedMutex,
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, LUID, RECT, WPARAM},
+        Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
         UI::WindowsAndMessaging::{
             CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect, HWND_MESSAGE,
             RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
@@ -96,4 +96,20 @@ pub fn with_keyed_mutex<R>(
         }
         None => Ok(f()),
     }
+}
+
+pub fn find_adapter_by_luid(factory: &IDXGIFactory, luid: LUID) -> Option<IDXGIAdapter> {
+    let mut i = 0;
+    while let Ok(adapter) = unsafe { factory.EnumAdapters(i) } {
+        i += 1;
+        let Ok(desc) = (unsafe { adapter.GetDesc() }) else {
+            continue;
+        };
+
+        if desc.AdapterLuid == luid {
+            return Some(adapter);
+        }
+    }
+
+    None
 }

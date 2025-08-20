@@ -4,14 +4,15 @@ use anyhow::Context;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, RECT},
+        Foundation::{HWND, LUID, RECT},
         Graphics::{
             Direct3D9::{
                 D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
                 D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX,
-                D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3DDevice9,
-                IDirect3DSwapChain9,
+                D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3D9Ex,
+                IDirect3DDevice9, IDirect3DSwapChain9,
             },
+            Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
             Gdi::RGNDATA,
         },
     },
@@ -22,6 +23,7 @@ use crate::{
     backend::{Backends, render::Renderer},
     event_sink::OverlayEventSink,
     renderer::dx9::Dx9Renderer,
+    util::find_adapter_by_luid,
 };
 
 use super::HOOK;
@@ -164,70 +166,88 @@ pub(super) extern "system" fn hooked_present_ex(
 }
 
 fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
-    let res = Backends::with_or_init_backend(hwnd.0 as _, |backend| {
-        let render = &mut *backend.render.lock();
-        let renderer = match render.renderer {
-            Some(Renderer::Dx9(ref mut renderer)) => renderer,
-            Some(_) => {
-                trace!("ignoring dx9 rendering");
-                return;
-            }
-            None => {
-                debug!("Found dx9 window");
-                render.renderer = Some(Renderer::Dx9(None));
-                // wait next swap for possible remaining renderer check
-                return;
-            }
-        };
-        trace!("using dx9 renderer");
+    let res = Backends::with_or_init_backend(
+        hwnd.0 as _,
+        || {
+            let d3d9ex = unsafe { device.GetDirect3D() }
+                .ok()?
+                .cast::<IDirect3D9Ex>()
+                .ok()?;
+            let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>() }.ok()?;
 
-        // renderer device might be changed, check with previous device
-        let renderer = match *renderer {
-            Some((renderer_device, ref mut renderer))
-                if renderer_device == device.as_raw() as _ =>
-            {
-                renderer
-            }
-            _ => {
-                &mut renderer
-                    .insert((
-                        device.as_raw() as _,
-                        Dx9Renderer::new(device).expect("Dx9Renderer creation failed"),
-                    ))
-                    .1
-            }
-        };
+            let mut param = D3DDEVICE_CREATION_PARAMETERS::default();
+            unsafe { device.GetCreationParameters(&mut param) }.ok()?;
 
-        if render.surface.invalidate_update() && render.surface.get().is_none() {
-            renderer.reset_texture();
-        }
-        let Some(surface) = render.surface.get() else {
-            return;
-        };
+            let mut luid = LUID::default();
+            unsafe { d3d9ex.GetAdapterLUID(param.AdapterOrdinal, &mut luid) }.ok()?;
 
-        let interop = &mut render.interop;
-        match renderer.update_texture(
-            device,
-            surface.size(),
-            &interop.device,
-            interop.cx.get_mut(),
-            surface.texture(),
-            surface.mutex(),
-        ) {
-            Ok(_) => {
-                if unsafe { device.BeginScene() }.is_err() {
+            find_adapter_by_luid(&factory, luid)
+        },
+        |backend| {
+            let render = &mut *backend.render.lock();
+            let renderer = match render.renderer {
+                Some(Renderer::Dx9(ref mut renderer)) => renderer,
+                Some(_) => {
+                    trace!("ignoring dx9 rendering");
                     return;
                 }
+                None => {
+                    debug!("Found dx9 window");
+                    render.renderer = Some(Renderer::Dx9(None));
+                    // wait next swap for possible remaining renderer check
+                    return;
+                }
+            };
+            trace!("using dx9 renderer");
 
-                let _res = renderer.draw(device, render.position, render.window_size);
-                trace!("dx9 render: {:?}", _res);
-                unsafe { _ = device.EndScene() };
+            // renderer device might be changed, check with previous device
+            let renderer = match *renderer {
+                Some((renderer_device, ref mut renderer))
+                    if renderer_device == device.as_raw() as _ =>
+                {
+                    renderer
+                }
+                _ => {
+                    &mut renderer
+                        .insert((
+                            device.as_raw() as _,
+                            Dx9Renderer::new(device).expect("Dx9Renderer creation failed"),
+                        ))
+                        .1
+                }
+            };
+
+            if render.surface.invalidate_update() && render.surface.get().is_none() {
+                renderer.reset_texture();
             }
-            Err(err) => {
-                error!("failed to update dx9 texture. err: {err:?}");
+            let Some(surface) = render.surface.get() else {
+                return;
+            };
+
+            let interop = &mut render.interop;
+            match renderer.update_texture(
+                device,
+                surface.size(),
+                &interop.device,
+                interop.cx.get_mut(),
+                surface.texture(),
+                surface.mutex(),
+            ) {
+                Ok(_) => {
+                    if unsafe { device.BeginScene() }.is_err() {
+                        return;
+                    }
+
+                    let _res = renderer.draw(device, render.position, render.window_size);
+                    trace!("dx9 render: {:?}", _res);
+                    unsafe { _ = device.EndScene() };
+                }
+                Err(err) => {
+                    error!("failed to update dx9 texture. err: {err:?}");
+                }
             }
-        }
-    });
+        },
+    );
 
     if let Err(_err) = res {
         error!("Backends::with_or_init_backend failed. err: {:?}", _err);
