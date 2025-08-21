@@ -1,24 +1,23 @@
 use asdf_overlay_client::{
     common::size::PercentLength,
     event::{
-        ClientEvent, WindowEvent,
         input::{
             CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, Key,
             KeyInputState, KeyboardInput, ScrollAxis,
-        },
+        }, ClientEvent, GpuLuid, WindowEvent
     },
     ty::{CopyRect, Rect},
 };
 use neon::{
     handle::Handle,
     object::Object,
-    prelude::Context,
+    prelude::{Context, Cx},
     result::{JsResult, NeonResult},
     types::{JsBoolean, JsFunction, JsNumber, JsObject, JsString},
 };
 
 pub fn emit_event<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     event: ClientEvent,
     emitter: Handle<'a, JsObject>,
     emit: Handle<'a, JsFunction>,
@@ -28,12 +27,13 @@ pub fn emit_event<'a>(
 
     match event {
         ClientEvent::Window { id, event } => match event {
-            WindowEvent::Added { width, height } => {
+            WindowEvent::Added { width, height, gpu_id } => {
                 builder
                     .arg(cx.string("added"))
                     .arg(cx.number(id))
                     .arg(cx.number(width))
-                    .arg(cx.number(height));
+                    .arg(cx.number(height))
+                    .arg(serialize_gpu_luid(cx, gpu_id)?);
             }
             WindowEvent::Resized { width, height } => {
                 builder
@@ -71,7 +71,7 @@ pub fn emit_event<'a>(
 }
 
 fn serialize_keyboard_input<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     input: KeyboardInput,
 ) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
@@ -108,7 +108,7 @@ fn serialize_keyboard_input<'a>(
 }
 
 fn serialize_cursor_input<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     input: CursorInput,
 ) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
@@ -173,8 +173,23 @@ fn serialize_cursor_input<'a>(
     Ok(obj)
 }
 
+fn serialize_gpu_luid<'a>(
+    cx: &mut Cx<'a>,
+    id: GpuLuid,
+) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    let low = cx.number(id.low);
+    obj.prop(cx, "low").set(low)?;
+
+    let high = cx.number(id.high);
+    obj.prop(cx, "high").set(high)?;
+
+    Ok(obj)
+}
+
 fn serialize_key_input_state<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     state: KeyInputState,
 ) -> Handle<'a, JsString> {
     match state {
@@ -184,7 +199,7 @@ fn serialize_key_input_state<'a>(
 }
 
 fn serialize_cursor_input_state<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     state: CursorInputState,
 ) -> (Handle<'a, JsString>, Handle<'a, JsBoolean>) {
     match state {
@@ -195,7 +210,7 @@ fn serialize_cursor_input_state<'a>(
     }
 }
 
-fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObject> {
+fn serialize_key<'a>(cx: &mut Cx<'a>, key: Key) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     let code = cx.number(key.code.get());
@@ -207,7 +222,7 @@ fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObje
     Ok(obj)
 }
 
-fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObject> {
+fn serialize_ime<'a>(cx: &mut Cx<'a>, ime: Ime) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     let kind = match ime {
@@ -255,7 +270,7 @@ fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObje
 }
 
 pub fn deserialize_percent_length<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     obj: &Handle<'a, JsObject>,
 ) -> NeonResult<PercentLength> {
     let ty = obj.get::<JsString, _, _>(cx, "ty")?.value(cx);
@@ -270,7 +285,7 @@ pub fn deserialize_percent_length<'a>(
 }
 
 pub fn deserialize_copy_rect<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     obj: &Handle<'a, JsObject>,
 ) -> NeonResult<CopyRect> {
     let dst_x = obj.get::<JsNumber, _, _>(cx, "dstX")?.value(cx) as u32;
@@ -284,7 +299,7 @@ pub fn deserialize_copy_rect<'a>(
     })
 }
 
-fn deserialize_rect<'a>(cx: &mut impl Context<'a>, obj: &Handle<'a, JsObject>) -> NeonResult<Rect> {
+fn deserialize_rect<'a>(cx: &mut Cx<'a>, obj: &Handle<'a, JsObject>) -> NeonResult<Rect> {
     let x = obj.get::<JsNumber, _, _>(cx, "x")?.value(cx) as u32;
     let y = obj.get::<JsNumber, _, _>(cx, "y")?.value(cx) as u32;
     let width = obj.get::<JsNumber, _, _>(cx, "width")?.value(cx) as u32;

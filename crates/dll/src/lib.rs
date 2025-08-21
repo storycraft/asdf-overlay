@@ -114,12 +114,15 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
         debug!("sending initial data");
         // send existing windows
         for backend in Backends::iter() {
-            let size = backend.render.lock().window_size;
+            let render = backend.render.lock();
+            let gpu_id = render.interop.gpu_id();
+            let size = render.window_size;
             _ = emitter.emit(ClientEvent::Window {
                 id: *backend.key() as _,
                 event: WindowEvent::Added {
                     width: size.0,
                     height: size.1,
+                    gpu_id,
                 },
             });
         }
