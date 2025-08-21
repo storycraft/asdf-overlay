@@ -43,7 +43,8 @@ impl DxInterop {
                 Some(&mut device),
                 None,
                 Some(&mut cx),
-            ).context("D3D11CreateDevice failed")?;
+            )
+            .context("D3D11CreateDevice failed")?;
             let device = device.unwrap();
             let cx = cx.unwrap();
 

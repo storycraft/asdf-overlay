@@ -12,10 +12,17 @@ pub enum ClientEvent {
 #[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub enum WindowEvent {
     // Window is hooked and added
-    Added { width: u32, height: u32, gpu_id: GpuLuid },
+    Added {
+        width: u32,
+        height: u32,
+        gpu_id: GpuLuid,
+    },
 
     // Window is resized
-    Resized { width: u32, height: u32 },
+    Resized {
+        width: u32,
+        height: u32,
+    },
 
     // Captured window input
     Input(InputEvent),
