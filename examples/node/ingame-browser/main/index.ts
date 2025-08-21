@@ -73,6 +73,7 @@ async function createOverlayWindow(pid: number) {
   let shiftState: InputState = 'Released';
   let aState: InputState = 'Released';
   overlay.event.on('keyboard_input', (_, input) => {
+    console.log(input);
     keybind: if (input.kind === 'Key') {
       const key = input.key;
       if (key.code === 0x10 && !key.extended) {
