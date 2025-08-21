@@ -414,10 +414,7 @@ fn process_wnd_proc(
                     if comp == IME_COMPOSITION_STRING(0) {
                         OverlayEventSink::emit(keyboard_input(
                             backend.hwnd,
-                            KeyboardInput::Ime(Ime::Compose {
-                                text: String::new(),
-                                caret: 0,
-                            }),
+                            KeyboardInput::Ime(Ime::Commit(String::new())),
                         ));
                     }
 
