@@ -55,57 +55,64 @@ use crate::server::IpcServerConn;
 #[tracing::instrument(skip(server))]
 async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
     fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
-        let res = Backends::with_backend(hwnd, |backend| match req {
-            WindowRequest::SetPosition(position) => {
-                backend
-                    .proc
-                    .lock()
-                    .layout
-                    .set_position(position.x, position.y);
-                backend.recalc_position();
-            }
+        let res = Backends::with_backend(hwnd, |backend| {
+            match req {
+                WindowRequest::SetPosition(position) => {
+                    backend
+                        .proc
+                        .lock()
+                        .layout
+                        .set_position(position.x, position.y);
+                    backend.recalc_position();
+                }
 
-            WindowRequest::SetAnchor(anchor) => {
-                backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
-                backend.recalc_position();
-            }
+                WindowRequest::SetAnchor(anchor) => {
+                    backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
+                    backend.recalc_position();
+                }
 
-            WindowRequest::SetMargin(margin) => {
-                backend.proc.lock().layout.set_margin(
-                    margin.top,
-                    margin.right,
-                    margin.bottom,
-                    margin.left,
-                );
-                backend.recalc_position();
-            }
+                WindowRequest::SetMargin(margin) => {
+                    backend.proc.lock().layout.set_margin(
+                        margin.top,
+                        margin.right,
+                        margin.bottom,
+                        margin.left,
+                    );
+                    backend.recalc_position();
+                }
 
-            WindowRequest::ListenInput(cmd) => {
-                let mut flags = ListenInputFlags::empty();
-                flags.set(ListenInputFlags::CURSOR, cmd.cursor);
-                flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+                WindowRequest::ListenInput(cmd) => {
+                    let mut flags = ListenInputFlags::empty();
+                    flags.set(ListenInputFlags::CURSOR, cmd.cursor);
+                    flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
 
-                backend.proc.lock().listen_input = flags;
-            }
+                    backend.proc.lock().listen_input = flags;
+                }
 
-            WindowRequest::BlockInput(cmd) => {
-                backend.block_input(cmd.block);
-            }
+                WindowRequest::BlockInput(cmd) => {
+                    backend.block_input(cmd.block);
+                }
 
-            WindowRequest::SetBlockingCursor(cmd) => {
-                backend.proc.lock().blocking_cursor = cmd.cursor;
-            }
+                WindowRequest::SetBlockingCursor(cmd) => {
+                    backend.proc.lock().blocking_cursor = cmd.cursor;
+                }
 
-            WindowRequest::UpdateSharedHandle(shared) => {
-                let res = backend.render.lock().update_surface(shared.handle);
-                match res {
-                    Ok(_) => backend.recalc_position(),
-                    Err(err) => error!("failed to open shared surface. err: {:?}", err),
+                WindowRequest::UpdateSharedHandle(shared) => {
+                    let res = backend.render.lock().update_surface(shared.handle);
+                    match res {
+                        Ok(_) => backend.recalc_position(),
+                        Err(err) => {
+                            error!("failed to open shared surface. err: {:?}", err);
+                            return false;
+                        }
+                    }
                 }
             }
+
+            true
         });
 
-        Ok(res.is_some())
+        Ok(res.unwrap_or(false))
     }
 
     let mut conn = IpcServerConn::new(server).await?;
