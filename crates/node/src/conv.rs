@@ -1,7 +1,7 @@
 use asdf_overlay_client::{
     common::size::PercentLength,
     event::{
-        ClientEvent, WindowEvent,
+        ClientEvent, GpuLuid, WindowEvent,
         input::{
             CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, Key,
             KeyInputState, KeyboardInput, ScrollAxis,
@@ -12,13 +12,13 @@ use asdf_overlay_client::{
 use neon::{
     handle::Handle,
     object::Object,
-    prelude::Context,
+    prelude::{Context, Cx},
     result::{JsResult, NeonResult},
     types::{JsBoolean, JsFunction, JsNumber, JsObject, JsString},
 };
 
 pub fn emit_event<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     event: ClientEvent,
     emitter: Handle<'a, JsObject>,
     emit: Handle<'a, JsFunction>,
@@ -28,12 +28,17 @@ pub fn emit_event<'a>(
 
     match event {
         ClientEvent::Window { id, event } => match event {
-            WindowEvent::Added { width, height } => {
+            WindowEvent::Added {
+                width,
+                height,
+                gpu_id,
+            } => {
                 builder
                     .arg(cx.string("added"))
                     .arg(cx.number(id))
                     .arg(cx.number(width))
-                    .arg(cx.number(height));
+                    .arg(cx.number(height))
+                    .arg(serialize_gpu_luid(cx, gpu_id)?);
             }
             WindowEvent::Resized { width, height } => {
                 builder
@@ -70,77 +75,71 @@ pub fn emit_event<'a>(
     builder.exec(cx)
 }
 
-fn serialize_keyboard_input<'a>(
-    cx: &mut impl Context<'a>,
-    input: KeyboardInput,
-) -> JsResult<'a, JsObject> {
+fn serialize_keyboard_input<'a>(cx: &mut Cx<'a>, input: KeyboardInput) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     match input {
         KeyboardInput::Key { key, state } => {
             let kind = cx.string("Key");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
 
             let key = serialize_key(cx, key)?;
-            obj.set(cx, "key", key)?;
+            obj.prop(cx, "key").set(key)?;
 
             let state = serialize_key_input_state(cx, state);
-            obj.set(cx, "state", state)?;
+            obj.prop(cx, "state").set(state)?;
         }
         KeyboardInput::Char(ch) => {
             let kind = cx.string("Char");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
 
             let mut buf = [0_u8; 4];
             let ch = cx.string(ch.encode_utf8(&mut buf));
-            obj.set(cx, "ch", ch)?;
+            obj.prop(cx, "ch").set(ch)?;
         }
         KeyboardInput::Ime(ime) => {
             let kind = cx.string("Ime");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
 
             let ime = serialize_ime(cx, ime)?;
-            obj.set(cx, "ime", ime)?;
+            obj.prop(cx, "ime").set(ime)?;
         }
     }
 
     Ok(obj)
 }
 
-fn serialize_cursor_input<'a>(
-    cx: &mut impl Context<'a>,
-    input: CursorInput,
-) -> JsResult<'a, JsObject> {
+fn serialize_cursor_input<'a>(cx: &mut Cx<'a>, input: CursorInput) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     let client_x = cx.number(input.client.x);
-    obj.set(cx, "clientX", client_x)?;
+    obj.prop(cx, "clientX").set(client_x)?;
 
     let client_y = cx.number(input.client.y);
-    obj.set(cx, "clientY", client_y)?;
+    obj.prop(cx, "clientY").set(client_y)?;
 
     let window_x = cx.number(input.client.x);
-    obj.set(cx, "windowX", window_x)?;
+    obj.prop(cx, "windowX").set(window_x)?;
 
     let window_y = cx.number(input.client.y);
-    obj.set(cx, "windowY", window_y)?;
+    obj.prop(cx, "windowY").set(window_y)?;
 
     match input.event {
         CursorEvent::Enter => {
             let kind = cx.string("Enter");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
         }
         CursorEvent::Leave => {
             let kind = cx.string("Leave");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
         }
         CursorEvent::Action { state, action } => {
             let kind = cx.string("Action");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
 
             let (state, double_click) = serialize_cursor_input_state(cx, state);
-            obj.set(cx, "state", state)?;
-            obj.set(cx, "doubleClick", double_click)?;
+            obj.prop(cx, "state").set(state)?;
+            obj.prop(cx, "doubleClick").set(double_click)?;
 
             let action = match action {
                 CursorAction::Left => cx.string("Left"),
@@ -149,34 +148,43 @@ fn serialize_cursor_input<'a>(
                 CursorAction::Back => cx.string("Back"),
                 CursorAction::Forward => cx.string("Forward"),
             };
-            obj.set(cx, "action", action)?;
+            obj.prop(cx, "action").set(action)?;
         }
         CursorEvent::Move => {
             let kind = cx.string("Move");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
         }
         CursorEvent::Scroll { axis, delta } => {
             let kind = cx.string("Scroll");
-            obj.set(cx, "kind", kind)?;
+            obj.prop(cx, "kind").set(kind)?;
 
             let axis = match axis {
                 ScrollAxis::X => cx.string("X"),
                 ScrollAxis::Y => cx.string("Y"),
             };
-            obj.set(cx, "axis", axis)?;
+            obj.prop(cx, "axis").set(axis)?;
 
             let delta = cx.number(delta);
-            obj.set(cx, "delta", delta)?;
+            obj.prop(cx, "delta").set(delta)?;
         }
     }
 
     Ok(obj)
 }
 
-fn serialize_key_input_state<'a>(
-    cx: &mut impl Context<'a>,
-    state: KeyInputState,
-) -> Handle<'a, JsString> {
+fn serialize_gpu_luid<'a>(cx: &mut Cx<'a>, id: GpuLuid) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    let low = cx.number(id.low);
+    obj.prop(cx, "low").set(low)?;
+
+    let high = cx.number(id.high);
+    obj.prop(cx, "high").set(high)?;
+
+    Ok(obj)
+}
+
+fn serialize_key_input_state<'a>(cx: &mut Cx<'a>, state: KeyInputState) -> Handle<'a, JsString> {
     match state {
         KeyInputState::Pressed => cx.string("Pressed"),
         KeyInputState::Released => cx.string("Released"),
@@ -184,7 +192,7 @@ fn serialize_key_input_state<'a>(
 }
 
 fn serialize_cursor_input_state<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     state: CursorInputState,
 ) -> (Handle<'a, JsString>, Handle<'a, JsBoolean>) {
     match state {
@@ -195,67 +203,67 @@ fn serialize_cursor_input_state<'a>(
     }
 }
 
-fn serialize_key<'a>(cx: &mut impl Context<'a>, key: Key) -> JsResult<'a, JsObject> {
+fn serialize_key<'a>(cx: &mut Cx<'a>, key: Key) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     let code = cx.number(key.code.get());
-    obj.set(cx, "code", code)?;
+    obj.prop(cx, "code").set(code)?;
 
     let extended = cx.boolean(key.extended);
-    obj.set(cx, "extended", extended)?;
+    obj.prop(cx, "extended").set(extended)?;
 
     Ok(obj)
 }
 
-fn serialize_ime<'a>(cx: &mut impl Context<'a>, ime: Ime) -> JsResult<'a, JsObject> {
+fn serialize_ime<'a>(cx: &mut Cx<'a>, ime: Ime) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
 
     let kind = match ime {
         Ime::Enabled { lang, conversion } => {
             let lang = cx.string(lang);
-            obj.set(cx, "lang", lang)?;
+            obj.prop(cx, "lang").set(lang)?;
 
             let conversion = cx.number(conversion.bits());
-            obj.set(cx, "conversion", conversion)?;
+            obj.prop(cx, "conversion").set(conversion)?;
 
             cx.string("Enabled")
         }
         Ime::Changed(lang) => {
             let lang = cx.string(lang);
-            obj.set(cx, "lang", lang)?;
+            obj.prop(cx, "lang").set(lang)?;
 
             cx.string("Changed")
         }
         Ime::ConversionChanged(conversion) => {
             let conversion = cx.number(conversion.bits());
-            obj.set(cx, "conversion", conversion)?;
+            obj.prop(cx, "conversion").set(conversion)?;
 
             cx.string("ConversionChanged")
         }
         Ime::Compose { text, caret } => {
             let text = cx.string(text);
-            obj.set(cx, "text", text)?;
+            obj.prop(cx, "text").set(text)?;
 
             let caret = cx.number(caret as f64);
-            obj.set(cx, "caret", caret)?;
+            obj.prop(cx, "caret").set(caret)?;
 
             cx.string("Compose")
         }
         Ime::Commit(text) => {
             let text = cx.string(text);
-            obj.set(cx, "text", text)?;
+            obj.prop(cx, "text").set(text)?;
 
             cx.string("Commit")
         }
         Ime::Disabled => cx.string("Disabled"),
     };
-    obj.set(cx, "kind", kind)?;
+    obj.prop(cx, "kind").set(kind)?;
 
     Ok(obj)
 }
 
 pub fn deserialize_percent_length<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     obj: &Handle<'a, JsObject>,
 ) -> NeonResult<PercentLength> {
     let ty = obj.get::<JsString, _, _>(cx, "ty")?.value(cx);
@@ -270,7 +278,7 @@ pub fn deserialize_percent_length<'a>(
 }
 
 pub fn deserialize_copy_rect<'a>(
-    cx: &mut impl Context<'a>,
+    cx: &mut Cx<'a>,
     obj: &Handle<'a, JsObject>,
 ) -> NeonResult<CopyRect> {
     let dst_x = obj.get::<JsNumber, _, _>(cx, "dstX")?.value(cx) as u32;
@@ -284,7 +292,7 @@ pub fn deserialize_copy_rect<'a>(
     })
 }
 
-fn deserialize_rect<'a>(cx: &mut impl Context<'a>, obj: &Handle<'a, JsObject>) -> NeonResult<Rect> {
+fn deserialize_rect<'a>(cx: &mut Cx<'a>, obj: &Handle<'a, JsObject>) -> NeonResult<Rect> {
     let x = obj.get::<JsNumber, _, _>(cx, "x")?.value(cx) as u32;
     let y = obj.get::<JsNumber, _, _>(cx, "y")?.value(cx) as u32;
     let width = obj.get::<JsNumber, _, _>(cx, "width")?.value(cx) as u32;

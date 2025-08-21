@@ -87,6 +87,7 @@ impl Backends {
                     event: WindowEvent::Added {
                         width: window_size.0,
                         height: window_size.1,
+                        gpu_id: interop.gpu_id(),
                     },
                 });
 
