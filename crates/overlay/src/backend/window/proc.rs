@@ -393,10 +393,7 @@ fn process_wnd_proc(
             let mut proc = backend.proc.lock();
             proc.ime = ImeState::Enabled;
             if proc.input_blocking() {
-                drop(proc);
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
-                });
+                return Some(LRESULT(0));
             }
         }
 
@@ -414,10 +411,7 @@ fn process_wnd_proc(
                     if comp == IME_COMPOSITION_STRING(0) {
                         OverlayEventSink::emit(keyboard_input(
                             backend.hwnd,
-                            KeyboardInput::Ime(Ime::Compose {
-                                text: String::new(),
-                                caret: 0,
-                            }),
+                            KeyboardInput::Ime(Ime::Commit(String::new())),
                         ));
                     }
 
@@ -431,7 +425,7 @@ fn process_wnd_proc(
                         }
                     }
 
-                    if comp.contains(ime::GCS_COMPSTR | ime::GCS_COMPATTR | ime::GCS_CURSORPOS) {
+                    if comp.0 & (ime::GCS_COMPSTR | ime::GCS_COMPATTR | ime::GCS_CURSORPOS).0 != 0 {
                         let caret = if !comp.contains(IME_COMPOSITION_STRING(ime::CS_NOMOVECARET))
                             && comp.contains(ime::GCS_CURSORPOS)
                         {
@@ -482,10 +476,7 @@ fn process_wnd_proc(
             }
 
             if proc.input_blocking() {
-                drop(proc);
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
-                });
+                return Some(LRESULT(0));
             }
         }
 

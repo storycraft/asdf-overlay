@@ -11,10 +11,13 @@ use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-        UI::WindowsAndMessaging::{
-            self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE,
-            PM_REMOVE,
+        Foundation::{HWND, LPARAM, LRESULT},
+        UI::{
+            Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
+            WindowsAndMessaging::{
+                self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE,
+                PM_REMOVE,
+            },
         },
     },
     core::BOOL,
@@ -320,7 +323,7 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> O
         return None;
     }
 
-    if let Some(key) = to_key(msg.wParam, msg.lParam) {
+    if let Some(key) = to_key(msg.lParam) {
         OverlayEventSink::emit(keyboard_input(
             backend.hwnd,
             KeyboardInput::Key { key, state },
@@ -346,7 +349,10 @@ fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
 }
 
 #[inline]
-fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<Key> {
-    let [_, _, _, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
-    Key::new(wparam.0 as _, flags & 0x01 == 0x01)
+fn to_key(lparam: LPARAM) -> Option<Key> {
+    let [_, _, code, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
+    Key::new(
+        unsafe { MapVirtualKeyA(code as u32, MAPVK_VSC_TO_VK) as u8 },
+        flags & 0x01 == 0x01,
+    )
 }
