@@ -80,11 +80,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.release-deploy.outputs.signed-artifact-id }}
-          path: 'target/out-signed-artifact'
+          path: 'packages/core'
           merge-multiple: true
-
-      - name: Apply artifacts
-        run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
         run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}
