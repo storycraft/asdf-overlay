@@ -290,6 +290,7 @@ fn serialize_candidate_list<'a>(
             let candidate = cx.string(candidate);
             list.prop(cx, i as u32).set(candidate)?;
         }
+        list
     };
     obj.prop(cx, "candidates").set(candidates)?;
 
