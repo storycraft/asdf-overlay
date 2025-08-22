@@ -72,7 +72,7 @@ jobs:
         id: bump
         run: |
           npm config set git-tag-version=false
-          $ver = npm version ${{ github.event.inputs.level }}
+          $ver = pnpm --filter "@asdf-overlay/*" exec npm version ${{ github.event.inputs.level }}
           git commit -a -m "chore: Bump node package version"
           "version=" + $ver.substring(1) >> $env:GITHUB_OUTPUT
 
@@ -80,11 +80,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.release-deploy.outputs.signed-artifact-id }}
-          path: 'target/out-signed-artifact'
+          path: 'packages/core'
           merge-multiple: true
-
-      - name: Apply artifacts
-        run: Copy-Item -Path "target\out-signed-artifact\*" -Force
 
       - name: Publish node package
         run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}

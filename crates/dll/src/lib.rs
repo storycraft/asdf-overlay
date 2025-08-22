@@ -219,16 +219,17 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     let _guard = rt.enter();
 
     let pid = unsafe { GetCurrentProcessId() };
-    let module_handle = dll_module.0 as u32;
+    let module_handle = dll_module.0 as usize;
     // setup first ipc server
-    let server = match create_ipc_server(create_ipc_addr(pid, module_handle), true) {
+    let server = match create_ipc_server(create_ipc_addr(pid, module_handle as u32), true) {
         Ok(server) => server,
         Err(err) => {
             error!("cannot open ipc server. err: {err:?}");
             return false;
         }
     };
-    let create_server = move || create_ipc_server(create_ipc_addr(pid, module_handle), false);
+    let create_server =
+        move || create_ipc_server(create_ipc_addr(pid, module_handle as u32), false);
 
     thread::spawn(move || {
         // initialize overlay

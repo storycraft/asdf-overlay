@@ -1,7 +1,8 @@
 use std::{
     env,
     ffi::OsStr,
-    fs,
+    fs::{self, create_dir_all},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -14,11 +15,21 @@ use clap::Parser;
 enum Action {
     #[command(about = "Build overlay dlls")]
     BuildDll {
+        /// Artifact output directory
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+
+        /// Addtional cargo arguments
         #[arg(last(true))]
         cargo_args: Vec<String>,
     },
     #[command(about = "Build node natives")]
     BuildNode {
+        /// Artifact output directory
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+
+        /// Addtional cargo arguments
         #[arg(last(true))]
         cargo_args: Vec<String>,
     },
@@ -26,14 +37,19 @@ enum Action {
 
 fn main() -> anyhow::Result<()> {
     match Action::parse() {
-        Action::BuildDll { cargo_args } => build_dlls(&cargo_args)?,
-        Action::BuildNode { cargo_args } => build_node(&cargo_args)?,
+        Action::BuildDll { out, cargo_args } => {
+            build_dlls(out.as_deref().unwrap_or(Path::new(".")), &cargo_args)?
+        }
+        Action::BuildNode { out, cargo_args } => {
+            build_node(out.as_deref().unwrap_or(Path::new(".")), &cargo_args)?
+        }
     }
 
     Ok(())
 }
 
-fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
+fn build_node(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
+    create_dir_all(dir)?;
     let [x64_path, aarch64_path] = cargo_artifacts(
         cargo_args,
         "asdf-overlay-node",
@@ -42,13 +58,14 @@ fn build_node(cargo_args: &[String]) -> anyhow::Result<()> {
     let x64_path = x64_path.context("x86_64 build has no output")?;
     let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
-    fs::copy(x64_path, "./addon-x64.node")?;
-    fs::copy(aarch64_path, "./addon-aarch64.node")?;
+    fs::copy(x64_path, dir.join("addon-x64.node"))?;
+    fs::copy(aarch64_path, dir.join("addon-aarch64.node"))?;
 
     Ok(())
 }
 
-fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
+fn build_dlls(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
+    create_dir_all(dir)?;
     let [x64_path, x86_path, aarch64_path] = cargo_artifacts(
         cargo_args,
         "asdf-overlay-dll",
@@ -62,9 +79,9 @@ fn build_dlls(cargo_args: &[String]) -> anyhow::Result<()> {
     let x86_path = x86_path.context("i686 build has no output")?;
     let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
-    fs::copy(x64_path, "./asdf_overlay-x64.dll")?;
-    fs::copy(x86_path, "./asdf_overlay-x86.dll")?;
-    fs::copy(aarch64_path, "./asdf_overlay-aarch64.dll")?;
+    fs::copy(x64_path, dir.join("asdf_overlay-x64.dll"))?;
+    fs::copy(x86_path, dir.join("asdf_overlay-x86.dll"))?;
+    fs::copy(aarch64_path, dir.join("asdf_overlay-aarch64.dll"))?;
 
     Ok(())
 }

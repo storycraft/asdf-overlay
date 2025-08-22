@@ -8,7 +8,7 @@ export default defineConfig({
       },
       rollupOptions: {
         external: [
-          'asdf-overlay-node',
+          '@asdf-overlay/core',
         ],
       },
     },

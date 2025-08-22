@@ -1,10 +1,11 @@
 {
-  "name": "asdf-overlay-node",
-  "version": "0.8.3",
-  "description": "Asdf Overlay Node Addon",
-  "main": "./lib/index.js",
-  "homepage": "https://github.com/storycraft/asdf-overlay#readme",
+  "name": "asdf-overlay",
+  "description": "Asdf overlay",
+  "private": true,
   "type": "module",
+  "author": "storycraft <storycraft@pancake.sh>",
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/storycraft/asdf-overlay#readme",
   "bugs": {
     "url": "https://github.com/storycraft/asdf-overlay/issues"
   },
@@ -13,51 +14,17 @@
     "url": "https://github.com/storycraft/asdf-overlay"
   },
   "scripts": {
-    "test": "tsc && cargo test",
+    "test": "pnpm -r test && cargo test",
     "lint": "eslint",
-    "check": "tsc",
-    "build-dll": "cargo xtask build-dll --",
-    "cargo-build": "cargo xtask build-node --",
-    "build:dist": "tsc -p tsconfig.build.json",
-    "build": "npm run cargo-build -- --release && npm run build-dll -- --release && npm run build:dist",
-    "build:debug": "npm run cargo-build && npm run build-dll && npm run build:dist",
+    "build:debug": "pnpm -r build:debug",
+    "build": "pnpm -r build",
     "doc": "mdbook build ./doc",
-    "ci:deploy": "npm run build",
-    "ci:publish": "npm run build:dist && pnpm publish -r --provenance --access public"
+    "ci:deploy": "pnpm -r build",
+    "ci:publish": "pnpm -r build:dist && pnpm publish -r --provenance --access public"
   },
-  "author": "storycraft <storycraft@pancake.sh>",
-  "license": "MIT OR Apache-2.0",
-  "os": [
-    "win32"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
-  ],
-  "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.js"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "default": "./lib/*.js"
-    }
-  },
-  "types": "./lib/index.d.ts",
-  "files": [
-    "lib/**/*",
-    "addon-x64.node",
-    "addon-aarch64.node",
-    "asdf_overlay-x64.dll",
-    "asdf_overlay-x86.dll",
-    "asdf_overlay-aarch64.dll",
-    "asdf_overlay-layer.json"
-  ],
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@stylistic/eslint-plugin": "^5.2.2",
-    "@types/node": "^24.1.0",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.3",
