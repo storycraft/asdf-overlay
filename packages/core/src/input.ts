@@ -56,6 +56,11 @@ export type Ime = {
   kind: 'ChangedConversion',
   conversion: ImeConversion,
 } | {
+  kind: 'CandidateChanged',
+  list: ImeCandidateList,
+} | {
+  kind: 'CandidateClosed',
+} | {
   kind: 'Compose',
   text: string,
   caret: number,
@@ -64,6 +69,13 @@ export type Ime = {
   text: string,
 } | {
   kind: 'Disabled',
+};
+
+export type ImeCandidateList = {
+  pageStartIndex: number,
+  pageSize: number,
+  selectedIndex: number,
+  candidates: string[],
 };
 
 export const enum ImeConversion {

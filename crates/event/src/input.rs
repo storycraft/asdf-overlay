@@ -106,6 +106,10 @@ pub enum Ime {
     Changed(String),
     /// IME conversion mode changed
     ConversionChanged(ConversionMode),
+    /// IME candidates are added/changed
+    CandidateChanged(ImeCandidateList),
+    /// IME candidates are closed
+    CandidateClosed,
     /// IME is composing text
     Compose {
         text: String,
@@ -114,6 +118,15 @@ pub enum Ime {
     /// IME commit finished text
     Commit(String),
     Disabled,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
+pub struct ImeCandidateList {
+    pub page_start_index: u32,
+    pub page_size: u32,
+    pub selected_index: u32,
+    pub candidates: Vec<String>,
 }
 
 bitflags::bitflags! {
