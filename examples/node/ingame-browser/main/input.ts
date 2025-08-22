@@ -1,7 +1,7 @@
 // TODO: provide utility library for user
 
-import { CursorInput, KeyboardInput } from 'asdf-overlay-node/input';
-import { Cursor } from 'asdf-overlay-node';
+import { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
+import { Cursor } from '@asdf-overlay/core';
 import {
   KeyboardInputEvent,
   MouseInputEvent,

@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay, percent } from 'asdf-overlay-node';
-import { InputState } from 'asdf-overlay-node/input';
+import { defaultDllDir, Overlay, percent } from '@asdf-overlay/core';
+import { InputState } from '@asdf-overlay/core/input';
 import find from 'find-process';
 import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
 

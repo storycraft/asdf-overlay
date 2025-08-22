@@ -6,7 +6,7 @@
   },
   "exclude": [
     "./doc/book",
-    "./lib",
+    "packages/core/lib",
     "./target",
     "./examples",
   ]

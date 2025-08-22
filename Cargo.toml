@@ -1,5 +1,10 @@
 [workspace]
-members = ["./crates/*", "./xtask", "./examples/rust/*"]
+members = [
+    "./crates/*",
+    "./xtask",
+    "./examples/rust/*",
+    "./packages/core/native",
+]
 resolver = "2"
 
 [profile.dev]
