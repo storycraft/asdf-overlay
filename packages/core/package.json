@@ -3,9 +3,10 @@
   "version": "0.8.3",
   "description": "Asdf overlay core Node addon",
   "main": "./lib/index.js",
+  "type": "module",
   "author": "storycraft <storycraft@pancake.sh>",
   "homepage": "https://github.com/storycraft/asdf-overlay#readme",
-  "type": "module",
+  "license": "MIT OR Apache-2.0",
   "bugs": {
     "url": "https://github.com/storycraft/asdf-overlay/issues"
   },
@@ -19,7 +20,6 @@
     "build:debug": "npm run cargo-build && npm run build-dll && tsc",
     "build": "npm run cargo-build -- --release && npm run build-dll -- --release && tsc"
   },
-  "license": "MIT OR Apache-2.0",
   "os": [
     "win32"
   ],
