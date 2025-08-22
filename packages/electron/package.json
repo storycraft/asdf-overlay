@@ -1,0 +1,34 @@
+{
+  "name": "@asdf-overlay/electron",
+  "version": "0.8.3",
+  "description": "Asdf overlay Electron integration",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "type": "module",
+  "author": "storycraft <storycraft@pancake.sh>",
+  "homepage": "https://github.com/storycraft/asdf-overlay#readme",
+  "license": "MIT OR Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/storycraft/asdf-overlay/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/storycraft/asdf-overlay"
+  },
+  "scripts": {
+    "build:dist": "tsc",
+    "build": "npm run build:dist"
+  },
+  "files": [
+    "lib/**/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@asdf-overlay/core": "workspace:*",
+    "electron": "^37.3.1"
+  },
+  "packageManager": "pnpm@10.13.1"
+}

@@ -18,7 +18,8 @@
     "build-dll": "cargo xtask build-dll --",
     "cargo-build": "cargo xtask build-node --",
     "build:debug": "npm run cargo-build && npm run build-dll && tsc",
-    "build": "npm run cargo-build -- --release && npm run build-dll -- --release && tsc"
+    "build:dist": "tsc",
+    "build": "npm run cargo-build -- --release && npm run build-dll -- --release && npm run build:dist"
   },
   "os": [
     "win32"

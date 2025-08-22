@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@asdf-overlay/core": "workspace:*",
-    "electron": "^36.2.0",
+    "@asdf-overlay/electron": "workspace:*",
+    "electron": "^37.3.1",
     "find-process": "^1.4.10"
   },
   "devDependencies": {

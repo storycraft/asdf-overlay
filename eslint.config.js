@@ -9,7 +9,7 @@ export default tsEslint.config(
   globalIgnores([
     './target/**/*',
     './doc/book/**/*',
-    './packages/**/lib',
+    './packages/*/lib',
     './examples/node/ingame-browser/out/**/*',
   ]),
   eslint.configs.recommended,

@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { defaultDllDir, Overlay, percent } from '@asdf-overlay/core';
 import { InputState } from '@asdf-overlay/core/input';
 import find from 'find-process';
-import { toCursor, toKeyboardInputEvent, toMouseEvent } from './input';
+import { ElectronOverlayInput, ElectronOverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
 
 async function createOverlayWindow(pid: number) {
   const overlay = await Overlay.attach(
@@ -19,57 +19,20 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  mainWindow.webContents.on('paint', (e) => {
-    void (async (e) => {
-      if (!e.texture) {
-        return;
-      }
-
-      const info = e.texture.textureInfo;
-      // captureUpdateRect contains more accurate dirty rect, fallback to contentRect if it doesn't exist.
-      const rect = info.metadata.captureUpdateRect ?? info.contentRect;
-
-      try {
-        // update only changed part
-        await overlay.updateShtex(
-          id,
-          info.codedSize.width,
-          info.codedSize.height,
-          e.texture.textureInfo.sharedTextureHandle,
-          {
-            dstX: rect.x,
-            dstY: rect.y,
-            src: rect,
-          },
-        );
-      } finally {
-        e.texture.release();
-      }
-    })(e);
-  });
-
   const id = await new Promise<number>(resolve => overlay.event.once('added', resolve));
+  const window: OverlayWindow = { id, overlay };
 
   // centre layout
   void overlay.setPosition(id, percent(0.5), percent(0.5));
   void overlay.setAnchor(id, percent(0.5), percent(0.5));
 
+  ElectronOverlaySurface.connect(window, mainWindow.webContents);
+
   // always listen keyboard events
   await overlay.listenInput(id, false, true);
 
-  overlay.event.on('cursor_input', (_, input) => {
-    const event = toMouseEvent(input);
-    if (event) {
-      mainWindow.webContents.sendInputEvent(event);
-    }
-  });
-
-  mainWindow.webContents.on('cursor-changed', (_, type) => {
-    void overlay.setBlockingCursor(id, toCursor(type));
-  });
-
+  const overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
   let block = false;
-
   let shiftState: InputState = 'Released';
   let aState: InputState = 'Released';
   overlay.event.on('keyboard_input', (_, input) => {
@@ -99,17 +62,9 @@ async function createOverlayWindow(pid: number) {
 
         // block all inputs reaching window and listen
         void overlay.blockInput(id, block);
+        overlayInput.forwardInput = block;
         return;
       }
-    }
-
-    if (!block) {
-      return;
-    }
-
-    const event = toKeyboardInputEvent(input);
-    if (event) {
-      mainWindow.webContents.sendInputEvent(event);
     }
   });
 
