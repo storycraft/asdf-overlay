@@ -73,6 +73,7 @@ jobs:
         run: |
           npm config set git-tag-version=false
           $ver = pnpm --filter "@asdf-overlay/*" exec npm version ${{ github.event.inputs.level }}
+          $ver=$ver[0]
           git commit -a -m "chore: Bump node package version"
           "version=" + $ver.substring(1) >> $env:GITHUB_OUTPUT
 
