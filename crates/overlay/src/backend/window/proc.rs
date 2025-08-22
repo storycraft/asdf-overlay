@@ -660,7 +660,11 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
         let base = unsafe { &raw mut (**candidate_list_ptr).dwOffset }.cast::<u32>();
         for i in 0..count {
             let candidate_offset = unsafe { *base.add(i as _) };
-            let candidate_start = unsafe { candidate_list_ptr.byte_add(candidate_offset as _).cast::<u16>() };
+            let candidate_start = unsafe {
+                candidate_list_ptr
+                    .byte_add(candidate_offset as _)
+                    .cast::<u16>()
+            };
             let size = {
                 let mut len = 0;
                 while (unsafe { *candidate_start.add(len) }) != 0 {
