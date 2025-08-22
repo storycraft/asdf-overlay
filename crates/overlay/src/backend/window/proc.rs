@@ -661,19 +661,19 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
         for i in 0..count {
             let candidate_offset = unsafe { *base.add(i as _) };
             let candidate_start = unsafe { candidate_list_ptr.byte_add(candidate_offset as _).cast::<u16>() };
-            let len = {
+            let size = {
                 let mut len = 0;
                 while (unsafe { *candidate_start.add(len) }) != 0 {
                     len += 1;
                 }
-                len
+                len * 2
             };
 
             list.push(
                 unsafe {
                     WStr::from_utf16le_unchecked(slice::from_raw_parts(
                         candidate_start.cast::<u8>(),
-                        len,
+                        size,
                     ))
                 }
                 .to_utf8(),
