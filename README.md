@@ -2,8 +2,8 @@
 [![Crates.io][crates-badge]][crates-url]
 [![Documentation][docs-badge]][docs-url]
 
-[npm-badge]: https://img.shields.io/npm/v/asdf-overlay-node.svg
-[npm-url]: https://www.npmjs.com/package/asdf-overlay-node
+[npm-badge]: https://img.shields.io/npm/v/@asdf-overlay/core.svg
+[npm-url]: https://www.npmjs.com/package/@asdf-overlay/core
 [crates-badge]: https://img.shields.io/crates/v/asdf-overlay-client.svg
 [crates-url]: https://crates.io/crates/asdf-overlay-client
 [docs-badge]: https://docs.rs/asdf-overlay-client/badge.svg     
