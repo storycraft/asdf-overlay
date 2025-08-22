@@ -52,8 +52,8 @@ async function createOverlayWindow(pid: number) {
 
         if (block) {
           // do full repaint
-          mainWindow.webContents.invalidate();
           mainWindow.webContents.startPainting();
+          mainWindow.webContents.invalidate();
           mainWindow.focusOnWebView();
 
           // Open the DevTools.
