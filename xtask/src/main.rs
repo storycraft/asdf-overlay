@@ -1,7 +1,7 @@
 use std::{
     env,
     ffi::OsStr,
-    fs,
+    fs::{self, create_dir_all},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn build_node(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
+    create_dir_all(dir)?;
     let [x64_path, aarch64_path] = cargo_artifacts(
         cargo_args,
         "asdf-overlay-node",
@@ -64,6 +65,7 @@ fn build_node(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
 }
 
 fn build_dlls(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
+    create_dir_all(dir)?;
     let [x64_path, x86_path, aarch64_path] = cargo_artifacts(
         cargo_args,
         "asdf-overlay-dll",
