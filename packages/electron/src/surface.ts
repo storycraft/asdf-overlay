@@ -27,6 +27,12 @@ export class ElectronOverlaySurface {
           offscreenTexture.release();
         });
       } else {
+        const size = image.getSize();
+        // offscreenTexture undefined if image is empty, handle the case
+        if (size.width === 0 || size.height === 0) {
+          return;
+        }
+
         void this.paintSoftware(rect, image);
       }
     };
