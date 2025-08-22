@@ -107,6 +107,6 @@ jobs:
           tag_name: "v${{ steps.bump.outputs.version }}"
           target_commitish: '${{ github.ref }}'
           files: |
-            asdf_overlay-aarch64.dll
-            asdf_overlay-x86.dll
-            asdf_overlay-x64.dll
+            packages/core/asdf_overlay-aarch64.dll
+            packages/core/asdf_overlay-x86.dll
+            packages/core/asdf_overlay-x64.dll
