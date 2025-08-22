@@ -1,9 +1,7 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": false,
     "declaration": true,
-    "allowJs": false,
     "outDir": "lib",
   },
   "include": [

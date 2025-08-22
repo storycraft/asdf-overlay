@@ -1,21 +1,8 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "lib": [
-      "ESNext"
-    ],
-    "noEmit": true,
-    "useDefineForClassFields": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "allowJs": true
+    "allowJs": true,
+    "noEmit": true
   },
   "exclude": [
     "./doc/book",
