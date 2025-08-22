@@ -644,7 +644,6 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
     );
 
     let res = unsafe { ImmGetCandidateListW(himc, index, Some(*candidate_list_ptr), byte_size) };
-    dbg!(res);
     if res == 0 {
         return None;
     }
@@ -659,7 +658,6 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
     let candidates = {
         let mut list = Vec::with_capacity(count as _);
         let base = unsafe { &raw mut (**candidate_list_ptr).dwOffset }.cast::<u32>();
-        dbg!(base);
         for i in 0..count {
             let candidate_offset = unsafe { *base.add(i as _) };
             let candidate_start = unsafe { candidate_list_ptr.byte_add(candidate_offset as _).cast::<u16>() };
@@ -670,8 +668,6 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
                 }
                 len
             };
-
-            dbg!(len);
 
             list.push(
                 unsafe {
