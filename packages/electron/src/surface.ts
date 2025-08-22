@@ -87,6 +87,7 @@ export class ElectronOverlaySurface {
   private emitError(e: unknown) {
     if (this.events.listenerCount('error') !== 0) {
       this.events.emit('error', e);
+      return;
     }
 
     throw e;
