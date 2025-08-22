@@ -16,7 +16,8 @@
   "scripts": {
     "build-dll": "cargo xtask build-dll --",
     "cargo-build": "cargo xtask build-node --",
-    "build": "tsc && npm run cargo-build -- --release && npm run build-dll -- --release"
+    "build:debug": "npm run cargo-build && npm run build-dll && tsc",
+    "build": "npm run cargo-build -- --release && npm run build-dll -- --release && tsc"
   },
   "license": "MIT OR Apache-2.0",
   "os": [
