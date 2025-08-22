@@ -482,10 +482,7 @@ fn handle_ime_notify(hwnd: u32, command: u32) {
     match command {
         ime::IMN_SETCONVERSIONMODE => OverlayEventSink::emit(keyboard_input(
             hwnd,
-            KeyboardInput::Ime(Ime::ConversionChanged(with_himc(
-                hwnd,
-                ime_conversion_mode,
-            ))),
+            KeyboardInput::Ime(Ime::ConversionChanged(with_himc(hwnd, ime_conversion_mode))),
         )),
 
         ime::IMN_OPENCANDIDATE | ime::IMN_CHANGECANDIDATE => {
@@ -647,6 +644,7 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
     );
 
     let res = unsafe { ImmGetCandidateListW(himc, index, Some(*candidate_list_ptr), byte_size) };
+    dbg!(res);
     if res == 0 {
         return None;
     }
@@ -660,21 +658,25 @@ fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
     } = unsafe { **candidate_list_ptr };
     let candidates = {
         let mut list = Vec::with_capacity(count as _);
-        let base = unsafe { &raw mut (**candidate_list_ptr).dwOffset }.cast::<*mut u16>();
+        let base = unsafe { &raw mut (**candidate_list_ptr).dwOffset }.cast::<u32>();
+        dbg!(base);
         for i in 0..count {
-            let candidate_base = unsafe { *base.add(i as _) };
+            let candidate_offset = unsafe { *base.add(i as _) };
+            let candidate_start = unsafe { candidate_list_ptr.byte_add(candidate_offset as _).cast::<u16>() };
             let len = {
                 let mut len = 0;
-                while (unsafe { *candidate_base.add(len) }) != 0 {
+                while (unsafe { *candidate_start.add(len) }) != 0 {
                     len += 1;
                 }
                 len
             };
 
+            dbg!(len);
+
             list.push(
                 unsafe {
                     WStr::from_utf16le_unchecked(slice::from_raw_parts(
-                        candidate_base.cast::<u8>(),
+                        candidate_start.cast::<u8>(),
                         len,
                     ))
                 }
