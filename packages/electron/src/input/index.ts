@@ -1,20 +1,10 @@
 import type { KeyboardInputEvent, MouseInputEvent, MouseWheelInputEvent, WebContents } from 'electron';
 import type { OverlayWindow } from '../index.js';
-import type { CursorInput, ImeConversion, KeyboardInput } from '@asdf-overlay/core/input';
+import type { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
 import { KEYS, toCursor } from './conv.js';
 import { Cursor } from '@asdf-overlay/core';
-import EventEmitter from 'node:events';
-
-type Emitter = EventEmitter<{
-  'ime-compose': [caret: number, text: string],
-  'ime-lang-changed': [lang: string],
-  'ime-conversion-changed': [conversion: ImeConversion],
-  'ime-candidate': [candidate: string[]],
-}>;
 
 export class ElectronOverlayInput {
-  readonly events: Emitter = new EventEmitter();
-
   private readonly cursorInputHandler: (id: number, input: CursorInput) => void;
   private readonly keyboardInputHandler: (id: number, input: KeyboardInput) => void;
 
@@ -325,44 +315,16 @@ export class ElectronOverlayInput {
   }
 
   private processIme(input: KeyboardInput & { kind: 'Ime', }) {
-    switch (input.ime.kind) {
-      case 'Commit': {
-        for (const ch of input.ime.text) {
-          this.sendInput({
-            type: 'char',
-            keyCode: ch,
-            modifiers: this.modifiers,
-          });
-        }
-        break;
-      }
+    if (input.ime.kind !== 'Commit') {
+      return;
+    }
 
-      case 'Changed': {
-        if (!this.forwardInput) {
-          break;
-        }
-
-        this.events.emit('ime-lang-changed', input.ime.lang);
-        break;
-      }
-
-      case 'ChangedConversion': {
-        if (!this.forwardInput) {
-          break;
-        }
-
-        this.events.emit('ime-conversion-changed', input.ime.conversion);
-        break;
-      }
-
-      case 'Compose': {
-        if (!this.forwardInput) {
-          break;
-        }
-
-        this.events.emit('ime-compose', input.ime.caret, input.ime.text);
-        break;
-      }
+    for (const ch of input.ime.text) {
+      this.sendInput({
+        type: 'char',
+        keyCode: ch,
+        modifiers: this.modifiers,
+      });
     }
   }
 

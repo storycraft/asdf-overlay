@@ -3,8 +3,8 @@ use asdf_overlay_client::{
     event::{
         ClientEvent, GpuLuid, WindowEvent,
         input::{
-            CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, Key,
-            KeyInputState, KeyboardInput, ScrollAxis,
+            CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, ImeCandidateList,
+            InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis,
         },
     },
     ty::{CopyRect, Rect},
@@ -240,6 +240,13 @@ fn serialize_ime<'a>(cx: &mut Cx<'a>, ime: Ime) -> JsResult<'a, JsObject> {
 
             cx.string("ConversionChanged")
         }
+        Ime::CandidateChanged(candidate_list) => {
+            let candidate_list = serialize_candidate_list(cx, candidate_list)?;
+            obj.prop(cx, "list").set(candidate_list)?;
+
+            cx.string("CandidateChanged")
+        }
+        Ime::CandidateClosed => cx.string("CandidateClosed"),
         Ime::Compose { text, caret } => {
             let text = cx.string(text);
             obj.prop(cx, "text").set(text)?;
@@ -258,6 +265,34 @@ fn serialize_ime<'a>(cx: &mut Cx<'a>, ime: Ime) -> JsResult<'a, JsObject> {
         Ime::Disabled => cx.string("Disabled"),
     };
     obj.prop(cx, "kind").set(kind)?;
+
+    Ok(obj)
+}
+
+fn serialize_candidate_list<'a>(
+    cx: &mut Cx<'a>,
+    candidate_list: ImeCandidateList,
+) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    let page_start_index = cx.number(candidate_list.page_start_index);
+    obj.prop(cx, "pageStartIndex").set(page_start_index)?;
+
+    let page_size = cx.number(candidate_list.page_size);
+    obj.prop(cx, "pageSize").set(page_size)?;
+
+    let selected_index = cx.number(candidate_list.selected_index);
+    obj.prop(cx, "selectedIndex").set(selected_index)?;
+
+    let candidates = {
+        let list = cx.empty_array();
+        for (i, candidate) in candidate_list.candidates.iter().enumerate() {
+            let candidate = cx.string(candidate);
+            list.prop(cx, i as u32).set(candidate)?;
+        }
+        list
+    };
+    obj.prop(cx, "candidates").set(candidates)?;
 
     Ok(obj)
 }

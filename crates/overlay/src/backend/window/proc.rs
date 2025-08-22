@@ -10,13 +10,14 @@ use crate::{
 use asdf_overlay_event::{
     ClientEvent, WindowEvent,
     input::{
-        ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent,
-        InputPosition, KeyboardInput, ScrollAxis,
+        ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime,
+        ImeCandidateList, InputEvent, InputPosition, KeyboardInput, ScrollAxis,
     },
 };
-use core::mem;
+use core::{alloc::Layout, mem, slice};
 use parking_lot::MutexGuard;
 use scopeguard::defer;
+use std::alloc;
 use tracing::trace;
 use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
@@ -27,8 +28,9 @@ use windows::Win32::{
         Controls::{self, HOVER_DEFAULT},
         Input::{
             Ime::{
-                self as ime, HIMC, IME_COMPOSITION_STRING, IME_CONVERSION_MODE,
-                ImmGetCompositionStringW, ImmGetContext, ImmGetConversionStatus, ImmReleaseContext,
+                self as ime, CANDIDATELIST, HIMC, IME_COMPOSITION_STRING, IME_CONVERSION_MODE,
+                ImmGetCandidateListW, ImmGetCompositionStringW, ImmGetContext,
+                ImmGetConversionStatus, ImmReleaseContext,
             },
             KeyboardAndMouse::{
                 GetDoubleClickTime, GetKeyboardLayout, ReleaseCapture, SetCapture, TME_LEAVE,
@@ -322,16 +324,7 @@ fn process_wnd_proc(
                 return None;
             }
 
-            if wparam.0 as u32 == ime::IMN_SETCONVERSIONMODE {
-                OverlayEventSink::emit(keyboard_input(
-                    backend.hwnd,
-                    KeyboardInput::Ime(Ime::ConversionChanged(with_himc(
-                        backend.hwnd,
-                        ime_conversion_mode,
-                    ))),
-                ))
-            }
-
+            handle_ime_notify(backend.hwnd, wparam.0 as _);
             if proc.input_blocking() {
                 drop(proc);
                 return Some(LRESULT(0));
@@ -485,6 +478,33 @@ fn process_wnd_proc(
     None
 }
 
+fn handle_ime_notify(hwnd: u32, command: u32) {
+    match command {
+        ime::IMN_SETCONVERSIONMODE => OverlayEventSink::emit(keyboard_input(
+            hwnd,
+            KeyboardInput::Ime(Ime::ConversionChanged(with_himc(hwnd, ime_conversion_mode))),
+        )),
+
+        ime::IMN_OPENCANDIDATE | ime::IMN_CHANGECANDIDATE => {
+            with_himc(hwnd, |himc| {
+                if let Some(candidate_list) = get_ime_candidate_list(himc, 0) {
+                    OverlayEventSink::emit(keyboard_input(
+                        hwnd,
+                        KeyboardInput::Ime(Ime::CandidateChanged(candidate_list)),
+                    ));
+                }
+            });
+        }
+
+        ime::IMN_CLOSECANDIDATE => OverlayEventSink::emit(keyboard_input(
+            hwnd,
+            KeyboardInput::Ime(Ime::CandidateClosed),
+        )),
+
+        _ => {}
+    }
+}
+
 #[tracing::instrument]
 pub(crate) unsafe extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
@@ -607,6 +627,67 @@ fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<Li
     } else {
         None
     }
+}
+
+fn get_ime_candidate_list(himc: HIMC, index: u32) -> Option<ImeCandidateList> {
+    let byte_size = unsafe { ImmGetCandidateListW(himc, index, None, 0) };
+    if byte_size == 0 {
+        return None;
+    }
+
+    let layout = Layout::from_size_align(byte_size as _, mem::align_of::<CANDIDATELIST>()).ok()?;
+    let mut candidate_list_ptr = scopeguard::guard(
+        unsafe { alloc::alloc(layout) }.cast::<CANDIDATELIST>(),
+        |ptr| unsafe {
+            alloc::dealloc(ptr as _, layout);
+        },
+    );
+
+    let res = unsafe { ImmGetCandidateListW(himc, index, Some(*candidate_list_ptr), byte_size) };
+    if res == 0 {
+        return None;
+    }
+
+    let CANDIDATELIST {
+        dwCount: count,
+        dwSelection: selected_index,
+        dwPageStart: page_start_index,
+        dwPageSize: page_size,
+        ..
+    } = unsafe { **candidate_list_ptr };
+    let candidates = {
+        let mut list = Vec::with_capacity(count as _);
+        let base = unsafe { &raw mut (**candidate_list_ptr).dwOffset }.cast::<u32>();
+        for i in 0..count {
+            let candidate_offset = unsafe { *base.add(i as _) };
+            let candidate_start = unsafe { candidate_list_ptr.byte_add(candidate_offset as _).cast::<u16>() };
+            let size = {
+                let mut len = 0;
+                while (unsafe { *candidate_start.add(len) }) != 0 {
+                    len += 1;
+                }
+                len * 2
+            };
+
+            list.push(
+                unsafe {
+                    WStr::from_utf16le_unchecked(slice::from_raw_parts(
+                        candidate_start.cast::<u8>(),
+                        size,
+                    ))
+                }
+                .to_utf8(),
+            );
+        }
+        list
+    };
+
+    Some(ImeCandidateList {
+        page_start_index,
+        page_size,
+        selected_index,
+        candidates,
+    })
 }
 
 fn get_lang_id_locale(lang_id: u16) -> Option<String> {
