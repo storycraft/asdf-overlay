@@ -20,7 +20,7 @@
     "build": "pnpm -r build",
     "doc": "mdbook build ./doc",
     "ci:deploy": "pnpm -r build",
-    "ci:publish": "pnpm -r build && pnpm publish -r --provenance --access public"
+    "ci:publish": "pnpm -r build:dist && pnpm publish -r --provenance --access public"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
