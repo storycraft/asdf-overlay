@@ -2,7 +2,7 @@ import { Cursor } from '@asdf-overlay/core';
 
 // https://www.electronjs.org/docs/latest/api/web-contents
 // https://developer.mozilla.org/ko/docs/Web/CSS/cursor
-export function toCursor(cursor: string): Cursor | undefined {
+export function mapCssCursor(cursor: string): Cursor | undefined {
   switch (cursor) {
     case 'pointer': return Cursor.Default;
     case 'crosshair': return Cursor.Crosshair;
@@ -53,9 +53,13 @@ export function toCursor(cursor: string): Cursor | undefined {
   }
 }
 
+export function mapKeycode(code: number): string | undefined {
+  return KEYS[code];
+}
+
 // As per https://www.electronjs.org/docs/latest/api/accelerator
 // and https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-export const KEYS: Record<number, string | undefined> = {
+const KEYS: Record<number, string | undefined> = {
   8: 'Backspace',
   9: 'Tab',
   13: 'Enter',
@@ -114,6 +118,21 @@ export const KEYS: Record<number, string | undefined> = {
   91: 'Super',
   92: 'Super',
   93: 'Meta',
+  96: 'num0',
+  97: 'num1',
+  98: 'num2',
+  99: 'num3',
+  100: 'num4',
+  101: 'num5',
+  102: 'num6',
+  103: 'num7',
+  104: 'num8',
+  105: 'num9',
+  106: 'nummult',
+  108: 'numsub',
+  109: 'numsub',
+  110: 'numdec',
+  111: 'numdiv',
   112: 'F1',
   113: 'F2',
   114: 'F3',

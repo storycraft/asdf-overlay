@@ -19,6 +19,16 @@
     "build:dist": "tsc",
     "build": "npm run build:dist"
   },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "default": "./lib/*.js"
+    }
+  },
   "files": [
     "lib/**/*"
   ],
