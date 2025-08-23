@@ -2,7 +2,9 @@ import { app, BrowserWindow } from 'electron';
 import { defaultDllDir, Overlay, percent } from '@asdf-overlay/core';
 import { InputState } from '@asdf-overlay/core/input';
 import find from 'find-process';
-import { ElectronOverlayInput, ElectronOverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
+import { type OverlayWindow } from '@asdf-overlay/electron';
+import { ElectronOverlaySurface } from '@asdf-overlay/electron/surface';
+import { ElectronOverlayInput } from '@asdf-overlay/electron/input';
 
 async function createOverlayWindow(pid: number) {
   const overlay = await Overlay.attach(
@@ -31,7 +33,7 @@ async function createOverlayWindow(pid: number) {
   // always listen keyboard events
   await overlay.listenInput(id, false, true);
 
-  const overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
+  let overlayInput: ElectronOverlayInput | null = null;
   let block = false;
   let shiftState: InputState = 'Released';
   let aState: InputState = 'Released';
@@ -58,11 +60,11 @@ async function createOverlayWindow(pid: number) {
 
           // Open the DevTools.
           mainWindow.webContents.openDevTools();
+          overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
         }
 
         // block all inputs reaching window and listen
         void overlay.blockInput(id, block);
-        overlayInput.forwardInput = block;
         return;
       }
     }
@@ -74,6 +76,9 @@ async function createOverlayWindow(pid: number) {
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
     void overlay.clearSurface(id);
+    void overlayInput?.disconnect().then(() => {
+      overlayInput = null;
+    });
   });
 
   mainWindow.webContents.stopPainting();

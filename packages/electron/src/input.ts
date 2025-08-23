@@ -1,7 +1,7 @@
-import type { KeyboardInputEvent, MouseInputEvent, MouseWheelInputEvent, WebContents } from 'electron';
-import type { OverlayWindow } from '../index.js';
+import type { MouseInputEvent, MouseWheelInputEvent, WebContents } from 'electron';
+import type { OverlayWindow } from './index.js';
 import type { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
-import { KEYS, toCursor } from './conv.js';
+import { mapCssCursor, mapKeycode } from './input/conv.js';
 import { Cursor } from '@asdf-overlay/core';
 
 export class ElectronOverlayInput {
@@ -9,8 +9,6 @@ export class ElectronOverlayInput {
   private readonly keyboardInputHandler: (id: number, input: KeyboardInput) => void;
 
   private readonly cursorChangedHandler: (e: Electron.Event, type: string) => void;
-
-  forwardInput: boolean = false;
 
   private constructor(
     private readonly window: OverlayWindow,
@@ -41,7 +39,7 @@ export class ElectronOverlayInput {
     this.contents.on(
       'cursor-changed',
       this.cursorChangedHandler = (_, type) => {
-        void this.window.overlay.setBlockingCursor(this.window.id, toCursor(type));
+        void this.window.overlay.setBlockingCursor(this.window.id, mapCssCursor(type));
       },
     );
   }
@@ -95,7 +93,7 @@ export class ElectronOverlayInput {
     if (input.state === 'Pressed') {
       const clickCount = 1 + ~~input.doubleClick;
       this.clickCounts.push(clickCount);
-      this.sendInput({
+      this.contents.sendInputEvent({
         type: 'mouseDown',
         button,
         clickCount,
@@ -109,7 +107,7 @@ export class ElectronOverlayInput {
       });
     } else {
       const clickCount = this.clickCounts.pop() ?? 1;
-      this.sendInput({
+      this.contents.sendInputEvent({
         type: 'mouseUp',
         button,
         clickCount,
@@ -135,7 +133,7 @@ export class ElectronOverlayInput {
 
     switch (input.kind) {
       case 'Enter': {
-        this.sendInput({
+        this.contents.sendInputEvent({
           type: 'mouseEnter',
           x: input.clientX,
           y: input.clientY,
@@ -149,7 +147,7 @@ export class ElectronOverlayInput {
       }
 
       case 'Leave': {
-        this.sendInput({
+        this.contents.sendInputEvent({
           type: 'mouseLeave',
           x: input.clientX,
           y: input.clientY,
@@ -163,7 +161,7 @@ export class ElectronOverlayInput {
       }
 
       case 'Move': {
-        this.sendInput({
+        this.contents.sendInputEvent({
           type: 'mouseMove',
           x: input.clientX,
           y: input.clientY,
@@ -203,7 +201,7 @@ export class ElectronOverlayInput {
             modifiers: this.modifiers,
           };
         }
-        this.sendInput(scroll);
+        this.contents.sendInputEvent(scroll);
         break;
       }
 
@@ -283,14 +281,14 @@ export class ElectronOverlayInput {
   sendKeyboardInput(input: KeyboardInput) {
     switch (input.kind) {
       case 'Key': {
-        const keyCode = KEYS[input.key.code];
+        const keyCode = mapKeycode(input.key.code);
         if (!keyCode) {
           return;
         }
 
         const pressed = input.state === 'Pressed';
         this.updateModifiers(keyCode, pressed);
-        this.sendInput({
+        this.contents.sendInputEvent({
           type: pressed ? 'keyDown' : 'keyUp',
           keyCode,
           modifiers: this.modifiers,
@@ -299,7 +297,7 @@ export class ElectronOverlayInput {
       }
 
       case 'Char': {
-        this.sendInput({
+        this.contents.sendInputEvent({
           type: 'char',
           keyCode: input.ch,
           modifiers: this.modifiers,
@@ -320,19 +318,11 @@ export class ElectronOverlayInput {
     }
 
     for (const ch of input.ime.text) {
-      this.sendInput({
+      this.contents.sendInputEvent({
         type: 'char',
         keyCode: ch,
         modifiers: this.modifiers,
       });
     }
-  }
-
-  private sendInput(e: MouseInputEvent | MouseWheelInputEvent | KeyboardInputEvent) {
-    if (!this.forwardInput) {
-      return;
-    }
-
-    this.contents.sendInputEvent(e);
   }
 }
