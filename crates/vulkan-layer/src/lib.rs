@@ -8,6 +8,7 @@
 pub mod device;
 pub mod instance;
 mod map;
+mod renderer;
 
 use core::ffi::c_void;
 

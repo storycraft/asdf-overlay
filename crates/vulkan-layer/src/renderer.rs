@@ -18,7 +18,7 @@ use windows::{
     core::Interface,
 };
 
-use crate::renderer::vulkan::frame::FrameData;
+use crate::renderer::frame::FrameData;
 
 pub struct VulkanRenderer {
     device: Device,

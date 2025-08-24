@@ -10,7 +10,7 @@ mod wgl {
 
 pub mod backend;
 pub mod event_sink;
-pub mod renderer;
+pub(crate) mod renderer;
 
 mod hook;
 mod interop;
