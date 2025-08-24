@@ -65,7 +65,7 @@ pub(super) extern "system" fn present(
                             &table,
                             swapchain,
                             index,
-                            &data,
+                            data,
                             queue,
                             queue_data.family_index,
                             backend,
