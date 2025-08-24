@@ -1,4 +1,4 @@
-pub mod cx;
+pub(crate) mod cx;
 
 use core::num::NonZeroU32;
 
@@ -27,7 +27,7 @@ pub struct RenderData {
     pub window_size: (u32, u32),
     pub surface: SurfaceState,
     pub renderer: Option<Renderer>,
-    pub cx: DrawContext,
+    pub(crate) cx: DrawContext,
 }
 
 impl RenderData {
