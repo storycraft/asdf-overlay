@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use asdf_overlay_event::ClientEvent;
+use asdf_overlay_event::ServerEvent;
 
 static CURRENT: ArcSwapOption<OverlayEventSink> = ArcSwapOption::const_empty();
 
 pub struct OverlayEventSink {
-    sink: Box<dyn Fn(ClientEvent) + Send + Sync>,
+    sink: Box<dyn Fn(ServerEvent) + Send + Sync>,
 }
 
 impl OverlayEventSink {
@@ -16,13 +16,13 @@ impl OverlayEventSink {
     }
 
     #[inline]
-    pub(crate) fn emit(event: ClientEvent) {
+    pub(crate) fn emit(event: ServerEvent) {
         if let Some(ref this) = *CURRENT.load() {
             (this.sink)(event);
         }
     }
 
-    pub fn set(sink: impl Fn(ClientEvent) + Send + Sync + 'static) {
+    pub fn set(sink: impl Fn(ServerEvent) + Send + Sync + 'static) {
         CURRENT.store(Some(Arc::new(Self {
             sink: Box::new(sink),
         })));

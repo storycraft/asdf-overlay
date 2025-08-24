@@ -3,10 +3,10 @@
 //! * Using [`IpcClientEventEmitter`] one can emit events to the client.
 
 use asdf_overlay_common::{
-    ipc::{ClientResponse, ClientToServerPacket, Frame, ServerRequest},
+    ipc::{ServerResponse, ServerToClientPacket, Frame, ClientRequest},
     request::Request,
 };
-use asdf_overlay_event::ClientEvent;
+use asdf_overlay_event::ServerEvent;
 use bincode::Encode;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
@@ -18,7 +18,7 @@ use tokio::{
 pub struct IpcServerConn {
     rx: ReadHalf<NamedPipeServer>,
     buf: Vec<u8>,
-    chan: UnboundedSender<ClientToServerPacket>,
+    chan: UnboundedSender<ServerToClientPacket>,
 }
 
 impl IpcServerConn {
@@ -69,7 +69,7 @@ impl IpcServerConn {
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
-        let packet: ServerRequest =
+        let packet: ClientRequest =
             bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
         Ok((packet.id, packet.req))
     }
@@ -78,7 +78,7 @@ impl IpcServerConn {
     pub fn reply(&mut self, id: u32, data: impl Encode) -> anyhow::Result<()> {
         _ = self
             .chan
-            .send(ClientToServerPacket::Response(ClientResponse {
+            .send(ServerToClientPacket::Response(ServerResponse {
                 id,
                 data: bincode::encode_to_vec(data, bincode::config::standard())?,
             }));
@@ -90,13 +90,13 @@ impl IpcServerConn {
 /// Event emitter for IPC server.
 #[derive(Clone)]
 pub struct IpcClientEventEmitter {
-    inner: UnboundedSender<ClientToServerPacket>,
+    inner: UnboundedSender<ServerToClientPacket>,
 }
 
 impl IpcClientEventEmitter {
     /// Emit an event to the client.
-    pub fn emit(&self, event: ClientEvent) -> anyhow::Result<()> {
-        self.inner.send(ClientToServerPacket::Event(event))?;
+    pub fn emit(&self, event: ServerEvent) -> anyhow::Result<()> {
+        self.inner.send(ServerToClientPacket::Event(event))?;
 
         Ok(())
     }
