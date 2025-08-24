@@ -1,5 +1,10 @@
 #![windows_subsystem = "windows"]
 
+//! Official DLL crate for attaching [`asdf_overlay`] to other processes.
+//! Using this DLL, the overlay can be controlled via cross-process IPC.
+//! 
+//! Injection can be done using `asdf-overlay-client` crate.
+
 #[cfg(debug_assertions)]
 mod dbg;
 
@@ -52,6 +57,7 @@ use windows::{
 
 use crate::server::IpcServerConn;
 
+/// IPC server main loop.
 #[tracing::instrument(skip(server))]
 async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
     fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
@@ -154,6 +160,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// IPC server listener.
 #[tracing::instrument(skip(create_server))]
 async fn run_server(
     mut server: NamedPipeServer,
@@ -184,10 +191,12 @@ async fn run_server(
     }
 }
 
-#[unsafe(no_mangle)]
-#[allow(non_snake_case, unused_variables)]
+/// Main entry point for DLL.
+/// 
 /// # Safety
 /// Can be called by loader only. Must not be called manually.
+#[unsafe(no_mangle)]
+#[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
     #[cfg(debug_assertions)]
     fn setup_tracing() {
@@ -241,6 +250,7 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     true
 }
 
+/// Create a new IPC server using the given address.
 fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<NamedPipeServer> {
     Ok(unsafe {
         ServerOptions::new()
@@ -258,6 +268,7 @@ fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<Nam
     })
 }
 
+/// Create Windows security descriptor allowing read/write permission to Everyone.
 fn create_everyone_security_desc() -> anyhow::Result<SECURITY_DESCRIPTOR> {
     let mut everyone_sid = PSID::default();
     unsafe {
