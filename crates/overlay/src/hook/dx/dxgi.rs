@@ -93,7 +93,7 @@ fn draw_dx12_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: 
             return;
         }
         // use dxgi swapchain instead
-        Some(Renderer::Vulkan(_)) => {
+        Some(Renderer::Vulkan) => {
             render.renderer = Some(Renderer::Dx12(None));
             debug!("switching from vulkan to dx12 render");
             return;

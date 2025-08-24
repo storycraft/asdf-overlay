@@ -1,12 +1,15 @@
-use asdf_overlay::backend::{Backends, render::Renderer};
+use asdf_overlay::backend::Backends;
 use ash::vk::{self, AllocationCallbacks, Handle};
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use tracing::{debug, trace};
 
-use crate::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap};
+use crate::{
+    device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap,
+    renderer::VulkanRenderer,
+};
 
 /// Data associated with a [`vk::SwapchainKHR`].
-#[derive(Clone, Copy)]
 pub struct SwapchainData {
     /// HWND of the surface the swapchain is tied to.
     pub hwnd: u32,
@@ -16,14 +19,21 @@ pub struct SwapchainData {
 
     /// Format of the swapchain images.
     pub format: vk::Format,
+
+    /// Vulkan overlay renderer
+    pub(crate) renderer: Mutex<Option<VulkanRenderer>>,
 }
 
 /// [`vk::SwapchainKHR`] data mapping table.
 static SWAPCHAIN_MAP: Lazy<IntDashMap<u64, SwapchainData>> = Lazy::new(IntDashMap::default);
 
-/// Get the data associated with a given [`vk::SwapchainKHR`].
-pub(super) fn get_swapchain_data(swapchain: vk::SwapchainKHR) -> SwapchainData {
-    *SWAPCHAIN_MAP.get(&swapchain.as_raw()).unwrap()
+/// Run a closure with [`SwapchainData`] data associated to a given [`vk::SwapchainKHR`].
+#[must_use]
+pub(super) fn with_swapchain_data<R>(
+    swapchain: vk::SwapchainKHR,
+    f: impl FnOnce(&SwapchainData) -> R,
+) -> Option<R> {
+    Some(f(&*SWAPCHAIN_MAP.get(&swapchain.as_raw())?))
 }
 
 /// Layer `vkCreateSwapchainKHR` implementation
@@ -60,6 +70,7 @@ pub(super) extern "system" fn create_swapchain(
             hwnd,
             image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
+            renderer: Mutex::new(None),
         },
     );
 
@@ -81,16 +92,13 @@ pub(super) extern "system" fn destroy_swapchain(
 }
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
-    let data = get_swapchain_data(swapchain);
-
-    _ = Backends::with_backend(data.hwnd, |backend| {
-        let mut render = backend.render.lock();
-
-        let Some(Renderer::Vulkan(ref mut renderer)) = render.renderer else {
-            return;
-        };
+    _ = with_swapchain_data(swapchain, |data| {
         debug!("vulkan renderer cleanup");
-        renderer.take();
-        render.set_surface_updated();
+        data.renderer.lock().take();
+
+        _ = Backends::with_backend(data.hwnd, |backend| {
+            let mut render = backend.render.lock();
+            render.set_surface_updated();
+        });
     });
 }
