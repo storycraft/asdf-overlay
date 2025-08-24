@@ -1,3 +1,7 @@
+//! Injector module for injecting overlay DLL into target process.
+//! 
+//! Uses the most typical DLL injection method of creating a remote thread that requires least permissions.
+
 use core::{mem, time::Duration};
 use std::{ffi::OsStr, fs, os::windows::ffi::OsStrExt, path::PathBuf};
 
@@ -50,6 +54,9 @@ unsafe extern "system" {
 
 use crate::OverlayDll;
 
+/// Inject overlay DLL into target process and returns the module handle of the injected DLL.
+///
+/// Note that returned module handle is truncated to u32 and may not point to the actual module handle.
 pub fn inject(pid: u32, dll: OverlayDll, timeout: Option<Duration>) -> anyhow::Result<u32> {
     let mut handle = HANDLE(0 as _);
     unsafe {
@@ -99,6 +106,7 @@ pub fn inject(pid: u32, dll: OverlayDll, timeout: Option<Duration>) -> anyhow::R
     )
 }
 
+/// Get the architecture of the target process handle.
 fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     let mut native_output = IMAGE_FILE_MACHINE_UNKNOWN;
     let mut wow64_output = IMAGE_FILE_MACHINE_UNKNOWN;
@@ -113,6 +121,7 @@ fn get_process_arch(handle: HANDLE) -> IMAGE_FILE_MACHINE {
     }
 }
 
+/// Get the address of LoadLibraryW in the target process.
 fn load_library_w_for(
     process: HANDLE,
     target_arch: IMAGE_FILE_MACHINE,
@@ -192,6 +201,7 @@ fn load_library_w_for(
     }
 }
 
+/// Execute a function to the target process by creating a remote thread.
 fn execute_remote_fn(
     process: HANDLE,
     f: usize,
