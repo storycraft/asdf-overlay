@@ -8,7 +8,7 @@ use crate::request::Request;
 
 /// Creates a unique IPC address for the given process ID and module handle.
 /// Because there can be multiple overlays in the same process, we need to distinguish with the module handle.
-/// 
+///
 /// This function is used internally by `asdf-overlay-client` and `asdf-overlay-dll` crates to establish IPC communication.
 pub fn create_ipc_addr(pid: u32, module_handle: u32) -> String {
     format!("\\\\.\\pipe\\asdf-overlay-{pid}-{module_handle}")
