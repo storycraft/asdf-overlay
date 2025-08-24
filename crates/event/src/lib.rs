@@ -21,6 +21,7 @@ pub enum ServerEvent {
     },
 }
 
+/// Describe a window event.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub enum WindowEvent {
