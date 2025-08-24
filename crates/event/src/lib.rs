@@ -12,7 +12,7 @@ use input::InputEvent;
 /// Describe a event sent from server to client.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
-pub enum ClientEvent {
+pub enum ServerEvent {
     /// Events related to a specific window.
     Window {
         /// Unique identifier for the window.
