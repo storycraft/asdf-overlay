@@ -1,5 +1,5 @@
 //! Debugging utilities for overlay DLL.
-//! 
+//!
 //! Since most GUI applications do not have stdout/stderr consoles, this module provides
 //! a `tracing` writer that outputs to the Windows debugger output (OutputDebugString).
 //! You can view these outputs using tools like [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).

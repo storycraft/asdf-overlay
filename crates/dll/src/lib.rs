@@ -2,7 +2,7 @@
 
 //! Official DLL crate for attaching [`asdf_overlay`] to other processes.
 //! Using this DLL, the overlay can be controlled via cross-process IPC.
-//! 
+//!
 //! Injection can be done using `asdf-overlay-client` crate.
 
 #[cfg(debug_assertions)]
@@ -192,7 +192,7 @@ async fn run_server(
 }
 
 /// Main entry point for DLL.
-/// 
+///
 /// # Safety
 /// Can be called by loader only. Must not be called manually.
 #[unsafe(no_mangle)]

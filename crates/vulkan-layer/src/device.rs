@@ -38,7 +38,7 @@ struct DispatchTable {
     /// Vulkan device handle.
     device: Device,
 
-    /// [vk::SwapchainKHR] related [Device] functions. 
+    /// [vk::SwapchainKHR] related [Device] functions.
     swapchain_fn: khr::swapchain::DeviceFn,
 
     /// Function pointer to actual `vkQueuePresentKHR`.
@@ -260,7 +260,7 @@ struct LayerDeviceCreateInfo {
 
     /// Function indicator for this structure.
     pub function: i32,
-    
+
     /// Union containing pointer to next layer's `VkLayerDeviceLink`.
     pub u: LayerDeviceCreateInfoUnion,
 }
