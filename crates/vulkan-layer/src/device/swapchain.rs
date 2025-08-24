@@ -5,19 +5,28 @@ use tracing::{debug, trace};
 
 use crate::{device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap};
 
+/// Data associated with a [`vk::SwapchainKHR`].
 #[derive(Clone, Copy)]
 pub struct SwapchainData {
+    /// HWND of the surface the swapchain is tied to.
     pub hwnd: u32,
+
+    /// Size of the swapchain images.
     pub image_size: (u32, u32),
+
+    /// Format of the swapchain images.
     pub format: vk::Format,
 }
 
+/// [`vk::SwapchainKHR`] data mapping table.
 static SWAPCHAIN_MAP: Lazy<IntDashMap<u64, SwapchainData>> = Lazy::new(IntDashMap::default);
 
+/// Get the data associated with a given [`vk::SwapchainKHR`].
 pub(super) fn get_swapchain_data(swapchain: vk::SwapchainKHR) -> SwapchainData {
     *SWAPCHAIN_MAP.get(&swapchain.as_raw()).unwrap()
 }
 
+/// Layer `vkCreateSwapchainKHR` implementation
 pub(super) extern "system" fn create_swapchain(
     device: vk::Device,
     create_info: *const vk::SwapchainCreateInfoKHR,
@@ -57,6 +66,7 @@ pub(super) extern "system" fn create_swapchain(
     vk::Result::SUCCESS
 }
 
+/// Layer `vkDestroySwapchainKHR` implementation
 pub(super) extern "system" fn destroy_swapchain(
     device: vk::Device,
     swapchain: vk::SwapchainKHR,

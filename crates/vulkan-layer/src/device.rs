@@ -18,20 +18,35 @@ use ash::{
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 
+/// Map of [`Device`] to its dispatch table.
 static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashMap::default);
 
+/// Device dispatch table.
 struct DispatchTable {
+    /// Function pointer to next `vkGetDeviceProcAddr`.
     get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
+
+    /// Physical device the device was created from.
     physical_device: vk::PhysicalDevice,
+
+    /// Queues created with the device.
     queues: Vec<vk::Queue>,
+
+    /// Buffer of semaphores created for overlay rendering.
     semaphore_buf: Vec<vk::Semaphore>,
 
+    /// Vulkan device handle.
     device: Device,
+
+    /// [vk::SwapchainKHR] related [Device] functions. 
     swapchain_fn: khr::swapchain::DeviceFn,
+
+    /// Function pointer to actual `vkQueuePresentKHR`.
     queue_present: Option<vk::PFN_vkQueuePresentKHR>,
 }
 
 impl DispatchTable {
+    /// Create a new [`DispatchTable`].
     fn new(
         get_proc_addr: vk::PFN_vkGetDeviceProcAddr,
         physical_device: vk::PhysicalDevice,
@@ -66,19 +81,25 @@ impl DispatchTable {
     }
 }
 
+/// Data associated with a queue.
 #[derive(Clone, Copy)]
 pub struct QueueData {
+    /// Vulkan device the queue was created from.
     pub device: vk::Device,
+
+    /// Family index of the queue.
     pub family_index: u32,
 }
 
-// Queue -> QueueData
+/// Map of [vk::Queue] to its associated [QueueData].
 static QUEUE_MAP: Lazy<IntDashMap<u64, QueueData>> = Lazy::new(IntDashMap::default);
 
+/// Get the [`QueueData`] for a given [vk::Queue].
 pub(super) fn get_queue_data(queue: vk::Queue) -> Option<QueueData> {
     QUEUE_MAP.get(&queue.as_raw()).map(|data| *data)
 }
 
+/// Layer's implementation of `vkGetDeviceProcAddr`.
 #[tracing::instrument(skip(name))]
 pub(super) extern "system" fn get_proc_addr(
     device: vk::Device,
@@ -100,6 +121,7 @@ pub(super) extern "system" fn get_proc_addr(
     unsafe { (DISPATCH_TABLE.get(&device.as_raw())?.get_proc_addr)(device, name) }
 }
 
+/// Implementation of layer's `vkCreateDevice`.
 #[tracing::instrument]
 pub(super) extern "system" fn create_device(
     ph_device: vk::PhysicalDevice,
@@ -187,6 +209,7 @@ pub(super) extern "system" fn create_device(
     vk::Result::SUCCESS
 }
 
+/// Implementation of layer's `vkDestroyDevice`.
 #[tracing::instrument]
 extern "system" fn destroy_device(
     device: vk::Device,
@@ -203,29 +226,46 @@ extern "system" fn destroy_device(
     unsafe { (table.device.fp_v1_0().destroy_device)(device, allocator) }
 }
 
+/// Vulkan structure for layer device link info.
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct VkLayerDeviceLink {
+    /// Pointer to next layer's `VkLayerDeviceLink`.
     pub p_next: *mut VkLayerDeviceLink,
+
+    /// Function pointer to next layer's `vkGetInstanceProcAddr`.
     pub pfn_next_get_instance_proc_addr: Option<vk::PFN_vkGetInstanceProcAddr>,
+
+    /// Function pointer to next layer's `vkGetDeviceProcAddr`.
     pub pfn_next_get_device_proc_addr: Option<vk::PFN_vkGetDeviceProcAddr>,
 }
 
+/// Vulkan structure for layer device create info.
 #[repr(C)]
 #[derive(Copy, Clone)]
 union LayerDeviceCreateInfoUnion {
+    /// Pointer to next layer's `VkLayerDeviceLink`.
     pub p_layer_info: *mut VkLayerDeviceLink,
 }
 
+/// Vulkan structure for layer device create info.
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct LayerDeviceCreateInfo {
+    /// Structure type, which is [`vk::StructureType::LOADER_DEVICE_CREATE_INFO`].
     pub s_type: vk::StructureType,
+
+    /// Pointer to next structure in the `p_next` chain.
     pub p_next: *mut c_void,
+
+    /// Function indicator for this structure.
     pub function: i32,
+    
+    /// Union containing pointer to next layer's `VkLayerDeviceLink`.
     pub u: LayerDeviceCreateInfoUnion,
 }
 
+/// Helper to extract the [`LayerDeviceCreateInfo`] from a [`vk::DeviceCreateInfo`] pointer.
 unsafe fn get_layer_link_info(
     device_create_info: *const vk::DeviceCreateInfo,
 ) -> Option<NonNull<LayerDeviceCreateInfo>> {
