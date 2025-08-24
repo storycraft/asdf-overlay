@@ -6,12 +6,12 @@ use bincode::{Decode, Encode};
 #[derive(Debug, Decode, Encode, Clone, Copy, PartialEq)]
 pub enum PercentLength {
     /// A percentage length relative to a base size.
-    /// 
+    ///
     /// For example, `0.5` is 50% of the base size.
     Percent(f32),
 
     /// An absolute length. Usually in pixels.
-    /// 
+    ///
     /// For example, `100.0` is 100 pixels.
     Length(f32),
 }

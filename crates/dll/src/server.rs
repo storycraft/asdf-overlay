@@ -3,7 +3,7 @@
 //! * Using [`IpcClientEventEmitter`] one can emit events to the client.
 
 use asdf_overlay_common::{
-    ipc::{ServerResponse, ServerToClientPacket, Frame, ClientRequest},
+    ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
     request::Request,
 };
 use asdf_overlay_event::ServerEvent;
