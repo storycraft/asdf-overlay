@@ -17,18 +17,29 @@ use ash::{
 use once_cell::sync::Lazy;
 use tracing::{debug, trace};
 
+/// Map of [`vk::Instance`] to its dispatch table.
 static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashMap::default);
 
+/// Instance dispatch table.
 struct DispatchTable {
+    /// Function pointer to next `vkGetInstanceProcAddr`.
     get_proc_addr: vk::PFN_vkGetInstanceProcAddr,
+
+    /// Physical devices enumerated at instance creation time.
     physical_devices: Vec<vk::PhysicalDevice>,
 
+    /// Vulkan instance handle.
     instance: Instance,
+
+    /// Function pointer to actual `vkCreateWin32SurfaceKHR`.
     create_win32_surface: Option<vk::PFN_vkCreateWin32SurfaceKHR>,
+
+    /// Function pointer to actual `vkDestroySurfaceKHR`.
     destroy_surface: Option<vk::PFN_vkDestroySurfaceKHR>,
 }
 
 impl DispatchTable {
+    /// Create a new [`DispatchTable`].
     fn new(get_proc_addr: vk::PFN_vkGetInstanceProcAddr, raw_instance: vk::Instance) -> Self {
         macro_rules! proc {
             ($name:literal : $ty:ty) => {
@@ -61,6 +72,7 @@ impl DispatchTable {
     }
 }
 
+/// Implementation of layer's `vkGetInstanceProcAddr`.
 #[tracing::instrument(skip(name))]
 pub(super) extern "system" fn get_proc_addr(
     instance: vk::Instance,
@@ -83,6 +95,7 @@ pub(super) extern "system" fn get_proc_addr(
     unsafe { (DISPATCH_TABLE.get(&instance.as_raw())?.get_proc_addr)(instance, name) }
 }
 
+/// Implementation of layer's `vkCreateInstance`.
 #[tracing::instrument]
 extern "system" fn create_instance(
     info: *const vk::InstanceCreateInfo,
@@ -144,6 +157,7 @@ extern "system" fn create_instance(
     vk::Result::SUCCESS
 }
 
+/// Implementation of layer's `vkDestroyInstance`.
 #[tracing::instrument]
 extern "system" fn destroy_instance(
     instance: vk::Instance,
@@ -162,29 +176,47 @@ extern "system" fn destroy_instance(
     }
 }
 
+/// Structure matching `VkLayerInstanceLink`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct LayerInstanceLink {
+    /// Pointer to next layer's `VkLayerInstanceLink`.
     pub p_next: *mut LayerInstanceLink,
+
+    /// Function pointer to next layer's `vkGetInstanceProcAddr`.
     pub pfn_next_get_instance_proc_addr: Option<vk::PFN_vkGetInstanceProcAddr>,
+
+    /// Function pointer to next layer's `vkGetPhysicalDeviceProcAddr`.
     pub pfn_next_get_physical_device_proc_addr: vk::PFN_vkVoidFunction,
 }
 
+/// Union matching the `u` field of `VkLayerInstanceCreateInfo`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 union LayerInstanceCreateInfoUnion {
+    /// Pointer to next layer's `VkLayerInstanceLink`.
     pub p_layer_info: *mut LayerInstanceLink,
 }
 
+/// Structure matching `VkLayerInstanceCreateInfo`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct LayerInstanceCreateInfo {
+    /// Structure type, which is `VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO`.
     pub s_type: vk::StructureType,
+
+    /// Pointer to next structure in `pNext` chain.
     pub p_next: *mut c_void,
+
+    /// Function indicator for this structure.
     pub function: i32,
+
+    /// Union containing pointer to next layer's `VkLayerInstanceLink`.
     pub u: LayerInstanceCreateInfoUnion,
 }
 
+/// Helper to extract [`LayerInstanceCreateInfo`] from the
+/// `pNext` chain of [`vk::InstanceCreateInfo`].
 unsafe fn get_layer_link_info(
     instance_create_info: *const vk::InstanceCreateInfo,
 ) -> Option<NonNull<LayerInstanceCreateInfo>> {
