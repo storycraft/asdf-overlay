@@ -1,4 +1,4 @@
-//! The [`ClientEvent`] enum and assorted types for IPC.
+//! The [`ServerEvent`] enum and assorted types for IPC.
 //!
 //! These events are sent from server to client via IPC connection.
 //! For the actual usage information, see the documentation of
