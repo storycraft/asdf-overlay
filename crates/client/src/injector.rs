@@ -1,5 +1,5 @@
 //! Injector module for injecting overlay DLL into target process.
-//! 
+//!
 //! Uses the most typical DLL injection method of creating a remote thread that requires least permissions.
 
 use core::{mem, time::Duration};
