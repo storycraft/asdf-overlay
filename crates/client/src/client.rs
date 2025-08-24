@@ -2,10 +2,10 @@ use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_common::{
-    ipc::{ClientToServerPacket, Frame, ServerRequest},
+    ipc::{ServerToClientPacket, Frame, ClientRequest},
     request::{Request, WindowRequestItem},
 };
-use asdf_overlay_event::ClientEvent;
+use asdf_overlay_event::ServerEvent;
 use bincode::Decode;
 use dashmap::DashMap;
 use tokio::{
@@ -40,16 +40,16 @@ impl IpcClientConn {
                     body.resize(frame.size as usize, 0_u8);
                     rx.read_exact(&mut body).await?;
 
-                    let packet: ClientToServerPacket =
+                    let packet: ServerToClientPacket =
                         bincode::decode_from_slice(&body, bincode::config::standard())?.0;
 
                     match packet {
-                        ClientToServerPacket::Response(res) => {
+                        ServerToClientPacket::Response(res) => {
                             if let Some((_, sender)) = map.remove(&res.id) {
                                 _ = sender.send(res.data);
                             }
                         }
-                        ClientToServerPacket::Event(event) => {
+                        ServerToClientPacket::Event(event) => {
                             let _ = event_tx.send(event);
                         }
                     }
@@ -105,7 +105,7 @@ impl IpcClientConn {
         self.next_id += 1;
 
         bincode::encode_into_std_write(
-            ServerRequest { id, req },
+            ClientRequest { id, req },
             &mut self.buf,
             bincode::config::standard(),
         )?;
@@ -153,12 +153,12 @@ impl IpcClientConnWindow<'_> {
 }
 
 pub struct IpcClientEventStream {
-    inner: mpsc::UnboundedReceiver<ClientEvent>,
+    inner: mpsc::UnboundedReceiver<ServerEvent>,
 }
 
 impl IpcClientEventStream {
     #[inline]
-    pub async fn recv(&mut self) -> Option<ClientEvent> {
+    pub async fn recv(&mut self) -> Option<ServerEvent> {
         self.inner.recv().await
     }
 }
