@@ -1,13 +1,21 @@
+//! Debugging utilities for overlay DLL.
+//! 
+//! Since most GUI applications do not have stdout/stderr consoles, this module provides
+//! a `tracing` writer that outputs to the Windows debugger output (OutputDebugString).
+//! You can view these outputs using tools like [DebugView](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
+
 use parking_lot::{Mutex, MutexGuard};
 use std::io::{self, Write};
 use tracing_subscriber::fmt::MakeWriter;
 use windows::{Win32::System::Diagnostics::Debug::OutputDebugStringW, core::PCWSTR};
 
+/// A `tracing` writer that outputs to the Windows debugger output (OutputDebugString).
 pub struct WinDbgMakeWriter {
     buf: Mutex<Vec<u16>>,
 }
 
 impl WinDbgMakeWriter {
+    /// Create a new [`WinDbgMakeWriter`].
     pub fn new() -> Self {
         Self {
             buf: Mutex::new(Vec::new()),
