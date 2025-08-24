@@ -20,6 +20,7 @@ use crate::{
     instance::physical_device::{get_physical_device_luid, get_physical_device_memory_properties},
 };
 
+/// Layer `vkQueuePresentKHR` implementation
 pub(super) extern "system" fn present(
     queue: vk::Queue,
     info: *const vk::PresentInfoKHR,
@@ -95,6 +96,7 @@ pub(super) extern "system" fn present(
     unsafe { (table.queue_present.unwrap())(queue, info) }
 }
 
+/// Draw the overlay, create a semaphore chained to the provided wait semaphores, and return it.
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn draw_overlay(
