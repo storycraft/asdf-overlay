@@ -1,3 +1,4 @@
+#[cfg(not(doc))]
 #[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
 mod detours {
     include!(concat!(env!("OUT_DIR"), "/detours_bindings.rs"));
@@ -7,11 +8,9 @@ use tracing::debug;
 
 use core::{
     error::Error,
+    ffi::c_long,
     fmt::{self, Debug, Display, Formatter},
 };
-use std::os::raw::c_void;
-
-use crate::detours::{DetourAttach, DetourTransactionBegin, DetourTransactionCommit, LONG};
 
 #[derive(Debug)]
 pub struct DetourHook<F> {
@@ -26,15 +25,18 @@ impl<F: Copy> DetourHook<F> {
     where
         F: Debug,
     {
+        #[cfg(not(doc))]
         unsafe {
-            wrap_detour_call(|| DetourTransactionBegin())?;
+            wrap_detour_call(|| detours::DetourTransactionBegin())?;
             wrap_detour_call(|| {
-                DetourAttach(
+                use core::ffi::c_void;
+
+                detours::DetourAttach(
                     (&raw mut func).cast(),
                     *(&raw mut detour).cast::<*mut c_void>(),
                 )
             })?;
-            wrap_detour_call(|| DetourTransactionCommit())?;
+            wrap_detour_call(|| detours::DetourTransactionCommit())?;
         }
         debug!("hook attached");
 
@@ -50,7 +52,7 @@ impl<F: Copy> DetourHook<F> {
 type DetourResult<T> = Result<T, DetourError>;
 
 #[derive(Debug, Clone, Copy)]
-pub struct DetourError(LONG);
+pub struct DetourError(c_long);
 
 impl Display for DetourError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -61,7 +63,7 @@ impl Display for DetourError {
 impl Error for DetourError {}
 
 #[inline]
-fn wrap_detour_call(f: impl FnOnce() -> LONG) -> Result<(), DetourError> {
+fn wrap_detour_call(f: impl FnOnce() -> c_long) -> Result<(), DetourError> {
     let code = f();
     if code == 0 {
         Ok(())
