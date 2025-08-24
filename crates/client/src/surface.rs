@@ -335,8 +335,8 @@ impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
 
     /// Get a mutable reference to the texture slot for the given size.
     /// This will rotate the buffer if the size is different from the current texture.
-    /// The returned slot is [`None`] if a new texture needs to be created.
-    /// The returned slot is [`Some`] if the texture can be reused.
+    /// * The returned slot is [`None`] if a new texture needs to be created.
+    /// * The returned slot is [`Some`] if the texture can be reused.
     pub fn texture_for(
         &mut self,
         width: u32,
