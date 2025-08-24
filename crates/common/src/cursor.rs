@@ -72,7 +72,7 @@ pub enum Cursor {
 
     /// Cursor for something can be zoomed in. Typically a magnifying glass with a plus sign.
     ZoomIn,
-    
+
     /// Cursor for something can be zoomed out. Typically a magnifying glass with a minus sign.
     ZoomOut,
 
@@ -84,7 +84,7 @@ pub enum Cursor {
 
     /// Windows specific person cursor matching `IDC_PERSON`
     Person,
-    
+
     /// Windows specific pen cursor matching `32631`
     Pen,
 

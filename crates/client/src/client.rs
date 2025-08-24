@@ -2,7 +2,7 @@ use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_common::{
-    ipc::{ServerToClientPacket, Frame, ClientRequest},
+    ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::{Request, WindowRequestItem},
 };
 use asdf_overlay_event::ServerEvent;

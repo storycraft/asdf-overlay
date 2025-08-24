@@ -1,5 +1,5 @@
 //! IPC request types sent from client to server.
-//! 
+//!
 //! [`Request`] is the top-level enum representing all possible requests.
 
 use core::{fmt::Debug, num::NonZeroU32};
@@ -17,7 +17,7 @@ pub enum Request {
         id: u32,
 
         /// The underlying window request.
-        request: WindowRequest
+        request: WindowRequest,
     },
 }
 
@@ -65,7 +65,7 @@ macro_rules! impl_WindowRequestItem {
 pub struct SetPosition {
     /// X position of percent or absolute length relative to the window's width.
     pub x: PercentLength,
-    
+
     /// Y position of percent or absolute length relative to the window's height.
     pub y: PercentLength,
 }
@@ -143,12 +143,12 @@ impl_WindowRequestItem!(SetBlockingCursor);
 /// Update overlay surface
 pub struct UpdateSharedHandle {
     /// DirectX KMT shared handle to the overlay surface texture.
-    /// 
+    ///
     /// ## Note
     /// * The texture must be a 32-bit BGRA format texture.
     /// * The texture must be created with `D3D11_RESOURCE_MISC_SHARED` flag.
     /// * If the texture is created with `D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX` flag, the `key` of the `IDXGIKeyedMutex` must be `0`.
-    /// 
+    ///
     /// If [`None`] is given, the overlay surface will be removed.
     pub handle: Option<NonZeroU32>,
 }

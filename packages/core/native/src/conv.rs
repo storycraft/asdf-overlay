@@ -1,7 +1,7 @@
 use asdf_overlay_client::{
     common::size::PercentLength,
     event::{
-        ServerEvent, GpuLuid, WindowEvent,
+        GpuLuid, ServerEvent, WindowEvent,
         input::{
             CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, ImeCandidateList,
             InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis,
