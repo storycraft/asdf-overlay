@@ -4,6 +4,7 @@ use ash::{
     vk::{self, Handle},
 };
 
+/// Renderer data for each swapchain buffer.
 #[derive(Clone, Copy)]
 pub struct FrameData {
     pub command_pool: vk::CommandPool,
@@ -15,6 +16,7 @@ pub struct FrameData {
 }
 
 impl FrameData {
+    /// Create a new [`FrameData`].
     pub fn new(
         device: &Device,
         queue_family_index: u32,
@@ -52,6 +54,7 @@ impl FrameData {
     }
 }
 
+/// Create a new [`vk::CommandPool`] using given `queue_family_index`.
 fn create_command_pool(
     device: &Device,
     queue_family_index: u32,
@@ -68,6 +71,7 @@ fn create_command_pool(
     }
 }
 
+/// Create a new [`vk::CommandBuffer`] allocated in `pool`.
 fn create_command_buffer(
     device: &Device,
     pool: vk::CommandPool,
@@ -92,6 +96,7 @@ fn create_command_buffer(
     }
 }
 
+/// Create a new [`vk::ImageView`] of given `image`.
 fn create_image_view(
     device: &Device,
     image: vk::Image,
@@ -117,6 +122,7 @@ fn create_image_view(
     }
 }
 
+/// Create a new [`vk::Framebuffer`] for a surface.
 fn create_framebuffer(
     device: &Device,
     render_pass: vk::RenderPass,

@@ -47,6 +47,10 @@ fn main() -> anyhow::Result<()> {
     let dest = env::var("OUT_DIR")?;
 
     create_gl_bindings(&dest)?;
+
+    if env::var("DOCS_RS").is_ok() {
+        return Ok(());
+    }
     create_rc()?;
 
     Ok(())

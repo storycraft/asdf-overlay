@@ -1,4 +1,4 @@
-pub mod cx;
+pub(crate) mod cx;
 
 use core::num::NonZeroU32;
 
@@ -8,7 +8,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 use crate::{
     backend::render::cx::DrawContext,
     interop::DxInterop,
-    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, vulkan::VulkanRenderer},
+    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer},
     surface::OverlaySurface,
 };
 
@@ -17,7 +17,7 @@ pub enum Renderer {
     Dx11(Option<Dx11Renderer>),
     Dx9(Option<(usize, Dx9Renderer)>),
     Opengl,
-    Vulkan(Option<Box<VulkanRenderer>>),
+    Vulkan,
 }
 
 pub struct RenderData {
@@ -27,7 +27,7 @@ pub struct RenderData {
     pub window_size: (u32, u32),
     pub surface: SurfaceState,
     pub renderer: Option<Renderer>,
-    pub cx: DrawContext,
+    pub(crate) cx: DrawContext,
 }
 
 impl RenderData {

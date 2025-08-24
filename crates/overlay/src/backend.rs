@@ -5,7 +5,7 @@ use core::mem;
 use std::collections::VecDeque;
 
 use anyhow::Context;
-use asdf_overlay_event::{ClientEvent, WindowEvent};
+use asdf_overlay_event::{ServerEvent, WindowEvent};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -82,7 +82,7 @@ impl Backends {
 
                 let window_size = get_client_size(HWND(id as _))?;
 
-                OverlayEventSink::emit(ClientEvent::Window {
+                OverlayEventSink::emit(ServerEvent::Window {
                     id,
                     event: WindowEvent::Added {
                         width: window_size.0,
@@ -108,7 +108,7 @@ impl Backends {
         let key = hwnd.0 as u32;
         BACKENDS.map.remove(&key);
 
-        OverlayEventSink::emit(ClientEvent::Window {
+        OverlayEventSink::emit(ServerEvent::Window {
             id: key,
             event: WindowEvent::Destroyed,
         });
@@ -230,7 +230,7 @@ impl WindowBackend {
                     ImmAssociateContext(HWND(backend.hwnd as _), HIMC(data.old_ime_cx as _));
                 _ = ImmDestroyContext(ime_cx);
 
-                OverlayEventSink::emit(ClientEvent::Window {
+                OverlayEventSink::emit(ServerEvent::Window {
                     id: backend.hwnd,
                     event: WindowEvent::InputBlockingEnded,
                 });

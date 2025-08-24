@@ -3,6 +3,10 @@ use std::env;
 use std::path::Path;
 
 fn create_detours_bindings(out_dir: &str) -> anyhow::Result<()> {
+    if std::env::var("DOCS_RS").is_ok() {
+        return Ok(());
+    }
+
     println!("cargo:rerun-if-changed=detours_wrapper.h");
 
     cc::Build::new()
