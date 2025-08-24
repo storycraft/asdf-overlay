@@ -1,5 +1,5 @@
 //! Client side overlay surface management wrapper.
-//! 
+//!
 //! Uses Direct3D11 to manage overlay surfaces
 //! and provide convenient methods to update them from bitmaps or other shared texture.
 
@@ -28,7 +28,7 @@ use crate::ty::CopyRect;
 const DEFAULT_FEATURE_LEVELS: [D3D_FEATURE_LEVEL; 1] = [D3D_FEATURE_LEVEL_11_0];
 
 /// Represents an overlay surface.
-/// 
+///
 /// This buffers multiple textures to prevent flickering when updating the surface.
 /// The default buffer count is 2, but can be changed by specifying the `BUFFERS` const generic parameter.
 pub struct OverlaySurface<const BUFFERS: usize = 2> {
@@ -334,9 +334,9 @@ impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
     }
 
     /// Get a mutable reference to the texture slot for the given size.
-     /// This will rotate the buffer if the size is different from the current texture.
-     /// The returned slot is [`None`] if a new texture needs to be created.
-     /// The returned slot is [`Some`] if the texture can be reused.
+    /// This will rotate the buffer if the size is different from the current texture.
+    /// The returned slot is [`None`] if a new texture needs to be created.
+    /// The returned slot is [`Some`] if the texture can be reused.
     pub fn texture_for(
         &mut self,
         width: u32,
