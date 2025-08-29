@@ -64,26 +64,19 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
         let res = Backends::with_backend(hwnd, |backend| {
             match req {
                 WindowRequest::SetPosition(position) => {
-                    backend
-                        .proc
-                        .lock()
-                        .layout
-                        .set_position(position.x, position.y);
+                    backend.proc.lock().layout.position = (position.x, position.y);
                     backend.recalc_position();
                 }
 
                 WindowRequest::SetAnchor(anchor) => {
-                    backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
+                    backend.proc.lock().layout.anchor = (anchor.x, anchor.y);
                     backend.recalc_position();
                 }
 
                 WindowRequest::SetMargin(margin) => {
-                    backend.proc.lock().layout.set_margin(
-                        margin.top,
-                        margin.right,
-                        margin.bottom,
-                        margin.left,
-                    );
+                    backend.proc.lock().layout.margin =
+                        (margin.top, margin.right, margin.bottom, margin.left);
+
                     backend.recalc_position();
                 }
 

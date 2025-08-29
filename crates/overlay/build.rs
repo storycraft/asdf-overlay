@@ -5,6 +5,7 @@ use std::fs::File;
 use std::path::Path;
 use winres::WindowsResource;
 
+/// Create gl, wgl bindings with extensions.
 fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
     let mut gl = File::create(Path::new(&out_dir).join("gl_bindings.rs"))
         .context("Unable to generate gl bindings")?;
@@ -35,6 +36,7 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Create Windows cursor resources.
 fn create_rc() -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed=resources");
     let mut res = WindowsResource::new();
