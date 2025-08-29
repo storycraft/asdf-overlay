@@ -204,6 +204,7 @@ impl MemoryObjectTexture {
                 handle,
             );
             if gl::GetError() != gl::NO_ERROR {
+                gl::DeleteMemoryObjectsEXT(1, &memory_object);
                 bail!("ImportMemoryWin32HandleEXT failed");
             }
 
@@ -283,6 +284,8 @@ impl NvInteropTexture {
                 wgl::ACCESS_READ_ONLY_NV,
             );
             if dx11_tex_handle.is_null() {
+                wgl::DXCloseDeviceNV(dx_device_handle as _);
+                gl::DeleteTextures(1, &gl_texture);
                 bail!("DXRegisterObjectNV failed");
             }
 
