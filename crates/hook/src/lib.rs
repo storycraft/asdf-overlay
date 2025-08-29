@@ -3,7 +3,7 @@
 //! This crate is intended to be used only as `asdf-overlay`'s internal dependency.
 //! It provides a safe abstraction over the Detours library for function hooking.
 
-#[cfg(not(doc))]
+#[cfg(all(not(doc), not(docsrs)))]
 #[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
 mod detours {
     include!(concat!(env!("OUT_DIR"), "/detours_bindings.rs"));
@@ -33,7 +33,7 @@ impl<F: Copy> DetourHook<F> {
     where
         F: Debug,
     {
-        #[cfg(not(doc))]
+        #[cfg(all(not(doc), not(docsrs)))]
         unsafe {
             wrap_detour_call(|| detours::DetourTransactionBegin())?;
             wrap_detour_call(|| {
