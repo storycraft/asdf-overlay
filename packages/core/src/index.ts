@@ -10,8 +10,14 @@ import { PercentLength, CopyRect, Cursor } from './types.js';
 export * from './types.js';
 export * from './util.js';
 
+/**
+ * Global node addon instance
+ */
 const addon = loadAddon();
 
+/**
+ * Load node addon depending on system architecture.
+ */
 function loadAddon(): Addon {
   const nodeModule = { exports: {} };
 
@@ -39,16 +45,50 @@ function loadAddon(): Addon {
   return nodeModule.exports as Addon;
 }
 
+/**
+ * Unique symbol for accessing internal id
+ */
 const idSym: unique symbol = Symbol('id');
 
 export type OverlayEventEmitter = EventEmitter<{
+  /**
+   * A window has been added.
+   */
   added: [id: number, width: number, height: number],
+
+  /**
+   * A window has been resized.
+   */
   resized: [id: number, width: number, height: number],
+
+  /**
+   * Cursor input from a window.
+   */
   cursor_input: [id: number, input: CursorInput],
+
+  /**
+   * Keyboard input from a window.
+   */
   keyboard_input: [id: number, input: KeyboardInput],
+
+  /**
+   * Input blocking to a window is interrupted and turned off.
+   */
   input_blocking_ended: [id: number],
+
+  /**
+   * Window is destroyed.
+   */
   destroyed: [id: number],
+
+  /**
+   * An error has occured on ipc connection.
+   */
   error: [err: unknown],
+
+  /**
+   * Ipc disconnected.
+   */
   disconnected: [],
 }>;
 
@@ -66,7 +106,7 @@ export class Overlay {
       });
 
       try {
-        for (;;) {
+        for (; ;) {
           const hasNext = await addon.overlayCallNextEvent(
             id,
             this.event,
