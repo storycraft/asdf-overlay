@@ -1,18 +1,19 @@
-//! The [`ServerEvent`] enum and assorted types for IPC.
+//! The [`OverlayEvent`] enum and assorted types.
 //!
-//! These events are sent from server to client via IPC connection.
-//! For the actual usage information, see the documentation of
-//! * client: `asdf-overlay-client`
-//! * server: `asdf-overlay-dll`
+//! These events are emitted from overlay system and usually sent from server to client via IPC connection.
+//! For the actual usage inside the library, see the documentation of
+//! * Overlay system: `asdf-overlay`
+//! * IPC client: `asdf-overlay-client`
+//! * IPC server: `asdf-overlay-dll`
 
 pub mod input;
 
 use input::InputEvent;
 
-/// Describe a event sent from server to client.
+/// Describe a overlay event.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
-pub enum ServerEvent {
+pub enum OverlayEvent {
     /// Events related to a specific window.
     Window {
         /// Unique identifier for the window.

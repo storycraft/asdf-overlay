@@ -1,3 +1,5 @@
+//! Collection of hooks required to intercept window events and rendering.
+
 mod dx;
 mod opengl;
 mod proc;

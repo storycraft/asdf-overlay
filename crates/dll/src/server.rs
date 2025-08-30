@@ -6,7 +6,7 @@ use asdf_overlay_common::{
     ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
     request::Request,
 };
-use asdf_overlay_event::ServerEvent;
+use asdf_overlay_event::OverlayEvent;
 use bincode::Encode;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
@@ -95,7 +95,7 @@ pub struct IpcClientEventEmitter {
 
 impl IpcClientEventEmitter {
     /// Emit an event to the client.
-    pub fn emit(&self, event: ServerEvent) -> anyhow::Result<()> {
+    pub fn emit(&self, event: OverlayEvent) -> anyhow::Result<()> {
         self.inner.send(ServerToClientPacket::Event(event))?;
 
         Ok(())

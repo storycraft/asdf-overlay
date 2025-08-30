@@ -1,30 +1,30 @@
 //! ## Asdf Overlay
 //! Asdf overlay let you put overlay infront of existing windows gpu framebuffer.
-//! 
+//!
 //! It hooks various graphics API call to detect graphical windows in the process.
 //! Asdf overlay automatically decides which graphics API the window is using,
 //! chooses suitable renderer.
-//! 
+//!
 //! It can also capture inputs going through the target window.
 //! You can listen them or even block them from reaching application handlers.
-//! 
+//!
 //! ## Example
 //! ```no_run
 //! use asdf_overlay::initialize;
 //! use asdf_overlay::event_sink::OverlayEventSink;
-//! 
+//!
 //! fn main() {
 //!     let module_handle, window_hwnd;
 //!     // Initialize asdf-overlay.
 //!     initialize(module_handle).expect("initialization failed");
-//! 
+//!
 //!     // Initialize Event sink.
 //!     // Without setting it, the overlay will not render.
 //!     // This is intended because windows state will be out of sync if you miss any events.
 //!     OverlayEventSink::set(move |event| {
 //!         // Do something with events.
 //!     });
-//! 
+//!
 //!     Backends::with_backend(window_hwnd, |backend| {
 //!         // Do something with overlay window backend.
 //!     });
@@ -70,7 +70,7 @@ pub(crate) fn instance() -> HINSTANCE {
 }
 
 /// Initialize overlay, hooks.
-/// 
+///
 /// * Calling more than once will fail.
 /// * Calling with holding loader lock (DllMain) will fail.
 /// * If given `hinstance` is invalid, some resources may not appear correctly.

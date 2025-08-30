@@ -1,6 +1,6 @@
-//! Input event types and related types for IPC.
+//! Input event types and related types.
 //!
-//! Raw inputs are not handled here, as they can be done from the client side directly.
+//! Raw inputs are not handled here, as they can be listened directly.
 
 use core::num::NonZeroU8;
 

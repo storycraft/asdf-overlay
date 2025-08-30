@@ -8,7 +8,7 @@ use crate::{
     util::get_client_size,
 };
 use asdf_overlay_event::{
-    ServerEvent, WindowEvent,
+    OverlayEvent, WindowEvent,
     input::{
         ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime,
         ImeCandidateList, InputEvent, InputPosition, KeyboardInput, ScrollAxis,
@@ -58,7 +58,7 @@ fn process_wnd_proc(
             if render.window_size != new_size {
                 render.window_size = new_size;
 
-                OverlayEventSink::emit(ServerEvent::Window {
+                OverlayEventSink::emit(OverlayEvent::Window {
                     id: backend.hwnd,
                     event: WindowEvent::Resized {
                         width: new_size.0,
@@ -574,7 +574,7 @@ fn check_double_click(proc: &mut WindowProcData) -> bool {
 }
 
 #[inline]
-fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEvent) -> ServerEvent {
+fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEvent) -> OverlayEvent {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
 
     let window = InputPosition {
@@ -585,7 +585,7 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
         x: window.x - position.0,
         y: window.y - position.1,
     };
-    ServerEvent::Window {
+    OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event,
@@ -596,8 +596,8 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
 }
 
 #[inline(always)]
-fn keyboard_input(id: u32, input: KeyboardInput) -> ServerEvent {
-    ServerEvent::Window {
+fn keyboard_input(id: u32, input: KeyboardInput) -> OverlayEvent {
+    OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }

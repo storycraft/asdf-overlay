@@ -5,7 +5,7 @@ use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
     common::{request::SetPosition, size::PercentLength},
-    event::{ServerEvent, WindowEvent},
+    event::{OverlayEvent, WindowEvent},
     inject,
     surface::OverlaySurface,
 };
@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(ServerEvent::Window {
+    let Some(OverlayEvent::Window {
         id,
         event: WindowEvent::Added { .. },
     }) = event.recv().await

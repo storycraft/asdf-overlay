@@ -32,7 +32,7 @@ pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
 }
 
 /// Create dummy class and window for various operation.
-/// 
+///
 /// Creating another dummy windows in closures fail.
 pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
     extern "system" fn window_proc(

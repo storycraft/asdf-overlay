@@ -1,6 +1,6 @@
 //! Common types and utilities for IPC communication between the overlay client and server.
 
-use asdf_overlay_event::ServerEvent;
+use asdf_overlay_event::OverlayEvent;
 use bincode::{Decode, Encode};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -41,7 +41,7 @@ pub enum ServerToClientPacket {
     Response(ServerResponse),
 
     /// The packet is an event notification.
-    Event(ServerEvent),
+    Event(OverlayEvent),
 }
 
 /// Describes a frame header for IPC communication.

@@ -9,7 +9,7 @@ use asdf_overlay_common::{
     ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::{Request, WindowRequestItem},
 };
-use asdf_overlay_event::ServerEvent;
+use asdf_overlay_event::OverlayEvent;
 use bincode::Decode;
 use dashmap::DashMap;
 use tokio::{
@@ -168,14 +168,14 @@ impl IpcClientConnWindow<'_> {
 
 /// Event stream for receiving server events.
 pub struct IpcClientEventStream {
-    inner: mpsc::UnboundedReceiver<ServerEvent>,
+    inner: mpsc::UnboundedReceiver<OverlayEvent>,
 }
 
 impl IpcClientEventStream {
     /// Receive the next event.
     /// Returns `None` if the connection is closed.
     #[inline]
-    pub async fn recv(&mut self) -> Option<ServerEvent> {
+    pub async fn recv(&mut self) -> Option<OverlayEvent> {
         self.inner.recv().await
     }
 }

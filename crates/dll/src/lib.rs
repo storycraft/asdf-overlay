@@ -22,7 +22,7 @@ use asdf_overlay_common::{
     ipc::create_ipc_addr,
     request::{Request, WindowRequest},
 };
-use asdf_overlay_event::{ServerEvent, WindowEvent};
+use asdf_overlay_event::{OverlayEvent, WindowEvent};
 use core::time::Duration;
 use scopeguard::defer;
 use std::{ffi::OsStr, thread};
@@ -123,7 +123,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
             let render = backend.render.lock();
             let gpu_id = render.interop.gpu_id();
             let size = render.window_size;
-            _ = emitter.emit(ServerEvent::Window {
+            _ = emitter.emit(OverlayEvent::Window {
                 id: *backend.key() as _,
                 event: WindowEvent::Added {
                     width: size.0,

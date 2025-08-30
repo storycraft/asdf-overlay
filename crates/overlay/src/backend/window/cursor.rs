@@ -18,6 +18,7 @@ use crate::{
     },
 };
 
+/// Load [`HCURSOR`] resource from `cursor` if exists.
 pub fn load_cursor(cursor: Cursor) -> Option<HCURSOR> {
     #[inline]
     fn system_cursor(res: PCWSTR) -> Option<HCURSOR> {

@@ -18,7 +18,7 @@ use asdf_overlay_client::{
             UpdateSharedHandle,
         },
     },
-    event::ServerEvent,
+    event::OverlayEvent,
     inject,
     surface::OverlaySurface,
 };
@@ -312,7 +312,7 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
         let res = async move {
-            let event: Option<ServerEvent> = MANAGER
+            let event: Option<OverlayEvent> = MANAGER
                 .with(id, async move |overlay| {
                     overlay.event.lock().await.recv().await
                 })

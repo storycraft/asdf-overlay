@@ -1,8 +1,8 @@
 //! Provides abstraction for overlay surface.
-//! 
+//!
 //! The surface texture must be Direct3D 11 texture created with shared flags.
 //! Direct3D 11 was chosen, because it is well supported on almost every gpus nowadays.
-//! 
+//!
 //! If you create surface texture with keyed mutex, it will uses it for synchronization.
 //! You must keep mutex key to `0` otherwise, it will wait indefinitely when rendering overlay.
 //! You can still have surface texture without keyed mutex,
