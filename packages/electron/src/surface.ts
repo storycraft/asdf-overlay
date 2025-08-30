@@ -3,10 +3,19 @@ import type { OverlayWindow } from './index.js';
 import EventEmitter from 'node:events';
 
 type Emitter = EventEmitter<{
+  /**
+   * An error has been occured while copying to overlay surface.
+   */
   error: [e: unknown],
 }>;
 
+/**
+ * Connection from a Electron offscreen window to a overlay surface.
+ */
 export class ElectronOverlaySurface {
+  /**
+   * Events during paints.
+   */
   readonly events: Emitter = new EventEmitter();
 
   private handler: (
@@ -41,6 +50,9 @@ export class ElectronOverlaySurface {
     contents.invalidate();
   }
 
+  /**
+   * Connect Electron `WebContents` surface to target overlay window.
+   */
   static connect(
     window: OverlayWindow,
     contents: WebContents,
@@ -48,11 +60,17 @@ export class ElectronOverlaySurface {
     return new ElectronOverlaySurface({ ...window }, contents);
   }
 
+  /**
+   * Disconnect surface from Electron window and clear overlay surface.
+   */
   async disconnect() {
     this.contents.off('paint', this.handler);
     await this.window.overlay.clearSurface(this.window.id);
   }
 
+  /**
+   * Copy overlay texture in gpu accelerated shared texture mode.
+   */
   private async paintAccelerated(texture: TextureInfo) {
     const rect = texture.metadata.captureUpdateRect ?? texture.contentRect;
 
@@ -74,6 +92,9 @@ export class ElectronOverlaySurface {
     }
   }
 
+  /**
+   * Copy overlay texture from bitmap surface.
+   */
   private async paintSoftware(
     _dirtyRect: Electron.Rectangle,
     image: NativeImage,

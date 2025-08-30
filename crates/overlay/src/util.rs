@@ -1,3 +1,5 @@
+//! Common utilies used in many modules internally.
+
 use core::mem::{self, ManuallyDrop};
 use std::ffi::CString;
 
@@ -21,6 +23,7 @@ pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Opti
     unsafe { mem::transmute_copy(inf) }
 }
 
+/// Get Client area size of the window.
 pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     let mut rect = RECT::default();
     unsafe { GetClientRect(win, &mut rect)? };
@@ -28,6 +31,9 @@ pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     Ok((rect.right as u32, rect.bottom as u32))
 }
 
+/// Create dummy class and window for various operation.
+///
+/// Creating another dummy windows in closures fail.
 pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
     extern "system" fn window_proc(
         hwnd: HWND,
@@ -80,6 +86,9 @@ pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> an
     }
 }
 
+/// If [`IDXGIKeyedMutex`],
+/// * Exists, acquire the mutext with `0` value key, run closure and release.
+/// * Not exists, just run closure.
 #[inline]
 pub fn with_keyed_mutex<R>(
     mutex: Option<&IDXGIKeyedMutex>,

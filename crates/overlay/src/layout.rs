@@ -1,13 +1,21 @@
+//! Minimal overlay surface layout implementation for smooth window resizing.
+//! If you need more advanced layout system, create a fullscreen overlay surface and bring your own layout system.
+
 use asdf_overlay_common::size::PercentLength;
 
 #[derive(Clone)]
+/// A simple overlay layout implementation.
 pub struct OverlayLayout {
-    position: (PercentLength, PercentLength),
-    anchor: (PercentLength, PercentLength),
-    margin: (PercentLength, PercentLength, PercentLength, PercentLength),
+    /// X, Y Position of the overlay surface, relative to window's client size.
+    pub position: (PercentLength, PercentLength),
+    /// X, Y Positioning anchor of the overlay surface, relative to overlay's surface size.
+    pub anchor: (PercentLength, PercentLength),
+    /// Top, right, bottom, left margins of the overlay surface, relative to window's client size.
+    pub margin: (PercentLength, PercentLength, PercentLength, PercentLength),
 }
 
 impl OverlayLayout {
+    /// Create a new default [`OverlayLayout`].
     pub const fn new() -> Self {
         Self {
             position: (PercentLength::ZERO, PercentLength::ZERO),
@@ -21,27 +29,8 @@ impl OverlayLayout {
         }
     }
 
-    #[inline]
-    pub fn set_position(&mut self, x: PercentLength, y: PercentLength) {
-        self.position = (x, y);
-    }
-
-    #[inline]
-    pub fn set_anchor(&mut self, x: PercentLength, y: PercentLength) {
-        self.anchor = (x, y);
-    }
-
-    #[inline]
-    pub fn set_margin(
-        &mut self,
-        top: PercentLength,
-        right: PercentLength,
-        bottom: PercentLength,
-        left: PercentLength,
-    ) {
-        self.margin = (top, right, bottom, left);
-    }
-
+    /// Calculate absolute position of the window relative to `screen`,
+    /// pretends overlay surface to have `size` size.
     pub fn calc(&self, size: (u32, u32), screen: (u32, u32)) -> (i32, i32) {
         let size = (size.0 as f32, size.1 as f32);
         let screen = (screen.0 as f32, screen.1 as f32);

@@ -1,7 +1,7 @@
 mod input;
 
 use asdf_overlay_event::{
-    ClientEvent, WindowEvent,
+    OverlayEvent, WindowEvent,
     input::{InputEvent, Key, KeyInputState, KeyboardInput},
 };
 use asdf_overlay_hook::DetourHook;
@@ -341,8 +341,8 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> O
 }
 
 #[inline(always)]
-fn keyboard_input(id: u32, input: KeyboardInput) -> ClientEvent {
-    ClientEvent::Window {
+fn keyboard_input(id: u32, input: KeyboardInput) -> OverlayEvent {
+    OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }

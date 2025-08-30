@@ -1,7 +1,7 @@
 use asdf_overlay_client::{
     common::size::PercentLength,
     event::{
-        ClientEvent, GpuLuid, WindowEvent,
+        GpuLuid, OverlayEvent, WindowEvent,
         input::{
             CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, ImeCandidateList,
             InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis,
@@ -19,7 +19,7 @@ use neon::{
 
 pub fn emit_event<'a>(
     cx: &mut Cx<'a>,
-    event: ClientEvent,
+    event: OverlayEvent,
     emitter: Handle<'a, JsObject>,
     emit: Handle<'a, JsFunction>,
 ) -> NeonResult<()> {
@@ -27,7 +27,7 @@ pub fn emit_event<'a>(
     let builder = call_options.this(emitter);
 
     match event {
-        ClientEvent::Window { id, event } => match event {
+        OverlayEvent::Window { id, event } => match event {
             WindowEvent::Added {
                 width,
                 height,

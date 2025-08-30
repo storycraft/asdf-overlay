@@ -1,3 +1,5 @@
+//! Collection of hooks required to intercept window events and rendering.
+
 mod dx;
 mod opengl;
 mod proc;
@@ -9,6 +11,7 @@ use windows::Win32::Foundation::HINSTANCE;
 use crate::util::with_dummy_hwnd;
 
 #[tracing::instrument]
+/// Install various hooks.
 pub fn install(hinstance: HINSTANCE) -> anyhow::Result<()> {
     with_dummy_hwnd(hinstance, |dummy_hwnd| {
         proc::hook().context("Proc hook failed")?;

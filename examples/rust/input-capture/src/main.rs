@@ -4,7 +4,7 @@ use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
     common::request::BlockInput,
-    event::{ClientEvent, WindowEvent},
+    event::{OverlayEvent, WindowEvent},
     inject,
 };
 
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(ClientEvent::Window {
+    let Some(OverlayEvent::Window {
         id,
         event: WindowEvent::Added { .. },
     }) = event.recv().await
@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     while let Some(event) = event.recv().await {
         dbg!(&event);
 
-        if let ClientEvent::Window {
+        if let OverlayEvent::Window {
             event: WindowEvent::InputBlockingEnded,
             ..
         } = event

@@ -1,7 +1,13 @@
 import { Cursor } from '@asdf-overlay/core';
 
-// https://www.electronjs.org/docs/latest/api/web-contents
-// https://developer.mozilla.org/ko/docs/Web/CSS/cursor
+/**
+ * Map CSS cursor into overlay `Cursor`.
+ *
+ * Invalid CSS cursors will be mapped to `Default`.
+ *
+ * @see https://developer.mozilla.org/ko/docs/Web/CSS/cursor
+ * @see https://www.electronjs.org/docs/latest/api/web-contents
+ */
 export function mapCssCursor(cursor: string): Cursor | undefined {
   switch (cursor) {
     case 'pointer': return Cursor.Default;
@@ -53,12 +59,19 @@ export function mapCssCursor(cursor: string): Cursor | undefined {
   }
 }
 
+/**
+ * Map Windows virtual key code into Electron accelerator keycode.
+ *
+ * @see https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+ * @see https://www.electronjs.org/docs/latest/api/accelerator
+ */
 export function mapKeycode(code: number): string | undefined {
   return KEYS[code];
 }
 
-// As per https://www.electronjs.org/docs/latest/api/accelerator
-// and https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+/**
+ * Conversion map from windows keycode to Electron accelerator keycode.
+ */
 const KEYS: Record<number, string | undefined> = {
   8: 'Backspace',
   9: 'Tab',

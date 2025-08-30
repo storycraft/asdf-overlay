@@ -1,5 +1,5 @@
-pub mod cursor;
-pub mod proc;
+pub(crate) mod cursor;
+pub(crate) mod proc;
 
 use super::WindowBackend;
 use crate::layout::OverlayLayout;
