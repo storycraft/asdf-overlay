@@ -1,4 +1,4 @@
-use core::{ffi::c_void, mem};
+use core::{ffi::c_void, mem, ptr::NonNull};
 use std::ffi::CString;
 
 use anyhow::Context;
@@ -8,13 +8,10 @@ use once_cell::sync::{Lazy, OnceCell};
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::{HMODULE, HWND, LUID},
+        Foundation::{HWND, LUID},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
             Gdi::{HDC, WindowFromDC},
-            OpenGL::{
-                HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
-            },
         },
         System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
     },
@@ -28,7 +25,7 @@ use crate::{
     renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
     types::IntDashMap,
     util::find_adapter_by_luid,
-    wgl,
+    wgl::{self, types::HGLRC},
 };
 
 struct Hook {
@@ -39,12 +36,12 @@ struct Hook {
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
 struct GlData {
-    hglrc: u32,
+    hglrc: usize,
     hwnd: u32,
     renderer: Option<OpenglRenderer>,
 }
 // HDC -> GlData
-static MAP: Lazy<IntDashMap<u32, GlData>> = Lazy::new(IntDashMap::default);
+static MAP: Lazy<IntDashMap<usize, GlData>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
 pub fn hook(dummy_hwnd: HWND) {
@@ -78,11 +75,11 @@ pub fn hook(dummy_hwnd: HWND) {
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
-    let current_hdc = unsafe { wglGetCurrentDC() };
-    let current_hglrc = unsafe { wglGetCurrentContext() };
+    let current_hdc = unsafe { wgl::GetCurrentDC() };
+    let current_hglrc = unsafe { wgl::GetCurrentContext() };
     let mut renderer_cleanup = false;
     MAP.retain(|&hdc, gl_data| {
-        if gl_data.hglrc != hglrc.0 as u32 {
+        if gl_data.hglrc != hglrc as _ {
             return true;
         }
         if !renderer_cleanup {
@@ -94,7 +91,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             gl_data.hwnd, gl_data.hglrc
         );
         unsafe {
-            _ = wglMakeCurrent(HDC(hdc as _), HGLRC(gl_data.hglrc as _));
+            _ = wgl::MakeCurrent(hdc as _, gl_data.hglrc as _);
             gl_data.renderer.take();
         }
         _ = Backends::with_backend(gl_data.hwnd, |backend| {
@@ -110,7 +107,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     });
     if renderer_cleanup {
         unsafe {
-            _ = wglMakeCurrent(current_hdc, current_hglrc);
+            _ = wgl::MakeCurrent(current_hdc, current_hglrc);
         }
     }
 
@@ -210,11 +207,11 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    let mut data = match MAP.entry(hdc.0 as u32) {
+    let mut data = match MAP.entry(hdc.0 as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            let hglrc = unsafe { wglGetCurrentContext() };
-            if hglrc.is_invalid() {
+            let hglrc = unsafe { wgl::GetCurrentContext() };
+            if hglrc.is_null() {
                 return;
             }
 
@@ -224,7 +221,7 @@ fn draw_overlay(hdc: HDC) {
             }
 
             entry.insert(GlData {
-                hglrc: hglrc.0 as _,
+                hglrc: hglrc as _,
                 hwnd: hwnd.0 as _,
                 renderer: None,
             })
@@ -279,27 +276,33 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
 #[tracing::instrument]
 fn setup_gl() -> anyhow::Result<()> {
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
+    let wgl_get_proc_address = unsafe {
+        mem::transmute::<unsafe extern "system" fn() -> isize, fn(PCSTR) -> Option<NonNull<c_void>>>(
+            GetProcAddress(opengl32module, s!("wglGetProcAddress"))
+                .context("failed to resolve wglGetProcAddress")?,
+        )
+    };
 
-    #[tracing::instrument]
-    fn loader(module: HMODULE, s: &str) -> *const c_void {
+    let loader = |s: &str| -> *const c_void {
         let name = CString::new(s).unwrap();
 
         let addr = unsafe {
             let addr = PCSTR(name.as_ptr() as _);
-            let fn_ptr = wglGetProcAddress(addr);
+            let fn_ptr = wgl_get_proc_address(addr);
             if let Some(ptr) = fn_ptr {
-                ptr as _
+                ptr.as_ptr()
             } else {
-                GetProcAddress(module, addr).map_or(std::ptr::null(), |fn_ptr| fn_ptr as *const _)
+                GetProcAddress(opengl32module, addr)
+                    .map_or(std::ptr::null(), |fn_ptr| fn_ptr as *const _)
             }
         };
         trace!("found: {:p}", addr);
 
         addr
-    }
+    };
 
-    wgl::load_with(|s| loader(opengl32module, s));
-    gl::load_with(|s| loader(opengl32module, s));
+    wgl::load_with(loader);
+    gl::load_with(loader);
 
     Ok(())
 }
