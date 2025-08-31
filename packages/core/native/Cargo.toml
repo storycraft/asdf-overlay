@@ -25,3 +25,6 @@ mimalloc = "0.1.46"
 bytemuck = "1.22.0"
 futures = "0.3.31"
 num = "0.4.3"
+
+[target.'cfg(target_env = "msvc")'.build-dependencies]
+static_vcruntime = "2.0"
