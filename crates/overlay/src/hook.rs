@@ -3,7 +3,10 @@
 mod dx;
 mod opengl;
 mod proc;
-pub mod util;
+
+pub mod util {
+    pub use super::dx::original_execute_command_lists;
+}
 
 use anyhow::Context;
 use windows::Win32::Foundation::HINSTANCE;

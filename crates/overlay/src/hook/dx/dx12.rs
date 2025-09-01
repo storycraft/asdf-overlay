@@ -1,10 +1,14 @@
 mod rtv;
+mod util;
+
+pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
 
 use anyhow::Context;
+use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use tracing::{debug, trace};
 use windows::{
     Win32::Graphics::{
@@ -26,10 +30,6 @@ use crate::{
     renderer::dx12::Dx12Renderer,
     types::IntDashMap,
 };
-
-use super::HOOK;
-
-pub type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
 
 struct WeakID3D12CommandQueue(*mut c_void);
 unsafe impl Send for WeakID3D12CommandQueue {}
@@ -60,7 +60,7 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx12Renderer::new(&device, swapchain)?,
                 rtv: RtvDescriptors::new(&device)?,
             });
-            register_swapchain_destruction_callback(&swapchain, {
+            register_swapchain_destruction_callback(swapchain, {
                 let device = device.as_raw() as usize;
                 move |this| cleanup_swapchain(this, device)
             });
@@ -133,10 +133,10 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &
         let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
         let res = data
             .rtv
-            .with_next_swapchain(device, &swapchain, backbuffer_index as _, |desc| {
+            .with_next_swapchain(device, swapchain, backbuffer_index as _, |desc| {
                 data.renderer.draw(
                     device,
-                    &swapchain,
+                    swapchain,
                     backbuffer_index,
                     desc,
                     &queue,
@@ -171,7 +171,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
 }
 
 #[tracing::instrument]
-pub extern "system" fn hooked_execute_command_lists(
+extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,
     pp_commmand_lists: *const *mut c_void,
@@ -197,9 +197,30 @@ pub extern "system" fn hooked_execute_command_lists(
     }
 }
 
+type ExecuteCommandListsFn = unsafe extern "system" fn(*mut c_void, u32, *const *mut c_void);
+
+struct Hook {
+    execute_command_lists: OnceCell<DetourHook<ExecuteCommandListsFn>>,
+}
+
+static HOOK: Hook = Hook {
+    execute_command_lists: OnceCell::new(),
+};
+
+pub fn hook() -> anyhow::Result<()> {
+    let execute_command_lists =
+        get_execute_command_lists_addr().context("failed to load dx12 addrs")?;
+    HOOK.execute_command_lists.get_or_try_init(|| unsafe {
+        debug!("hooking ID3D12CommandQueue::ExecuteCommandLists");
+        DetourHook::attach(execute_command_lists, hooked_execute_command_lists as _)
+    })?;
+
+    Ok(())
+}
+
 /// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT type by creating dummy device
 #[tracing::instrument]
-pub fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
+fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
     unsafe {
         let mut device = None;
         D3D12CreateDevice::<_, ID3D12Device>(None, D3D_FEATURE_LEVEL_11_0, &mut device)?;

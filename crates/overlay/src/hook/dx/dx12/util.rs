@@ -3,7 +3,7 @@ use windows::{
     core::Interface,
 };
 
-use super::HOOK;
+use crate::hook::dx::dx12::HOOK;
 
 #[tracing::instrument]
 pub unsafe fn original_execute_command_lists(

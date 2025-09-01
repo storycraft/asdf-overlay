@@ -13,22 +13,20 @@
 //! use asdf_overlay::initialize;
 //! use asdf_overlay::event_sink::OverlayEventSink;
 //!
-//! fn main() {
-//!     let module_handle, window_hwnd;
-//!     // Initialize asdf-overlay.
-//!     initialize(module_handle).expect("initialization failed");
+//! let module_handle, window_hwnd;
+//! // Initialize asdf-overlay.
+//! initialize(module_handle).expect("initialization failed");
 //!
-//!     // Initialize Event sink.
-//!     // Without setting it, the overlay will not render.
-//!     // This is intended because windows state will be out of sync if you miss any events.
-//!     OverlayEventSink::set(move |event| {
-//!         // Do something with events.
-//!     });
+//! // Initialize Event sink.
+//! // Without setting it, the overlay will not render.
+//! // This is intended because windows state will be out of sync if you miss any events.
+//! OverlayEventSink::set(move |event| {
+//!     // Do something with events.
+//! });
 //!
-//!     Backends::with_backend(window_hwnd, |backend| {
-//!         // Do something with overlay window backend.
-//!     });
-//! }
+//! Backends::with_backend(window_hwnd, |backend| {
+//!     // Do something with overlay window backend.
+//! });
 //! ```
 
 #[allow(unsafe_op_in_unsafe_fn, clippy::all)]

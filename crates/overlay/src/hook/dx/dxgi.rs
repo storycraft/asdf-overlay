@@ -3,6 +3,8 @@ pub mod callback;
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_hook::DetourHook;
+use once_cell::sync::OnceCell;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
@@ -32,8 +34,6 @@ use crate::{
     event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
 };
-
-use super::HOOK;
 
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
@@ -73,7 +73,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present(
+extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -89,7 +89,7 @@ pub(super) extern "system" fn hooked_present(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present1(
+extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -110,7 +110,7 @@ fn resize_swapchain(swapchain: &IDXGISwapChain1) {
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_resize_buffers(
+extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
     width: u32,
@@ -121,7 +121,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
     trace!("ResizeBuffers called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    resize_swapchain(&swapchain);
+    resize_swapchain(swapchain);
 
     unsafe {
         HOOK.resize_buffers.wait().original_fn()(this, buffer_count, width, height, format, flags)
@@ -129,7 +129,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_resize_buffers1(
+extern "system" fn hooked_resize_buffers1(
     this: *mut c_void,
     buffer_count: u32,
     width: u32,
@@ -142,7 +142,7 @@ pub(super) extern "system" fn hooked_resize_buffers1(
     trace!("ResizeBuffers1 called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    resize_swapchain(&swapchain);
+    resize_swapchain(swapchain);
 
     unsafe {
         HOOK.resize_buffers1.wait().original_fn()(
@@ -179,6 +179,48 @@ pub type ResizeBuffers1Fn = unsafe extern "system" fn(
     *const *mut c_void,
 ) -> HRESULT;
 
+struct Hook {
+    present: OnceCell<DetourHook<PresentFn>>,
+    present1: OnceCell<DetourHook<Present1Fn>>,
+    resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
+    resize_buffers1: OnceCell<DetourHook<ResizeBuffers1Fn>>,
+}
+
+static HOOK: Hook = Hook {
+    present: OnceCell::new(),
+    present1: OnceCell::new(),
+    resize_buffers: OnceCell::new(),
+    resize_buffers1: OnceCell::new(),
+};
+
+pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    let dxgi_functions = get_addr(dummy_hwnd).context("failed to load dxgi addrs")?;
+
+    debug!("hooking IDXGISwapChain::ResizeBuffers");
+    HOOK.resize_buffers.get_or_try_init(|| unsafe {
+        DetourHook::attach(dxgi_functions.resize_buffers, hooked_resize_buffers as _)
+    })?;
+
+    if let Some(resize_buffers1) = dxgi_functions.resize_buffers1 {
+        debug!("hooking IDXGISwapChain3::ResizeBuffers1");
+        HOOK.resize_buffers1.get_or_try_init(|| unsafe {
+            DetourHook::attach(resize_buffers1, hooked_resize_buffers1 as _)
+        })?;
+    }
+
+    debug!("hooking IDXGISwapChain::Present");
+    HOOK.present.get_or_try_init(|| unsafe {
+        DetourHook::attach(dxgi_functions.present, hooked_present as _)
+    })?;
+
+    if let Some(present1) = dxgi_functions.present1 {
+        debug!("hooking IDXGISwapChain1::Present1");
+        HOOK.present1
+            .get_or_try_init(|| unsafe { DetourHook::attach(present1, hooked_present1 as _) })?;
+    }
+    Ok(())
+}
+
 pub struct DxgiFunctions {
     pub present: PresentFn,
     pub present1: Option<Present1Fn>,
@@ -188,7 +230,7 @@ pub struct DxgiFunctions {
 
 /// Get pointer to dxgi functions
 #[tracing::instrument]
-pub fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
+pub fn get_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
     unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;
         let adapter = factory.EnumAdapters1(0)?;

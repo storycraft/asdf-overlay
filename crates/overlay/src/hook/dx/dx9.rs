@@ -1,6 +1,8 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_hook::DetourHook;
+use once_cell::sync::OnceCell;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
@@ -26,40 +28,8 @@ use crate::{
     util::find_adapter_by_luid,
 };
 
-use super::HOOK;
-
-pub type PresentFn = unsafe extern "system" fn(
-    *mut c_void,
-    *const RECT,
-    *const RECT,
-    HWND,
-    *const RGNDATA,
-) -> HRESULT;
-pub type PresentExFn = unsafe extern "system" fn(
-    *mut c_void,
-    *const RECT,
-    *const RECT,
-    HWND,
-    *const RGNDATA,
-    u32,
-) -> HRESULT;
-pub type SwapchainPresentFn = unsafe extern "system" fn(
-    *mut c_void,
-    *const RECT,
-    *const RECT,
-    HWND,
-    *const RGNDATA,
-    u32,
-) -> HRESULT;
-pub type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
-pub type ResetExFn = unsafe extern "system" fn(
-    *mut c_void,
-    *mut D3DPRESENT_PARAMETERS,
-    *mut D3DDISPLAYMODEEX,
-) -> HRESULT;
-
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present(
+extern "system" fn hooked_present(
     this: *mut c_void,
     source_rect: *const RECT,
     dest_rect: *const RECT,
@@ -94,7 +64,7 @@ pub(super) extern "system" fn hooked_present(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_swapchain_present(
+extern "system" fn hooked_swapchain_present(
     this: *mut c_void,
     source_rect: *const RECT,
     dest_rect: *const RECT,
@@ -129,7 +99,7 @@ pub(super) extern "system" fn hooked_swapchain_present(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present_ex(
+extern "system" fn hooked_present_ex(
     this: *mut c_void,
     source_rect: *const RECT,
     dest_rect: *const RECT,
@@ -278,10 +248,7 @@ fn handle_reset(device: &IDirect3DDevice9, param: *mut D3DPRESENT_PARAMETERS) {
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_reset(
-    this: *mut c_void,
-    param: *mut D3DPRESENT_PARAMETERS,
-) -> HRESULT {
+extern "system" fn hooked_reset(this: *mut c_void, param: *mut D3DPRESENT_PARAMETERS) -> HRESULT {
     trace!("Reset called");
     handle_reset(
         unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap(),
@@ -292,7 +259,7 @@ pub(super) extern "system" fn hooked_reset(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_reset_ex(
+extern "system" fn hooked_reset_ex(
     this: *mut c_void,
     param: *mut D3DPRESENT_PARAMETERS,
     fullscreen_display_mode: *mut D3DDISPLAYMODEEX,
@@ -306,13 +273,85 @@ pub(super) extern "system" fn hooked_reset_ex(
     unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) }
 }
 
-/// Get pointer to IDirect3DDevice9::Present, IDirect3DSwapChain9::Present,
+type PresentFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+) -> HRESULT;
+type PresentExFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+    u32,
+) -> HRESULT;
+type SwapchainPresentFn = unsafe extern "system" fn(
+    *mut c_void,
+    *const RECT,
+    *const RECT,
+    HWND,
+    *const RGNDATA,
+    u32,
+) -> HRESULT;
+type SwapchainReleaseFn = unsafe extern "system" fn(*mut c_void) -> u32;
+type ResetFn = unsafe extern "system" fn(*mut c_void, *mut D3DPRESENT_PARAMETERS) -> HRESULT;
+type ResetExFn = unsafe extern "system" fn(
+    *mut c_void,
+    *mut D3DPRESENT_PARAMETERS,
+    *mut D3DDISPLAYMODEEX,
+) -> HRESULT;
+
+struct Hook {
+    dx9_present: OnceCell<DetourHook<PresentFn>>,
+    dx9_present_ex: OnceCell<DetourHook<PresentExFn>>,
+    dx9_swapchain_present: OnceCell<DetourHook<SwapchainPresentFn>>,
+    reset: OnceCell<DetourHook<ResetFn>>,
+    reset_ex: OnceCell<DetourHook<ResetExFn>>,
+}
+
+static HOOK: Hook = Hook {
+    dx9_present: OnceCell::new(),
+    dx9_present_ex: OnceCell::new(),
+    dx9_swapchain_present: OnceCell::new(),
+    reset: OnceCell::new(),
+    reset_ex: OnceCell::new(),
+};
+
+pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    let (present, swapchain_present, swapchain_release, present_ex, reset, reset_ex) =
+        get_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
+
+    debug!("hooking IDirect3DDevice9::Reset");
+    HOOK.reset
+        .get_or_try_init(|| unsafe { DetourHook::attach(reset, hooked_reset as _) })?;
+    debug!("hooking IDirect3DDevice9Ex::ResetEx");
+    HOOK.reset_ex
+        .get_or_try_init(|| unsafe { DetourHook::attach(reset_ex, hooked_reset_ex as _) })?;
+    debug!("hooking IDirect3DDevice9::Present");
+    HOOK.dx9_present
+        .get_or_try_init(|| unsafe { DetourHook::attach(present, hooked_present as _) })?;
+    debug!("hooking IDirect3DSwapChain9::Present");
+    HOOK.dx9_swapchain_present.get_or_try_init(|| unsafe {
+        DetourHook::attach(swapchain_present, hooked_swapchain_present as _)
+    })?;
+    debug!("hooking IDirect3DDevice9Ex::PresentEx");
+    HOOK.dx9_present_ex
+        .get_or_try_init(|| unsafe { DetourHook::attach(present_ex, hooked_present_ex as _) })?;
+
+    Ok(())
+}
+
+/// Get pointer to IDirect3DDevice9::Present, IDirect3DSwapChain9::Present, IDirect3DSwapChain9::Release,
 /// IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset, IDirect3DDevice9Ex::ResetEx by creating dummy device
-pub fn get_dx9_addr(
+fn get_addr(
     dummy_hwnd: HWND,
 ) -> anyhow::Result<(
     PresentFn,
     SwapchainPresentFn,
+    SwapchainReleaseFn,
     PresentExFn,
     ResetFn,
     ResetExFn,
@@ -352,6 +391,12 @@ pub fn get_dx9_addr(
         swapchain_present
     );
 
+    let swapchain_release = dx9_swapchain_vtable.base__.Release;
+    debug!(
+        "IDirect3DSwapChain9::Release found: {:p}",
+        swapchain_release
+    );
+
     let reset = dx9_vtable.Reset;
     debug!("IDirect3DDevice9::Reset found: {:p}", reset);
 
@@ -362,5 +407,12 @@ pub fn get_dx9_addr(
     let present_ex = dx9ex_vtable.PresentEx;
     debug!("IDirect3DDevice9Ex::PresentEx found: {:p}", present_ex);
 
-    Ok((present, swapchain_present, present_ex, reset, reset_ex))
+    Ok((
+        present,
+        swapchain_present,
+        swapchain_release,
+        present_ex,
+        reset,
+        reset_ex,
+    ))
 }

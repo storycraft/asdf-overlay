@@ -16,7 +16,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{ WindowBackend, render::Renderer},
+    backend::{WindowBackend, render::Renderer},
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
     renderer::dx11::Dx11Renderer,
     types::IntDashMap,
