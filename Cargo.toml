@@ -18,6 +18,8 @@ version = "0.9.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
+authors = ["storycraft <storycraft@pancake.sh>"]
+rust-version = "1.88"
 
 [workspace.dependencies]
 asdf-overlay = { version = "0.9.1", path = "./crates/overlay" }

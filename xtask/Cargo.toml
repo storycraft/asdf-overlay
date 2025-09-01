@@ -3,7 +3,8 @@ name = "xtask"
 publish = false
 edition.workspace = true
 license.workspace = true
-authors = ["storycraft <storycraft@pancake.sh>"]
+authors.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 anyhow = "1.0.97"
