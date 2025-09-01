@@ -1,3 +1,5 @@
+mod data;
+
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
@@ -25,7 +27,8 @@ use crate::{
     backend::{Backends, render::Renderer},
     event_sink::OverlayEventSink,
     gl,
-    renderer::opengl::{OpenglRenderer, data::with_renderer_gl_data},
+    hook::opengl::data::with_renderer_gl_data,
+    renderer::opengl::OpenglRenderer,
     types::IntDashMap,
     util::find_adapter_by_luid,
     wgl,

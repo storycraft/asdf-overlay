@@ -1,4 +1,3 @@
-pub mod callback;
 pub mod dx12;
 
 use windows::Win32::Graphics::Direct3D11::ID3DDeviceContextState;

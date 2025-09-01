@@ -10,13 +10,18 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
         },
-        Dxgi::IDXGISwapChain1,
+        Dxgi::{IDXGISwapChain1, IDXGISwapChain3},
     },
     core::Interface,
 };
 
 use crate::{
-    backend::{Backends, render::Renderer},
+    backend::{
+        Backends, WindowBackend,
+        render::{Renderer, cx::dx12::RtvDescriptors},
+    },
+    hook::dx::dxgi::callback::register_swapchain_destruction_callback,
+    renderer::dx12::Dx12Renderer,
     types::IntDashMap,
 };
 
@@ -31,7 +36,7 @@ unsafe impl Sync for WeakID3D12CommandQueue {}
 static QUEUE_MAP: Lazy<IntDashMap<usize, WeakID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument]
-pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
+fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(unsafe {
         ID3D12CommandQueue::from_raw_borrowed(&QUEUE_MAP.remove(&(device.as_raw() as _))?.1.0)
             .unwrap()
@@ -39,8 +44,78 @@ pub fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     })
 }
 
+pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &IDXGISwapChain1) {
+    let render = &mut *backend.render.lock();
+    let renderer = match render.renderer {
+        Some(Renderer::Dx12(ref mut renderer)) => renderer,
+
+        // drawing on opengl with dxgi swapchain can cause deadlock
+        Some(Renderer::Opengl) => {
+            render.renderer = Some(Renderer::Dx12(None));
+            debug!("switching from opengl to dx12 render");
+            // skip drawing on render changes
+            return;
+        }
+        // use dxgi swapchain instead
+        Some(Renderer::Vulkan) => {
+            render.renderer = Some(Renderer::Dx12(None));
+            debug!("switching from vulkan to dx12 render");
+            return;
+        }
+        Some(_) => {
+            trace!("ignoring dx12 rendering");
+            return;
+        }
+        None => {
+            render.renderer = Some(Renderer::Dx12(None));
+            // skip drawing on renderer check
+            return;
+        }
+    };
+
+    let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
+    let Some(queue) = get_queue_for(device) else {
+        return;
+    };
+
+    let renderer = renderer.get_or_insert_with(|| {
+        debug!("initializing dx12 renderer");
+        register_swapchain_destruction_callback(&swapchain, cleanup_swapchain);
+        Dx12Renderer::new(device, &queue, &swapchain).expect("renderer creation failed")
+    });
+    let rtv = render
+        .cx
+        .dx12
+        .get_or_insert_with(|| RtvDescriptors::new(device).expect("failed to create dx12 rtv"));
+
+    if let Some(update) = render.surface.take_update() {
+        renderer.update_texture(update);
+    }
+
+    let Some(surface) = render.surface.get() else {
+        return;
+    };
+
+    let size = surface.size();
+    trace!("using dx12 renderer");
+    let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
+    let res = rtv.with_next_swapchain(device, &swapchain, backbuffer_index as _, |desc| {
+        renderer.draw(
+            device,
+            &swapchain,
+            backbuffer_index,
+            desc,
+            &queue,
+            render.position,
+            size,
+            render.window_size,
+        )
+    });
+    trace!("dx12 render: {:?}", res);
+}
+
 #[tracing::instrument]
-pub fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
+fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
     let hwnd = unsafe { swapchain.GetHwnd() }.ok();
 
     let Some(hwnd) = hwnd else {
