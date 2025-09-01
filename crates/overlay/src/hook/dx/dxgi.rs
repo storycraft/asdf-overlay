@@ -28,15 +28,12 @@ use windows::{
 };
 
 use crate::{
-    backend::{
-        Backends, WindowBackend,
-        render::{Renderer},
-    },
+    backend::Backends,
     event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
 };
 
-use super::{HOOK};
+use super::HOOK;
 
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
@@ -53,7 +50,11 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
                 unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
             },
             |backend| {
-                dx12::draw_overlay(backend, &device, swapchain);
+                dx12::draw_overlay(
+                    backend,
+                    &device,
+                    &swapchain.cast::<IDXGISwapChain3>().unwrap(),
+                );
             },
         ) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -104,18 +105,8 @@ pub(super) extern "system" fn hooked_present1(
     unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }
 }
 
-fn resize_swapchain(backend: &WindowBackend) {
-    let render = &mut *backend.render.lock();
-    let Some(ref renderer) = render.renderer else {
-        return;
-    };
-
-    if let Renderer::Dx12(_) = *renderer {
-        if let Some(ref mut rtv) = render.cx.dx12 {
-            // invalidate old rtv descriptors
-            rtv.reset();
-        }
-    }
+fn resize_swapchain(swapchain: &IDXGISwapChain1) {
+    dx12::resize_swapchain(swapchain);
 }
 
 #[tracing::instrument]
@@ -130,9 +121,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
     trace!("ResizeBuffers called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
-    }
+    resize_swapchain(&swapchain);
 
     unsafe {
         HOOK.resize_buffers.wait().original_fn()(this, buffer_count, width, height, format, flags)
@@ -153,9 +142,7 @@ pub(super) extern "system" fn hooked_resize_buffers1(
     trace!("ResizeBuffers1 called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
-    }
+    resize_swapchain(&swapchain);
 
     unsafe {
         HOOK.resize_buffers1.wait().original_fn()(

@@ -1,3 +1,5 @@
+use dashmap::Entry;
+use once_cell::sync::Lazy;
 use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
@@ -6,6 +8,7 @@ use windows::{
         Direct3D11::{
             D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED, D3D11_CREATE_DEVICE_SINGLETHREADED,
             D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1, ID3D11Texture2D,
+            ID3DDeviceContextState,
         },
         Dxgi::IDXGISwapChain1,
     },
@@ -16,16 +19,72 @@ use crate::{
     backend::{Backends, WindowBackend, render::Renderer},
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
     renderer::dx11::Dx11Renderer,
+    types::IntDashMap,
 };
 
+/// Mapping from [`IDXGISwapChain1`] to [`RendererData`].
+static RENDERERS: Lazy<IntDashMap<usize, RendererData>> = Lazy::new(IntDashMap::default);
+
+struct RendererData {
+    renderer: Dx11Renderer,
+    state: ID3DDeviceContextState,
+}
+
+#[inline]
+fn with_or_init_renderer_data<R>(
+    swapchain: &IDXGISwapChain1,
+    f: impl FnOnce(&mut RendererData) -> anyhow::Result<R>,
+) -> anyhow::Result<R> {
+    let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
+        Entry::Occupied(entry) => entry.into_ref(),
+        Entry::Vacant(entry) => {
+            debug!("initializing dx11 renderer");
+            let device = unsafe { swapchain.GetDevice::<ID3D11Device1>()? };
+
+            let state = unsafe {
+                let mut state = None;
+                let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0
+                {
+                    D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
+                } else {
+                    0
+                };
+
+                device
+                    .CreateDeviceContextState(
+                        flag,
+                        &[D3D_FEATURE_LEVEL_11_0],
+                        D3D11_SDK_VERSION,
+                        &ID3D11Device::IID,
+                        None,
+                        Some(&mut state),
+                    )
+                    .expect("CreateDeviceContextState failed");
+
+                state.unwrap()
+            };
+
+            let ref_mut = entry.insert(RendererData {
+                renderer: Dx11Renderer::new(&device)?,
+                state,
+            });
+            register_swapchain_destruction_callback(&swapchain, cleanup_swapchain);
+
+            ref_mut
+        }
+    };
+
+    f(&mut data)
+}
+
 pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    let render = &mut *backend.render.lock();
-    let renderer = match render.renderer {
-        Some(Renderer::Dx11(ref mut renderer)) => renderer,
+    let mut render = backend.render.lock();
+    match render.renderer {
+        Some(Renderer::Dx11) => {}
 
         // drawing on opengl with dxgi swapchain can cause deadlock
         Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx11(None));
+            render.renderer = Some(Renderer::Dx11);
             debug!("switching from opengl to dx11 render");
             // skip drawing on render changes
             return;
@@ -35,62 +94,40 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
             return;
         }
         None => {
-            render.renderer = Some(Renderer::Dx11(None));
+            render.renderer = Some(Renderer::Dx11);
             // skip drawing on renderer check
             return;
         }
     };
 
-    let cx = unsafe { device.GetImmediateContext1().unwrap() };
-    let state = render.cx.dx11.get_or_insert_with(|| {
-        let mut state = None;
-        unsafe {
-            let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0 {
-                D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
-            } else {
-                0
-            };
-
-            device
-                .CreateDeviceContextState(
-                    flag,
-                    &[D3D_FEATURE_LEVEL_11_0],
-                    D3D11_SDK_VERSION,
-                    &ID3D11Device::IID,
-                    None,
-                    Some(&mut state),
-                )
-                .expect("CreateDeviceContextState failed");
-        }
-
-        state.unwrap()
-    });
-
-    let mut prev_state = None;
-    unsafe {
-        cx.SwapDeviceContextState(&*state, Some(&mut prev_state));
-    }
-    let prev_state = prev_state.unwrap();
-    defer!(unsafe {
-        cx.SwapDeviceContextState(&prev_state, None);
-    });
-
-    trace!("using dx11 renderer");
-    let renderer = renderer.get_or_insert_with(|| {
-        debug!("initializing dx11 renderer");
-        register_swapchain_destruction_callback(swapchain, cleanup_swapchain);
-        Dx11Renderer::new(device).expect("renderer creation failed")
-    });
-
-    if let Some(update) = render.surface.take_update() {
-        renderer.update_texture(update);
-    }
-
     let Some(surface) = render.surface.get() else {
         return;
     };
+
     let size = surface.size();
-    {
+    let update = render.surface.take_update();
+    let position = render.position;
+    let screen = render.window_size;
+    drop(render);
+
+    _ = with_or_init_renderer_data(swapchain, move |data| {
+        trace!("using dx11 renderer");
+
+        if let Some(update) = update {
+            data.renderer.update_texture(update);
+        }
+
+        let cx = unsafe { device.GetImmediateContext1().unwrap() };
+        let mut prev_state = None;
+        unsafe {
+            cx.SwapDeviceContextState(&data.state, Some(&mut prev_state));
+        }
+
+        let prev_state = prev_state.unwrap();
+        defer!(unsafe {
+            cx.SwapDeviceContextState(&prev_state, None);
+        });
+
         let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
             .expect("failed to get dx11 backbuffer");
         let mut rtv = None;
@@ -100,29 +137,24 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
 
         unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
         defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-        let _res = renderer.draw(device, &cx, render.position, size, render.window_size);
-        trace!("dx11 render: {:?}", _res);
-    }
+
+        let res = data.renderer.draw(device, &cx, position, size, screen);
+        trace!("dx11 render: {:?}", res);
+        res
+    });
 }
 
 #[tracing::instrument]
 fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
-    let hwnd = unsafe { swapchain.GetHwnd() }.ok();
-
-    let Some(hwnd) = hwnd else {
+    if RENDERERS.remove(&(swapchain.as_raw() as usize)).is_none() {
         return;
     };
+    debug!("dx11 renderer cleanup");
 
-    // We don't know if they are trying clean up entire device, so cleanup everything
-    _ = Backends::with_backend(hwnd.0 as _, |backend| {
-        let render = &mut *backend.render.lock();
-        let Some(Renderer::Dx11(ref mut renderer)) = render.renderer else {
-            return;
-        };
-        debug!("dx11 renderer cleanup");
-
-        renderer.take();
-        render.cx.dx11.take();
-        render.set_surface_updated();
-    });
+    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
+        _ = Backends::with_backend(hwnd.0 as _, |backend| {
+            let render = &mut *backend.render.lock();
+            render.set_surface_updated();
+        });
+    }
 }
