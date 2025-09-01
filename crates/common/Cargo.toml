@@ -8,7 +8,7 @@ repository.workspace = true
 authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]
-asdf-overlay-event = { workspace = true }
+asdf-overlay-event = { workspace = true, features = ["bincode"] }
 tokio = { workspace = true, features = ["io-util", "rt", "sync", "net"] }
 
 bincode = { version = "2.0.1", features = ["derive"] }
