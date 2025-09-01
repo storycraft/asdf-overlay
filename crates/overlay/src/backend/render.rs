@@ -3,12 +3,13 @@ use core::num::NonZeroU32;
 use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
-use crate::{interop::DxInterop, renderer::dx9::Dx9Renderer, surface::OverlaySurface};
+use crate::{interop::DxInterop, surface::OverlaySurface};
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Renderer {
     Dx12,
     Dx11,
-    Dx9(Option<(usize, Dx9Renderer)>),
+    Dx9,
     Opengl,
     Vulkan,
 }
