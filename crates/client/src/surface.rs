@@ -1,3 +1,8 @@
+//! Client side overlay surface management wrapper.
+//!
+//! Uses Direct3D11 to manage overlay surfaces
+//! and provide convenient methods to update them from bitmaps or other shared texture.
+
 use core::{num::NonZeroU32, ptr};
 
 use anyhow::{Context, bail};
@@ -22,6 +27,10 @@ use crate::ty::CopyRect;
 
 const DEFAULT_FEATURE_LEVELS: [D3D_FEATURE_LEVEL; 1] = [D3D_FEATURE_LEVEL_11_0];
 
+/// Represents an overlay surface.
+///
+/// This buffers multiple textures to prevent flickering when updating the surface.
+/// The default buffer count is 2, but can be changed by specifying the `BUFFERS` const generic parameter.
 pub struct OverlaySurface<const BUFFERS: usize = 2> {
     device: ID3D11Device,
     cx: ID3D11DeviceContext,
@@ -30,6 +39,9 @@ pub struct OverlaySurface<const BUFFERS: usize = 2> {
 }
 
 impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
+    /// Create a new [`OverlaySurface`].
+    /// This will create a Direct3D11 device and context internally.
+    /// * Returns error if failed to create Direct3D11 device or context.
     pub fn new() -> anyhow::Result<Self> {
         let mut device = None;
         let mut cx = None;
@@ -56,10 +68,16 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         })
     }
 
+    /// Clear the current surface.
+    /// This will release all internal textures.
     pub fn clear(&mut self) {
         self.texture = BufferedTexture::new();
     }
 
+    /// Update the surface from a NT handle of a Direct3D texture.
+    /// * Returns [`None`]` if the update is done to an existing internal texture.
+    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
+    /// * Returns error if handle is invalid to be opened.
     pub fn update_from_nt_shared(
         &mut self,
         width: u32,
@@ -73,6 +91,10 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         self.update_surface_from(width, height, &src_texture, rect)
     }
 
+    /// Update the surface from a KMT handle of a Direct3D texture.
+    /// * Returns [`None`]` if the update is done to an existing internal texture.
+    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
+    /// * Returns error if handle is invalid to be opened.
     pub fn update_from_shared(
         &mut self,
         width: u32,
@@ -132,6 +154,11 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         }
     }
 
+    /// Update the surface from a bitmap data.
+    /// The bitmap data should be in BGRA format.
+    /// * Returns [`None`]` if the update is done to an existing internal texture.
+    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
+    /// * Returns error if failed to create or update the internal texture.
     pub fn update_bitmap(
         &mut self,
         width: u32,
@@ -190,6 +217,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     }
 }
 
+/// Copy a region from one texture to another.
 fn copy_to_surface(
     cx: &ID3D11DeviceContext,
     width: u32,
@@ -255,6 +283,7 @@ fn copy_to_surface(
     Ok(())
 }
 
+/// Create a Direct3D texture and returns texture with its keyed mutex.
 fn create_surface_texture(
     device: &ID3D11Device,
     width: u32,
@@ -289,12 +318,14 @@ fn create_surface_texture(
     }
 }
 
+/// A simple ring buffer for Direct3D textures.
 struct BufferedTexture<const BUFFERS: usize> {
     texture: [Option<(ID3D11Texture2D, IDXGIKeyedMutex)>; BUFFERS],
     index: usize,
 }
 
 impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
+    /// Create a new [`BufferedTexture`].
     pub fn new() -> Self {
         Self {
             texture: [const { None }; BUFFERS],
@@ -302,6 +333,10 @@ impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
         }
     }
 
+    /// Get a mutable reference to the texture slot for the given size.
+    /// This will rotate the buffer if the size is different from the current texture.
+    /// * The returned slot is [`None`] if a new texture needs to be created.
+    /// * The returned slot is [`Some`] if the texture can be reused.
     pub fn texture_for(
         &mut self,
         width: u32,

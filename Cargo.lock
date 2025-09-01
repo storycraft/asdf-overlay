@@ -113,7 +113,6 @@ dependencies = [
  "asdf-overlay-common",
  "asdf-overlay-event",
  "asdf-overlay-hook",
- "ash",
  "bitflags",
  "bytemuck",
  "dashmap",
@@ -224,11 +223,15 @@ dependencies = [
 name = "asdf-overlay-vulkan-layer"
 version = "0.9.1"
 dependencies = [
+ "anyhow",
  "asdf-overlay",
  "ash",
+ "bytemuck",
  "dashmap",
  "nohash-hasher",
  "once_cell",
+ "parking_lot",
+ "scopeguard",
  "tracing",
  "windows",
 ]

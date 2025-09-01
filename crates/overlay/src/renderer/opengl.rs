@@ -1,5 +1,3 @@
-pub mod data;
-
 use core::ffi::c_void;
 
 use crate::{

@@ -9,6 +9,10 @@ authors.workspace = true
 rust-version.workspace = true
 readme = "../../README.md"
 
+[features]
+default = ["surface"]
+surface = ["dep:windows"]
+
 [dependencies]
 asdf-overlay-common = { workspace = true }
 asdf-overlay-event = { workspace = true, features = ["bincode"] }
@@ -28,6 +32,7 @@ goblin = { version = "0.10.0", default-features = false, features = [
 
 [dependencies.windows]
 workspace = true
+optional = true
 features = [
     "Win32_Foundation",
     "Wdk_Foundation",

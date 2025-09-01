@@ -17,10 +17,15 @@ once_cell = "1.21.3"
 dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 ash = { version = "0.38.0", default-features = false, features = ["std"] }
+anyhow = "1.0.97"
+scopeguard = "1.2.0"
+bytemuck = "1.22.0"
+parking_lot = "0.12.3"
 
 [dependencies.windows]
 workspace = true
 features = [
     "Win32_Foundation",
-    "Win32_Graphics_Dxgi"
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
 ]

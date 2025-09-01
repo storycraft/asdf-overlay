@@ -4,6 +4,9 @@ import type { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
 import { mapCssCursor, mapKeycode } from './input/conv.js';
 import { Cursor } from '@asdf-overlay/core';
 
+/**
+ * Connection from a overlay window to a Electron window.
+ */
 export class ElectronOverlayInput {
   private readonly cursorInputHandler: (id: number, input: CursorInput) => void;
   private readonly keyboardInputHandler: (id: number, input: KeyboardInput) => void;
@@ -44,10 +47,16 @@ export class ElectronOverlayInput {
     );
   }
 
+  /**
+   * Connect overlay inputs to a Electron `WebContents`.
+   */
   static connect(window: OverlayWindow, contents: WebContents): ElectronOverlayInput {
     return new ElectronOverlayInput({ ...window }, contents);
   }
 
+  /**
+   * Disconnect overlay inputs.
+   */
   async disconnect() {
     this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
     this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);

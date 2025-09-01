@@ -1,23 +1,17 @@
-pub mod cx;
-
 use core::num::NonZeroU32;
 
 use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
-use crate::{
-    backend::render::cx::DrawContext,
-    interop::DxInterop,
-    renderer::{dx9::Dx9Renderer, dx11::Dx11Renderer, dx12::Dx12Renderer, vulkan::VulkanRenderer},
-    surface::OverlaySurface,
-};
+use crate::{interop::DxInterop, surface::OverlaySurface};
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Renderer {
-    Dx12(Option<Dx12Renderer>),
-    Dx11(Option<Dx11Renderer>),
-    Dx9(Option<(usize, Dx9Renderer)>),
+    Dx12,
+    Dx11,
+    Dx9,
     Opengl,
-    Vulkan(Option<Box<VulkanRenderer>>),
+    Vulkan,
 }
 
 pub struct RenderData {
@@ -27,7 +21,6 @@ pub struct RenderData {
     pub window_size: (u32, u32),
     pub surface: SurfaceState,
     pub renderer: Option<Renderer>,
-    pub cx: DrawContext,
 }
 
 impl RenderData {
@@ -38,7 +31,6 @@ impl RenderData {
             position: (0, 0),
             window_size,
             renderer: None,
-            cx: DrawContext::new(),
         }
     }
 

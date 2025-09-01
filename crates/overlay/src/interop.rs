@@ -18,13 +18,21 @@ use windows::{
     core::Interface,
 };
 
+/// Direct3D 11 device for storing and sharing overlay texture with other graphics backend.
 pub struct DxInterop {
     gpu_id: GpuLuid,
+
+    /// Interop Direct3D 11 device.
     pub device: ID3D11Device,
+
+    /// Interop Direct3D 11 device context.
     pub cx: SyncWrapper<ID3D11DeviceContext>,
 }
 
 impl DxInterop {
+    /// Create new [`DxInterop`].
+    /// * If `adapter` is provided, it will use provided GPU adapter.
+    /// * If `adapter` it not provided, it will use system provided GPU adapter.
     pub(super) fn create(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         unsafe {
             let mut device = None;
@@ -64,6 +72,7 @@ impl DxInterop {
         }
     }
 
+    /// Get GPU id of interop device.
     pub const fn gpu_id(&self) -> GpuLuid {
         self.gpu_id
     }

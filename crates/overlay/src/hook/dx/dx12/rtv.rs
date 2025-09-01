@@ -37,7 +37,7 @@ impl RtvDescriptors {
         device: &ID3D12Device,
         swapchain: &IDXGISwapChain,
         index: usize,
-        f: impl FnOnce(D3D12_CPU_DESCRIPTOR_HANDLE) -> R,
+        f: impl FnOnce(D3D12_CPU_DESCRIPTOR_HANDLE) -> anyhow::Result<R>,
     ) -> anyhow::Result<R> {
         let desc = self.desc_for(index);
         if (self.flags >> index) & 1 != 1 {
@@ -45,7 +45,8 @@ impl RtvDescriptors {
             let backbuffer = unsafe { swapchain.GetBuffer::<ID3D12Resource>(index as _)? };
             unsafe { device.CreateRenderTargetView(&backbuffer, None, desc) };
         }
-        Ok(f(desc))
+
+        f(desc)
     }
 
     fn desc_for(&self, backbuffer_index: usize) -> D3D12_CPU_DESCRIPTOR_HANDLE {

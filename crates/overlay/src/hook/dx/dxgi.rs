@@ -1,21 +1,19 @@
+pub mod callback;
+
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
-use scopeguard::defer;
+use asdf_overlay_hook::DetourHook;
+use once_cell::sync::OnceCell;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
         Graphics::{
-            Direct3D::D3D_FEATURE_LEVEL_11_0,
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
             },
-            Direct3D11::{
-                D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED,
-                D3D11_CREATE_DEVICE_SINGLETHREADED, D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1,
-                ID3D11Texture2D,
-            },
+            Direct3D11::ID3D11Device1,
             Direct3D12::ID3D12Device,
             Dxgi::{
                 Common::{
@@ -32,19 +30,10 @@ use windows::{
 };
 
 use crate::{
-    backend::{
-        Backends, WindowBackend,
-        render::{
-            Renderer,
-            cx::{callback::register_swapchain_destruction_callback, dx12::RtvDescriptors},
-        },
-    },
+    backend::Backends,
     event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
-    renderer::{dx11::Dx11Renderer, dx12::Dx12Renderer},
 };
-
-use super::{HOOK, dx12::get_queue_for};
 
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
@@ -61,7 +50,11 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
                 unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
             },
             |backend| {
-                draw_dx12_overlay(backend, &device, swapchain);
+                dx12::draw_overlay(
+                    backend,
+                    &device,
+                    &swapchain.cast::<IDXGISwapChain3>().unwrap(),
+                );
             },
         ) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -71,7 +64,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
             hwnd.0 as _,
             || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
             |backend| {
-                draw_dx11_overlay(backend, &device, swapchain);
+                dx11::draw_overlay(backend, &device, swapchain);
             },
         ) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
@@ -79,167 +72,8 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
     }
 }
 
-#[inline]
-fn draw_dx12_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &IDXGISwapChain1) {
-    let render = &mut *backend.render.lock();
-    let renderer = match render.renderer {
-        Some(Renderer::Dx12(ref mut renderer)) => renderer,
-
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx12(None));
-            debug!("switching from opengl to dx12 render");
-            // skip drawing on render changes
-            return;
-        }
-        // use dxgi swapchain instead
-        Some(Renderer::Vulkan(_)) => {
-            render.renderer = Some(Renderer::Dx12(None));
-            debug!("switching from vulkan to dx12 render");
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx12 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx12(None));
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let swapchain = swapchain.cast::<IDXGISwapChain3>().unwrap();
-    let Some(queue) = get_queue_for(device) else {
-        return;
-    };
-
-    let renderer = renderer.get_or_insert_with(|| {
-        debug!("initializing dx12 renderer");
-        register_swapchain_destruction_callback(&swapchain, dx12::cleanup_swapchain);
-        Dx12Renderer::new(device, &queue, &swapchain).expect("renderer creation failed")
-    });
-    let rtv = render
-        .cx
-        .dx12
-        .get_or_insert_with(|| RtvDescriptors::new(device).expect("failed to create dx12 rtv"));
-
-    if let Some(update) = render.surface.take_update() {
-        renderer.update_texture(update);
-    }
-
-    let Some(surface) = render.surface.get() else {
-        return;
-    };
-
-    let size = surface.size();
-    trace!("using dx12 renderer");
-    let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-    let res = rtv.with_next_swapchain(device, &swapchain, backbuffer_index as _, |desc| {
-        renderer.draw(
-            device,
-            &swapchain,
-            backbuffer_index,
-            desc,
-            &queue,
-            render.position,
-            size,
-            render.window_size,
-        )
-    });
-    trace!("dx12 render: {:?}", res);
-}
-
-#[inline]
-fn draw_dx11_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    let render = &mut *backend.render.lock();
-    let renderer = match render.renderer {
-        Some(Renderer::Dx11(ref mut renderer)) => renderer,
-
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx11(None));
-            debug!("switching from opengl to dx11 render");
-            // skip drawing on render changes
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx11 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx11(None));
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let cx = unsafe { device.GetImmediateContext1().unwrap() };
-    let state = render.cx.dx11.get_or_insert_with(|| {
-        let mut state = None;
-        unsafe {
-            let flag = if device.GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED.0 != 0 {
-                D3D11_1_CREATE_DEVICE_CONTEXT_STATE_SINGLETHREADED.0 as u32
-            } else {
-                0
-            };
-
-            device
-                .CreateDeviceContextState(
-                    flag,
-                    &[D3D_FEATURE_LEVEL_11_0],
-                    D3D11_SDK_VERSION,
-                    &ID3D11Device::IID,
-                    None,
-                    Some(&mut state),
-                )
-                .expect("CreateDeviceContextState failed");
-        }
-
-        state.unwrap()
-    });
-
-    let mut prev_state = None;
-    unsafe {
-        cx.SwapDeviceContextState(&*state, Some(&mut prev_state));
-    }
-    let prev_state = prev_state.unwrap();
-    defer!(unsafe {
-        cx.SwapDeviceContextState(&prev_state, None);
-    });
-
-    trace!("using dx11 renderer");
-    let renderer = renderer.get_or_insert_with(|| {
-        debug!("initializing dx11 renderer");
-        register_swapchain_destruction_callback(swapchain, dx11::cleanup_swapchain);
-        Dx11Renderer::new(device).expect("renderer creation failed")
-    });
-
-    if let Some(update) = render.surface.take_update() {
-        renderer.update_texture(update);
-    }
-
-    let Some(surface) = render.surface.get() else {
-        return;
-    };
-    let size = surface.size();
-    {
-        let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
-            .expect("failed to get dx11 backbuffer");
-        let mut rtv = None;
-        unsafe { device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv)) }
-            .expect("failed to create rtv");
-        let rtv = rtv.unwrap();
-
-        unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
-        defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-        let _res = renderer.draw(device, &cx, render.position, size, render.window_size);
-        trace!("dx11 render: {:?}", _res);
-    }
-}
-
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present(
+extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -255,7 +89,7 @@ pub(super) extern "system" fn hooked_present(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_present1(
+extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
     flags: DXGI_PRESENT,
@@ -271,22 +105,12 @@ pub(super) extern "system" fn hooked_present1(
     unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }
 }
 
-fn resize_swapchain(backend: &WindowBackend) {
-    let render = &mut *backend.render.lock();
-    let Some(ref renderer) = render.renderer else {
-        return;
-    };
-
-    if let Renderer::Dx12(_) = *renderer {
-        if let Some(ref mut rtv) = render.cx.dx12 {
-            // invalidate old rtv descriptors
-            rtv.reset();
-        }
-    }
+fn resize_swapchain(swapchain: &IDXGISwapChain1) {
+    dx12::resize_swapchain(swapchain);
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_resize_buffers(
+extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
     width: u32,
@@ -297,9 +121,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
     trace!("ResizeBuffers called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
-    }
+    resize_swapchain(swapchain);
 
     unsafe {
         HOOK.resize_buffers.wait().original_fn()(this, buffer_count, width, height, format, flags)
@@ -307,7 +129,7 @@ pub(super) extern "system" fn hooked_resize_buffers(
 }
 
 #[tracing::instrument]
-pub(super) extern "system" fn hooked_resize_buffers1(
+extern "system" fn hooked_resize_buffers1(
     this: *mut c_void,
     buffer_count: u32,
     width: u32,
@@ -320,9 +142,7 @@ pub(super) extern "system" fn hooked_resize_buffers1(
     trace!("ResizeBuffers1 called");
 
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, resize_swapchain);
-    }
+    resize_swapchain(swapchain);
 
     unsafe {
         HOOK.resize_buffers1.wait().original_fn()(
@@ -359,6 +179,48 @@ pub type ResizeBuffers1Fn = unsafe extern "system" fn(
     *const *mut c_void,
 ) -> HRESULT;
 
+struct Hook {
+    present: OnceCell<DetourHook<PresentFn>>,
+    present1: OnceCell<DetourHook<Present1Fn>>,
+    resize_buffers: OnceCell<DetourHook<ResizeBuffersFn>>,
+    resize_buffers1: OnceCell<DetourHook<ResizeBuffers1Fn>>,
+}
+
+static HOOK: Hook = Hook {
+    present: OnceCell::new(),
+    present1: OnceCell::new(),
+    resize_buffers: OnceCell::new(),
+    resize_buffers1: OnceCell::new(),
+};
+
+pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
+    let dxgi_functions = get_addr(dummy_hwnd).context("failed to load dxgi addrs")?;
+
+    debug!("hooking IDXGISwapChain::ResizeBuffers");
+    HOOK.resize_buffers.get_or_try_init(|| unsafe {
+        DetourHook::attach(dxgi_functions.resize_buffers, hooked_resize_buffers as _)
+    })?;
+
+    if let Some(resize_buffers1) = dxgi_functions.resize_buffers1 {
+        debug!("hooking IDXGISwapChain3::ResizeBuffers1");
+        HOOK.resize_buffers1.get_or_try_init(|| unsafe {
+            DetourHook::attach(resize_buffers1, hooked_resize_buffers1 as _)
+        })?;
+    }
+
+    debug!("hooking IDXGISwapChain::Present");
+    HOOK.present.get_or_try_init(|| unsafe {
+        DetourHook::attach(dxgi_functions.present, hooked_present as _)
+    })?;
+
+    if let Some(present1) = dxgi_functions.present1 {
+        debug!("hooking IDXGISwapChain1::Present1");
+        HOOK.present1
+            .get_or_try_init(|| unsafe { DetourHook::attach(present1, hooked_present1 as _) })?;
+    }
+    Ok(())
+}
+
 pub struct DxgiFunctions {
     pub present: PresentFn,
     pub present1: Option<Present1Fn>,
@@ -368,7 +230,7 @@ pub struct DxgiFunctions {
 
 /// Get pointer to dxgi functions
 #[tracing::instrument]
-pub fn get_dxgi_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
+pub fn get_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
     unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;
         let adapter = factory.EnumAdapters1(0)?;

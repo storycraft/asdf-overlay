@@ -1,5 +1,10 @@
 #![windows_subsystem = "windows"]
 
+//! Official DLL crate for attaching [`asdf_overlay`] to other processes.
+//! Using this DLL, the overlay can be controlled via cross-process IPC.
+//!
+//! Injection can be done using `asdf-overlay-client` crate.
+
 #[cfg(debug_assertions)]
 mod dbg;
 
@@ -17,7 +22,7 @@ use asdf_overlay_common::{
     ipc::create_ipc_addr,
     request::{Request, WindowRequest},
 };
-use asdf_overlay_event::{ClientEvent, WindowEvent};
+use asdf_overlay_event::{OverlayEvent, WindowEvent};
 use core::time::Duration;
 use scopeguard::defer;
 use std::{ffi::OsStr, thread};
@@ -52,32 +57,26 @@ use windows::{
 
 use crate::server::IpcServerConn;
 
+/// IPC server main loop.
 #[tracing::instrument(skip(server))]
 async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
     fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
         let res = Backends::with_backend(hwnd, |backend| {
             match req {
                 WindowRequest::SetPosition(position) => {
-                    backend
-                        .proc
-                        .lock()
-                        .layout
-                        .set_position(position.x, position.y);
+                    backend.proc.lock().layout.position = (position.x, position.y);
                     backend.recalc_position();
                 }
 
                 WindowRequest::SetAnchor(anchor) => {
-                    backend.proc.lock().layout.set_anchor(anchor.x, anchor.y);
+                    backend.proc.lock().layout.anchor = (anchor.x, anchor.y);
                     backend.recalc_position();
                 }
 
                 WindowRequest::SetMargin(margin) => {
-                    backend.proc.lock().layout.set_margin(
-                        margin.top,
-                        margin.right,
-                        margin.bottom,
-                        margin.left,
-                    );
+                    backend.proc.lock().layout.margin =
+                        (margin.top, margin.right, margin.bottom, margin.left);
+
                     backend.recalc_position();
                 }
 
@@ -124,7 +123,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
             let render = backend.render.lock();
             let gpu_id = render.interop.gpu_id();
             let size = render.window_size;
-            _ = emitter.emit(ClientEvent::Window {
+            _ = emitter.emit(OverlayEvent::Window {
                 id: *backend.key() as _,
                 event: WindowEvent::Added {
                     width: size.0,
@@ -154,6 +153,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// IPC server listener.
 #[tracing::instrument(skip(create_server))]
 async fn run_server(
     mut server: NamedPipeServer,
@@ -184,10 +184,12 @@ async fn run_server(
     }
 }
 
-#[unsafe(no_mangle)]
-#[allow(non_snake_case, unused_variables)]
+/// Main entry point for DLL.
+///
 /// # Safety
 /// Can be called by loader only. Must not be called manually.
+#[unsafe(no_mangle)]
+#[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
     #[cfg(debug_assertions)]
     fn setup_tracing() {
@@ -241,6 +243,7 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     true
 }
 
+/// Create a new IPC server using the given address.
 fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<NamedPipeServer> {
     Ok(unsafe {
         ServerOptions::new()
@@ -258,6 +261,7 @@ fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<Nam
     })
 }
 
+/// Create Windows security descriptor allowing read/write permission to Everyone.
 fn create_everyone_security_desc() -> anyhow::Result<SECURITY_DESCRIPTOR> {
     let mut everyone_sid = PSID::default();
     unsafe {

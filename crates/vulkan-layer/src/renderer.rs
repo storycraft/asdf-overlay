@@ -18,8 +18,9 @@ use windows::{
     core::Interface,
 };
 
-use crate::renderer::vulkan::frame::FrameData;
+use crate::renderer::frame::FrameData;
 
+/// A vulkan renderer for rendering an overlay.
 pub struct VulkanRenderer {
     device: Device,
 
@@ -37,6 +38,7 @@ pub struct VulkanRenderer {
 }
 
 impl VulkanRenderer {
+    /// Create a new [`VulkanRenderer`]
     pub fn new(
         device: Device,
         queue_family_index: u32,
@@ -85,6 +87,7 @@ impl VulkanRenderer {
         })
     }
 
+    /// Update renderer overlay texture using given shared Direct3D11 texture.
     pub fn update_texture(
         &mut self,
         texture: Option<&Direct3D11::ID3D11Texture2D>,
@@ -221,6 +224,7 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Draw overlay.
     pub fn draw(
         &mut self,
         queue: vk::Queue,
@@ -363,6 +367,7 @@ impl Drop for VulkanRenderer {
     }
 }
 
+/// Create an overlay texture [`vk::DescriptorPool`].
 fn create_descriptor_pool(device: &Device) -> anyhow::Result<vk::DescriptorPool> {
     unsafe {
         device
@@ -378,6 +383,7 @@ fn create_descriptor_pool(device: &Device) -> anyhow::Result<vk::DescriptorPool>
     }
 }
 
+/// Create a [`vk::DescriptorSet`] for an overlay texture.
 fn create_texture_descriptor_set(
     device: &Device,
     descriptor_pool: vk::DescriptorPool,
@@ -399,6 +405,7 @@ fn create_texture_descriptor_set(
     }
 }
 
+/// Create non filtering [`vk::Sampler`].
 fn create_sampler(device: &Device) -> anyhow::Result<vk::Sampler> {
     unsafe {
         device
@@ -415,6 +422,7 @@ fn create_sampler(device: &Device) -> anyhow::Result<vk::Sampler> {
     }
 }
 
+/// Create a [`vk::DescriptorSetLayout`] for rendering overlay texture.
 fn create_texture_layout(
     device: &Device,
     sampler: vk::Sampler,
@@ -437,6 +445,7 @@ fn create_texture_layout(
     }
 }
 
+/// Create a [vk::RenderPass] for the renderer.
 fn create_render_pass(device: &Device, format: vk::Format) -> anyhow::Result<vk::RenderPass> {
     unsafe {
         let attachments = [vk::AttachmentDescription::default()
@@ -466,6 +475,7 @@ fn create_render_pass(device: &Device, format: vk::Format) -> anyhow::Result<vk:
     }
 }
 
+/// Create a [vk::PipelineLayout] for the renderer.
 fn create_pipeline_layout(
     device: &Device,
     texture_layout: vk::DescriptorSetLayout,
@@ -489,6 +499,7 @@ fn create_pipeline_layout(
     }
 }
 
+/// Create a [vk::Pipeline] for the renderer.
 fn create_pipeline(
     device: &Device,
     size: (u32, u32),

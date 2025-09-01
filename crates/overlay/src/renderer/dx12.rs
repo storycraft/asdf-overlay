@@ -125,11 +125,7 @@ pub struct Dx12Renderer {
 
 impl Dx12Renderer {
     #[tracing::instrument]
-    pub fn new(
-        device: &ID3D12Device,
-        queue: &ID3D12CommandQueue,
-        swapchain: &IDXGISwapChain,
-    ) -> anyhow::Result<Self> {
+    pub fn new(device: &ID3D12Device, swapchain: &IDXGISwapChain) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
 

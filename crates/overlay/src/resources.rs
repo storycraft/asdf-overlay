@@ -1,4 +1,8 @@
-/// See `resources/cursors.rc`
+//! Various Windows resources and keys.
+
+/// Additional cursor resoucres for overlay.
+///
+/// See `../resources/cursors.rc`.
 pub mod cursors {
     use windows::core::PCWSTR;
 

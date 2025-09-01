@@ -1,11 +1,15 @@
+//! Client side IPC connection and event stream implementation.
+//!
+//! Provides interfaces for sending requests via ipc and receive events.
+
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_common::{
-    ipc::{ClientToServerPacket, Frame, ServerRequest},
+    ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::{Request, WindowRequestItem},
 };
-use asdf_overlay_event::ClientEvent;
+use asdf_overlay_event::OverlayEvent;
 use bincode::Decode;
 use dashmap::DashMap;
 use tokio::{
@@ -15,6 +19,7 @@ use tokio::{
     task::JoinHandle,
 };
 
+/// IPC client connection for handling requests and responses.
 pub struct IpcClientConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeClient>,
@@ -24,6 +29,7 @@ pub struct IpcClientConn {
 }
 
 impl IpcClientConn {
+    /// Create a new [`IpcClientConn`] and [`IpcClientEventStream`] from a connected named pipe client.
     pub async fn new(client: NamedPipeClient) -> anyhow::Result<(Self, IpcClientEventStream)> {
         let (mut rx, tx) = split(client);
 
@@ -40,16 +46,16 @@ impl IpcClientConn {
                     body.resize(frame.size as usize, 0_u8);
                     rx.read_exact(&mut body).await?;
 
-                    let packet: ClientToServerPacket =
+                    let packet: ServerToClientPacket =
                         bincode::decode_from_slice(&body, bincode::config::standard())?.0;
 
                     match packet {
-                        ClientToServerPacket::Response(res) => {
+                        ServerToClientPacket::Response(res) => {
                             if let Some((_, sender)) = map.remove(&res.id) {
                                 _ = sender.send(res.data);
                             }
                         }
-                        ClientToServerPacket::Event(event) => {
+                        ServerToClientPacket::Event(event) => {
                             let _ = event_tx.send(event);
                         }
                     }
@@ -70,11 +76,15 @@ impl IpcClientConn {
         Ok((conn, stream))
     }
 
+    /// Get request interface for a specific window id.
+    /// The returned interface can be used to send window-specific requests.
     #[inline]
     pub const fn window(&mut self, id: u32) -> IpcClientConnWindow<'_> {
         IpcClientConnWindow { inner: self, id }
     }
 
+    /// Send a request and wait for the response.
+    /// Returns an error if the connection is closed or the request fails.
     async fn request<Response: Decode<()>>(&mut self, req: Request) -> anyhow::Result<Response> {
         let data = self
             .send(req)
@@ -96,6 +106,8 @@ impl IpcClientConn {
         Ok(response)
     }
 
+    /// Send a request without waiting for the response.
+    /// Returns a oneshot receiver that can be used to receive the response data.
     async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Vec<u8>>> {
         let Some(map) = self.map.upgrade() else {
             bail!("connection closed");
@@ -105,7 +117,7 @@ impl IpcClientConn {
         self.next_id += 1;
 
         bincode::encode_into_std_write(
-            ServerRequest { id, req },
+            ClientRequest { id, req },
             &mut self.buf,
             bincode::config::standard(),
         )?;
@@ -134,6 +146,7 @@ impl Drop for IpcClientConn {
     }
 }
 
+/// Request interface for a specific window id.
 pub struct IpcClientConnWindow<'a> {
     inner: &'a mut IpcClientConn,
     id: u32,
@@ -141,7 +154,8 @@ pub struct IpcClientConnWindow<'a> {
 
 impl IpcClientConnWindow<'_> {
     /// Request any [`WindowRequestItem`].
-    /// Returns true if window is valid and applied
+    /// * Returns `true` if the request is successful.
+    /// * Returns an error if the connection is closed or the request fails.
     pub async fn request(&mut self, req: impl WindowRequestItem) -> anyhow::Result<bool> {
         self.inner
             .request(Request::Window {
@@ -152,13 +166,16 @@ impl IpcClientConnWindow<'_> {
     }
 }
 
+/// Event stream for receiving server events.
 pub struct IpcClientEventStream {
-    inner: mpsc::UnboundedReceiver<ClientEvent>,
+    inner: mpsc::UnboundedReceiver<OverlayEvent>,
 }
 
 impl IpcClientEventStream {
+    /// Receive the next event.
+    /// Returns `None` if the connection is closed.
     #[inline]
-    pub async fn recv(&mut self) -> Option<ClientEvent> {
+    pub async fn recv(&mut self) -> Option<OverlayEvent> {
         self.inner.recv().await
     }
 }
