@@ -16,7 +16,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, WindowBackend, render::Renderer},
+    backend::{ WindowBackend, render::Renderer},
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
     renderer::dx11::Dx11Renderer,
     types::IntDashMap,
@@ -68,7 +68,7 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx11Renderer::new(&device)?,
                 state,
             });
-            register_swapchain_destruction_callback(&swapchain, cleanup_swapchain);
+            register_swapchain_destruction_callback(swapchain, cleanup_swapchain);
 
             ref_mut
         }
@@ -135,7 +135,7 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
             .expect("failed to create rtv");
         let rtv = rtv.unwrap();
 
-        unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None) };
+        unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv)]), None) };
         defer!(unsafe { cx.OMSetRenderTargets(None, None) });
 
         let res = data.renderer.draw(device, &cx, position, size, screen);
@@ -145,16 +145,9 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
 }
 
 #[tracing::instrument]
-fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
-    if RENDERERS.remove(&(swapchain.as_raw() as usize)).is_none() {
+fn cleanup_swapchain(swapchain: usize) {
+    if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     debug!("dx11 renderer cleanup");
-
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, |backend| {
-            let render = &mut *backend.render.lock();
-            render.set_surface_updated();
-        });
-    }
 }

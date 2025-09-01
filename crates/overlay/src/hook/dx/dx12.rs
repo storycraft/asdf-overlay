@@ -19,7 +19,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, WindowBackend, render::Renderer},
+    backend::{WindowBackend, render::Renderer},
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
     },
@@ -60,7 +60,10 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx12Renderer::new(&device, swapchain)?,
                 rtv: RtvDescriptors::new(&device)?,
             });
-            register_swapchain_destruction_callback(&swapchain, cleanup_swapchain);
+            register_swapchain_destruction_callback(&swapchain, {
+                let device = device.as_raw() as usize;
+                move |this| cleanup_swapchain(this, device)
+            });
 
             ref_mut
         }
@@ -158,21 +161,13 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
 }
 
 #[tracing::instrument]
-fn cleanup_swapchain(swapchain: &IDXGISwapChain1) {
-    if RENDERERS.remove(&(swapchain.as_raw() as usize)).is_none() {
+fn cleanup_swapchain(swapchain: usize, device: usize) {
+    if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     debug!("dx12 renderer cleanup");
 
-    if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
-        QUEUE_MAP.remove(&(device.as_raw() as _));
-    }
-
-    if let Ok(hwnd) = unsafe { swapchain.GetHwnd() } {
-        _ = Backends::with_backend(hwnd.0 as _, |backend| {
-            backend.render.lock().set_surface_updated();
-        });
-    }
+    QUEUE_MAP.remove(&device);
 }
 
 #[tracing::instrument]
