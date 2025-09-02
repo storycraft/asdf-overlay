@@ -43,13 +43,13 @@ mod wgl {
 
 pub mod backend;
 pub mod event_sink;
+pub mod layout;
+pub mod surface;
+pub mod interop;
 
 mod hook;
-mod interop;
-mod layout;
 mod renderer;
 mod resources;
-mod surface;
 mod texture;
 mod types;
 mod util;
