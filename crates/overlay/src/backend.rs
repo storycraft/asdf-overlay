@@ -123,7 +123,6 @@ impl Backends {
 
 pub type ProcDispatchFn = Box<dyn FnOnce(&WindowBackend) + Send>;
 
-#[non_exhaustive]
 pub struct WindowBackend {
     pub hwnd: u32,
     pub(crate) original_proc: WNDPROC,
