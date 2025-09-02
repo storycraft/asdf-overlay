@@ -43,9 +43,9 @@ mod wgl {
 
 pub mod backend;
 pub mod event_sink;
+pub mod interop;
 pub mod layout;
 pub mod surface;
-pub mod interop;
 
 mod hook;
 mod renderer;
