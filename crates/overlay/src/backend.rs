@@ -133,7 +133,7 @@ pub struct WindowBackend {
 
 impl WindowBackend {
     #[tracing::instrument(skip(self))]
-    fn reset(&self) {
+    pub fn reset(&self) {
         trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
         self.render.lock().reset();
         self.proc.lock().reset();
