@@ -115,7 +115,6 @@ fn draw_overlay(hdc: HDC) {
     #[inline]
     fn inner(backend: &WindowBackend, renderer: &mut Option<OpenglRenderer>) {
         let mut render = backend.render.lock();
-
         match render.renderer {
             Some(Renderer::Opengl) => {}
             Some(_) => {
@@ -132,14 +131,19 @@ fn draw_overlay(hdc: HDC) {
 
         trace!("using opengl renderer");
         with_renderer_gl_data(|| {
-            debug!("initializing opengl renderer");
-            let renderer = renderer.insert(match OpenglRenderer::new() {
-                Ok(renderer) => renderer,
-                Err(err) => {
-                    error!("renderer setup failed. err: {:?}", err);
-                    return;
+            let renderer = match renderer {
+                Some(renderer) => renderer,
+                None => {
+                    debug!("initializing opengl renderer");
+                    renderer.insert(match OpenglRenderer::new() {
+                        Ok(renderer) => renderer,
+                        Err(err) => {
+                            error!("renderer setup failed. err: {:?}", err);
+                            return;
+                        }
+                    })
                 }
-            });
+            };
 
             let Some(surface) = render.surface.get() else {
                 return;
