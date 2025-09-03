@@ -30,7 +30,7 @@ pub struct OpenglRenderer {
 
 impl OpenglRenderer {
     #[tracing::instrument]
-    pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         unsafe {
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
             gl::ShaderSource(

@@ -123,7 +123,6 @@ impl Backends {
 
 pub type ProcDispatchFn = Box<dyn FnOnce(&WindowBackend) + Send>;
 
-#[non_exhaustive]
 pub struct WindowBackend {
     pub hwnd: u32,
     pub(crate) original_proc: WNDPROC,
@@ -134,7 +133,7 @@ pub struct WindowBackend {
 
 impl WindowBackend {
     #[tracing::instrument(skip(self))]
-    fn reset(&self) {
+    pub fn reset(&self) {
         trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
         self.render.lock().reset();
         self.proc.lock().reset();
