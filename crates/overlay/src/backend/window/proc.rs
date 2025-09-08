@@ -285,9 +285,7 @@ fn process_wnd_proc(
         msg::WM_APPCOMMAND => {
             let input_blocking = backend.proc.lock().input_blocking();
             if input_blocking {
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam)
-                });
+                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
             }
         }
 
@@ -312,9 +310,7 @@ fn process_wnd_proc(
         msg::WM_INPUTLANGCHANGEREQUEST => {
             let input_blocking = backend.proc.lock().input_blocking();
             if input_blocking {
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam)
-                });
+                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
             }
         }
 

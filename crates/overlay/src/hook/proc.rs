@@ -332,9 +332,7 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> O
 
     if proc.input_blocking() {
         drop(proc);
-        Some(unsafe {
-            DefWindowProcA(HWND(backend.id as _), msg.message, msg.wParam, msg.lParam)
-        })
+        Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg.message, msg.wParam, msg.lParam) })
     } else {
         None
     }
