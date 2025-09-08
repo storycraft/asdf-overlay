@@ -64,20 +64,21 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
         let res = Backends::with_backend(hwnd, |backend| {
             match req {
                 WindowRequest::SetPosition(position) => {
-                    backend.proc.lock().layout.position = (position.x, position.y);
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.position = (position.x, position.y);
+                    });
                 }
 
                 WindowRequest::SetAnchor(anchor) => {
-                    backend.proc.lock().layout.anchor = (anchor.x, anchor.y);
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.anchor = (anchor.x, anchor.y);
+                    });
                 }
 
                 WindowRequest::SetMargin(margin) => {
-                    backend.proc.lock().layout.margin =
-                        (margin.top, margin.right, margin.bottom, margin.left);
-
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.margin = (margin.top, margin.right, margin.bottom, margin.left);
+                    });
                 }
 
                 WindowRequest::ListenInput(cmd) => {
@@ -85,7 +86,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                     flags.set(ListenInputFlags::CURSOR, cmd.cursor);
                     flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
 
-                    backend.proc.lock().listen_input = flags;
+                    backend.listen_input(flags);
                 }
 
                 WindowRequest::BlockInput(cmd) => {
@@ -93,17 +94,13 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                 }
 
                 WindowRequest::SetBlockingCursor(cmd) => {
-                    backend.proc.lock().blocking_cursor = cmd.cursor;
+                    backend.set_blocking_cursor(cmd.cursor);
                 }
 
                 WindowRequest::UpdateSharedHandle(shared) => {
-                    let res = backend.render.lock().update_surface(shared.handle);
-                    match res {
-                        Ok(_) => backend.recalc_position(),
-                        Err(err) => {
-                            error!("failed to open shared surface. err: {:?}", err);
-                            return false;
-                        }
+                    if let Err(err) = backend.update_surface(shared.handle) {
+                        error!("failed to open shared surface. err: {:?}", err);
+                        return false;
                     }
                 }
             }

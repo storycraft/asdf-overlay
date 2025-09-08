@@ -2,27 +2,24 @@ pub(crate) mod cursor;
 pub(crate) mod proc;
 
 use super::WindowBackend;
-use crate::layout::OverlayLayout;
 use asdf_overlay_common::cursor::Cursor;
 use windows::Win32::Foundation::RECT;
 
-pub struct WindowProcData {
-    pub layout: OverlayLayout,
+pub(crate) struct WindowProcData {
     pub position: (i32, i32),
 
     pub listen_input: ListenInputFlags,
-    pub(crate) blocking_state: Option<InputBlockData>,
+    pub blocking_state: Option<InputBlockData>,
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
-    pub ime: ImeState,
+    ime: ImeState,
     last_click_time: i32,
 }
 
 impl WindowProcData {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            layout: OverlayLayout::new(),
             position: (0, 0),
 
             listen_input: ListenInputFlags::empty(),
@@ -36,7 +33,6 @@ impl WindowProcData {
     }
 
     pub fn reset(&mut self) {
-        self.layout = OverlayLayout::new();
         self.position = (0, 0);
         self.listen_input = ListenInputFlags::empty();
         self.blocking_cursor = Some(Cursor::Default);
@@ -65,7 +61,7 @@ impl WindowProcData {
 }
 
 #[derive(Clone, Copy)]
-pub struct InputBlockData {
+pub(crate) struct InputBlockData {
     pub clip_cursor: Option<RECT>,
     pub old_ime_cx: usize,
 }
@@ -77,7 +73,7 @@ enum CursorState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ImeState {
+enum ImeState {
     Enabled,
     Compose,
     Disabled,
@@ -85,8 +81,11 @@ pub enum ImeState {
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// Flags for listening to input events.
     pub struct ListenInputFlags: u8 {
+        /// Listen for cursor events.
         const CURSOR = 0b00000001;
+        /// Listen for keyboard events.
         const KEYBOARD = 0b00000010;
     }
 }

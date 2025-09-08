@@ -6,6 +6,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 use crate::{interop::DxInterop, surface::OverlaySurface};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Renderer {
     Dx12,
     Dx11,
@@ -24,7 +25,7 @@ pub struct RenderData {
 }
 
 impl RenderData {
-    pub fn new(interop: DxInterop, window_size: (u32, u32)) -> Self {
+    pub(crate) fn new(interop: DxInterop, window_size: (u32, u32)) -> Self {
         Self {
             interop,
             surface: SurfaceState::new(),
@@ -44,7 +45,7 @@ impl RenderData {
         Ok(())
     }
 
-    pub fn set_surface_updated(&mut self) {
+    pub fn invalidate_surface(&mut self) {
         self.surface.updated = true;
     }
 }

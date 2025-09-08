@@ -53,13 +53,13 @@ fn process_wnd_proc(
 ) -> Option<LRESULT> {
     match msg {
         msg::WM_WINDOWPOSCHANGED => {
-            let new_size = get_client_size(HWND(backend.hwnd as _)).unwrap();
+            let new_size = get_client_size(HWND(backend.id as _)).unwrap();
             let mut render = backend.render.lock();
             if render.window_size != new_size {
                 render.window_size = new_size;
 
                 OverlayEventSink::emit(OverlayEvent::Window {
-                    id: backend.hwnd,
+                    id: backend.id,
                     event: WindowEvent::Resized {
                         width: new_size.0,
                         height: new_size.1,
@@ -67,7 +67,7 @@ fn process_wnd_proc(
                 });
             }
             drop(render);
-            backend.recalc_position();
+            backend.invalidate_layout();
         }
 
         // set cursor in client area
@@ -99,7 +99,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Left, state, lparam);
+            return cursor_event::<0>(backend.id, proc, CursorAction::Left, state, lparam);
         }
 
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
@@ -107,7 +107,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Middle, state, lparam);
+            return cursor_event::<0>(backend.id, proc, CursorAction::Middle, state, lparam);
         }
 
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
@@ -115,7 +115,7 @@ fn process_wnd_proc(
             let state = CursorInputState::Pressed {
                 double_click: check_double_click(&mut proc),
             };
-            return cursor_event::<0>(backend.hwnd, proc, CursorAction::Right, state, lparam);
+            return cursor_event::<0>(backend.id, proc, CursorAction::Right, state, lparam);
         }
 
         msg::WM_XBUTTONDOWN | msg::WM_XBUTTONDBLCLK => {
@@ -125,7 +125,7 @@ fn process_wnd_proc(
                 double_click: check_double_click(&mut proc),
             };
             return cursor_event::<1>(
-                backend.hwnd,
+                backend.id,
                 proc,
                 if button == XBUTTON1 {
                     CursorAction::Back
@@ -139,7 +139,7 @@ fn process_wnd_proc(
 
         msg::WM_LBUTTONUP => {
             return cursor_event::<0>(
-                backend.hwnd,
+                backend.id,
                 backend.proc.lock(),
                 CursorAction::Left,
                 CursorInputState::Released,
@@ -148,7 +148,7 @@ fn process_wnd_proc(
         }
         msg::WM_MBUTTONUP => {
             return cursor_event::<0>(
-                backend.hwnd,
+                backend.id,
                 backend.proc.lock(),
                 CursorAction::Middle,
                 CursorInputState::Released,
@@ -157,7 +157,7 @@ fn process_wnd_proc(
         }
         msg::WM_RBUTTONUP => {
             return cursor_event::<0>(
-                backend.hwnd,
+                backend.id,
                 backend.proc.lock(),
                 CursorAction::Right,
                 CursorInputState::Released,
@@ -167,7 +167,7 @@ fn process_wnd_proc(
         msg::WM_XBUTTONUP => {
             let [_, button] = bytemuck::cast::<_, [u16; 2]>(lparam.0 as u32);
             return cursor_event::<1>(
-                backend.hwnd,
+                backend.id,
                 backend.proc.lock(),
                 if button == XBUTTON1 {
                     CursorAction::Back
@@ -187,7 +187,7 @@ fn process_wnd_proc(
 
             proc.cursor_state = CursorState::Outside;
             OverlayEventSink::emit(cursor_input(
-                backend.hwnd,
+                backend.id,
                 proc.position,
                 lparam,
                 CursorEvent::Leave,
@@ -211,7 +211,7 @@ fn process_wnd_proc(
                     CursorState::Outside => {
                         proc.cursor_state = CursorState::Inside(x, y);
                         OverlayEventSink::emit(cursor_input(
-                            backend.hwnd,
+                            backend.id,
                             proc.position,
                             lparam,
                             CursorEvent::Enter,
@@ -222,7 +222,7 @@ fn process_wnd_proc(
                             TrackMouseEvent(&mut TRACKMOUSEEVENT {
                                 cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
                                 dwFlags: TME_LEAVE,
-                                hwndTrack: HWND(backend.hwnd as _),
+                                hwndTrack: HWND(backend.id as _),
                                 dwHoverTime: HOVER_DEFAULT,
                             })
                         };
@@ -230,7 +230,7 @@ fn process_wnd_proc(
                 }
 
                 OverlayEventSink::emit(cursor_input(
-                    backend.hwnd,
+                    backend.id,
                     proc.position,
                     lparam,
                     CursorEvent::Move,
@@ -246,7 +246,7 @@ fn process_wnd_proc(
 
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             OverlayEventSink::emit(cursor_input(
-                backend.hwnd,
+                backend.id,
                 proc.position,
                 lparam,
                 CursorEvent::Scroll {
@@ -268,7 +268,7 @@ fn process_wnd_proc(
 
             let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
             OverlayEventSink::emit(cursor_input(
-                backend.hwnd,
+                backend.id,
                 proc.position,
                 lparam,
                 CursorEvent::Scroll {
@@ -285,9 +285,7 @@ fn process_wnd_proc(
         msg::WM_APPCOMMAND => {
             let input_blocking = backend.proc.lock().input_blocking();
             if input_blocking {
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
-                });
+                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
             }
         }
 
@@ -312,9 +310,7 @@ fn process_wnd_proc(
         msg::WM_INPUTLANGCHANGEREQUEST => {
             let input_blocking = backend.proc.lock().input_blocking();
             if input_blocking {
-                return Some(unsafe {
-                    DefWindowProcA(HWND(backend.hwnd as _), msg, wparam, lparam)
-                });
+                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
             }
         }
 
@@ -324,7 +320,7 @@ fn process_wnd_proc(
                 return None;
             }
 
-            handle_ime_notify(backend.hwnd, wparam.0 as _);
+            handle_ime_notify(backend.id, wparam.0 as _);
             if proc.input_blocking() {
                 drop(proc);
                 return Some(LRESULT(0));
@@ -339,7 +335,7 @@ fn process_wnd_proc(
 
             if let Some(lang) = get_lang_id_locale(lparam.0 as u16) {
                 OverlayEventSink::emit(keyboard_input(
-                    backend.hwnd,
+                    backend.id,
                     KeyboardInput::Ime(Ime::Changed(lang)),
                 ));
             }
@@ -357,11 +353,11 @@ fn process_wnd_proc(
 
             let lang_id = unsafe { GetKeyboardLayout(0) }.0 as u16;
             OverlayEventSink::emit(keyboard_input(
-                backend.hwnd,
+                backend.id,
                 KeyboardInput::Ime(if wparam.0 != 0 {
                     Ime::Enabled {
                         lang: get_lang_id_locale(lang_id).unwrap_or_else(|| "en".to_string()),
-                        conversion: with_himc(backend.hwnd, ime_conversion_mode),
+                        conversion: with_himc(backend.id, ime_conversion_mode),
                     }
                 } else {
                     Ime::Disabled
@@ -372,7 +368,7 @@ fn process_wnd_proc(
                 drop(proc);
                 return Some(unsafe {
                     DefWindowProcA(
-                        HWND(backend.hwnd as _),
+                        HWND(backend.id as _),
                         msg,
                         wparam,
                         // Disable composition, candinate window
@@ -397,13 +393,13 @@ fn process_wnd_proc(
             }
 
             if proc.ime != ImeState::Disabled {
-                with_himc(backend.hwnd, |himc| {
+                with_himc(backend.id, |himc| {
                     let comp = IME_COMPOSITION_STRING(lparam.0 as _);
 
                     // cancelled
                     if comp == IME_COMPOSITION_STRING(0) {
                         OverlayEventSink::emit(keyboard_input(
-                            backend.hwnd,
+                            backend.id,
                             KeyboardInput::Ime(Ime::Commit(String::new())),
                         ));
                     }
@@ -412,7 +408,7 @@ fn process_wnd_proc(
                         if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
                             proc.ime = ImeState::Enabled;
                             OverlayEventSink::emit(keyboard_input(
-                                backend.hwnd,
+                                backend.id,
                                 KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
                             ));
                         }
@@ -433,7 +429,7 @@ fn process_wnd_proc(
                             proc.ime = ImeState::Compose;
 
                             OverlayEventSink::emit(keyboard_input(
-                                backend.hwnd,
+                                backend.id,
                                 KeyboardInput::Ime(Ime::Compose {
                                     text: text.to_utf8(),
                                     caret,
@@ -455,14 +451,14 @@ fn process_wnd_proc(
             proc.ime = ImeState::Disabled;
 
             if ime == ImeState::Compose {
-                let hwnd = HWND(backend.hwnd as _);
+                let hwnd = HWND(backend.id as _);
                 let himc = unsafe { ImmGetContext(hwnd) };
                 defer!(unsafe {
                     _ = ImmReleaseContext(hwnd, himc);
                 });
                 if let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
                     OverlayEventSink::emit(keyboard_input(
-                        backend.hwnd,
+                        backend.id,
                         KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
                     ));
                 }

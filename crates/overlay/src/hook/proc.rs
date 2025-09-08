@@ -288,7 +288,7 @@ fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
                 }
 
                 if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                    OverlayEventSink::emit(keyboard_input(backend.hwnd, KeyboardInput::Char(ch)));
+                    OverlayEventSink::emit(keyboard_input(backend.id, KeyboardInput::Char(ch)));
                 }
 
                 if proc.input_blocking() {
@@ -325,16 +325,14 @@ fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> O
 
     if let Some(key) = to_key(msg.lParam) {
         OverlayEventSink::emit(keyboard_input(
-            backend.hwnd,
+            backend.id,
             KeyboardInput::Key { key, state },
         ));
     }
 
     if proc.input_blocking() {
         drop(proc);
-        Some(unsafe {
-            DefWindowProcA(HWND(backend.hwnd as _), msg.message, msg.wParam, msg.lParam)
-        })
+        Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg.message, msg.wParam, msg.lParam) })
     } else {
         None
     }
