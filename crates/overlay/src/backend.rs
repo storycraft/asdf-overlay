@@ -5,6 +5,7 @@ use core::mem;
 use std::collections::VecDeque;
 
 use anyhow::Context;
+use asdf_overlay_common::cursor::Cursor;
 use asdf_overlay_event::{OverlayEvent, WindowEvent};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
@@ -30,7 +31,7 @@ use windows::Win32::{
 use crate::{
     backend::{
         render::RenderData,
-        window::{InputBlockData, WindowProcData, cursor::load_cursor},
+        window::{cursor::load_cursor, InputBlockData, ListenInputFlags, WindowProcData},
     },
     event_sink::OverlayEventSink,
     interop::DxInterop,
@@ -129,13 +130,15 @@ pub struct WindowBackend {
     pub id: u32,
     pub(crate) original_proc: WNDPROC,
     pub(crate) layout: Mutex<OverlayLayout>,
-    pub proc: Mutex<WindowProcData>,
+    pub(crate) proc: Mutex<WindowProcData>,
     pub render: Mutex<RenderData>,
     pub(crate) proc_queue: Mutex<VecDeque<ProcDispatchFn>>,
 }
 
 impl WindowBackend {
     #[tracing::instrument(skip(self))]
+    /// Reset the backend state.
+    /// This reset all set user settable state.
     pub fn reset(&self) {
         trace!("backend id: {:?} reset", self.id);
         *self.layout.lock() = OverlayLayout::new();
@@ -144,16 +147,19 @@ impl WindowBackend {
         self.block_input(false);
     }
 
+    /// Get overlay layout.
     pub fn layout(&self) -> OverlayLayout {
         OverlayLayout::clone(&self.layout.lock())
     }
 
+    /// Update overlay layout.
     pub fn update_layout(&self, f: impl FnOnce(&mut OverlayLayout)) {
         let mut layout = self.layout.lock();
         f(&mut layout);
         self.invalidate_layout();
     }
 
+    /// Invalidate layout and recompute position.
     pub fn invalidate_layout(&self) {
         let mut render = self.render.lock();
         let position = self.layout.lock().calc(
@@ -169,14 +175,17 @@ impl WindowBackend {
         render.position = position;
     }
 
-    pub fn execute_gui(&self, f: impl FnOnce(&WindowBackend) + Send + 'static) {
-        let mut proc_queue = self.proc_queue.lock();
-        proc_queue.push_back(Box::new(f));
-        unsafe {
-            _ = PostMessageA(Some(HWND(self.id as _)), msg::WM_NULL, WPARAM(0), LPARAM(0));
-        }
+    /// Set which input events are being listened to.
+    pub fn listen_input(&self, flags: ListenInputFlags) {
+        self.proc.lock().listen_input = flags;
     }
 
+    /// Sets the cursor to be displayed while input is blocked.
+    pub fn set_blocking_cursor(&self, cursor: Option<Cursor>) {
+        self.proc.lock().blocking_cursor = cursor;
+    }
+
+    /// Blocks or unblocks input for the window.
     pub fn block_input(&self, block: bool) {
         if block == self.proc.lock().blocking_state.is_some() {
             return;
@@ -241,6 +250,16 @@ impl WindowBackend {
                     event: WindowEvent::InputBlockingEnded,
                 });
             });
+        }
+    }
+
+    /// Execute function on the GUI thread.
+    /// Calling `execute_gui` inside the closure will deadlock.
+    pub fn execute_gui(&self, f: impl FnOnce(&WindowBackend) + Send + 'static) {
+        let mut proc_queue = self.proc_queue.lock();
+        proc_queue.push_back(Box::new(f));
+        unsafe {
+            _ = PostMessageA(Some(HWND(self.id as _)), msg::WM_NULL, WPARAM(0), LPARAM(0));
         }
     }
 }

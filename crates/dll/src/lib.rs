@@ -86,7 +86,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                     flags.set(ListenInputFlags::CURSOR, cmd.cursor);
                     flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
 
-                    backend.proc.lock().listen_input = flags;
+                    backend.listen_input(flags);
                 }
 
                 WindowRequest::BlockInput(cmd) => {
@@ -94,7 +94,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                 }
 
                 WindowRequest::SetBlockingCursor(cmd) => {
-                    backend.proc.lock().blocking_cursor = cmd.cursor;
+                    backend.set_blocking_cursor(cmd.cursor);
                 }
 
                 WindowRequest::UpdateSharedHandle(shared) => {

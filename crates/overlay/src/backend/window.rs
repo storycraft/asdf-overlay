@@ -5,11 +5,11 @@ use super::WindowBackend;
 use asdf_overlay_common::cursor::Cursor;
 use windows::Win32::Foundation::RECT;
 
-pub struct WindowProcData {
+pub(crate) struct WindowProcData {
     pub position: (i32, i32),
 
     pub listen_input: ListenInputFlags,
-    pub(crate) blocking_state: Option<InputBlockData>,
+    pub blocking_state: Option<InputBlockData>,
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
@@ -18,7 +18,7 @@ pub struct WindowProcData {
 }
 
 impl WindowProcData {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             position: (0, 0),
 
@@ -53,7 +53,7 @@ impl WindowProcData {
         self.blocking_state.is_some()
     }
 
-    pub(crate) fn update_click_time(&mut self, new_time: i32) -> u32 {
+    pub fn update_click_time(&mut self, new_time: i32) -> u32 {
         let delta = (new_time as u32).wrapping_sub(self.last_click_time as _);
         self.last_click_time = new_time;
         delta
@@ -61,7 +61,7 @@ impl WindowProcData {
 }
 
 #[derive(Clone, Copy)]
-pub struct InputBlockData {
+pub(crate) struct InputBlockData {
     pub clip_cursor: Option<RECT>,
     pub old_ime_cx: usize,
 }
