@@ -98,7 +98,7 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
 
         _ = Backends::with_backend(data.hwnd, |backend| {
             let mut render = backend.render.lock();
-            render.set_surface_updated();
+            render.invalidate_surface();
         });
     });
 }

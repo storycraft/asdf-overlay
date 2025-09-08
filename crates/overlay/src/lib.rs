@@ -43,11 +43,11 @@ mod wgl {
 
 pub mod backend;
 pub mod event_sink;
-pub mod interop;
 pub mod layout;
 pub mod surface;
 
 mod hook;
+mod interop;
 mod renderer;
 mod resources;
 mod texture;

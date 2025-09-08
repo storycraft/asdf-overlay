@@ -2,15 +2,17 @@
 //! You can access states for specific window using [`Backends::with_backend`].
 //! This allows you to interact with the overlay state of a window, including its layout and rendering data.
 
+#[doc(hidden)]
 pub mod render;
+
 pub mod window;
 
-use core::mem;
+use core::{mem, num::NonZeroU32};
 use std::collections::VecDeque;
 
 use anyhow::Context;
 use asdf_overlay_common::cursor::Cursor;
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
+use asdf_overlay_event::{GpuLuid, OverlayEvent, WindowEvent};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -142,6 +144,7 @@ pub struct WindowBackend {
     pub(crate) original_proc: WNDPROC,
     pub(crate) layout: Mutex<OverlayLayout>,
     pub(crate) proc: Mutex<WindowProcData>,
+    #[doc(hidden)]
     pub render: Mutex<RenderData>,
     pub(crate) proc_queue: Mutex<VecDeque<ProcDispatchFn>>,
 }
@@ -156,6 +159,21 @@ impl WindowBackend {
         self.render.lock().reset();
         self.proc.lock().reset();
         self.block_input(false);
+    }
+
+    /// Get the locally unique identifier for the GPU.
+    /// This is the GPU adapter used by the window to present to surface.
+    /// Overlay surface texture must be created with this GPU.
+    /// Otherwise, surface cannot be rendered.
+    pub fn gpu_luid(&self) -> GpuLuid {
+        self.render.lock().interop.gpu_id()
+    }
+
+    /// Update overlay surface using the given shared handle.
+    pub fn update_surface(&self, handle: Option<NonZeroU32>) -> anyhow::Result<()> {
+        self.render.lock().update_surface(handle)?;
+        self.invalidate_layout();
+        Ok(())
     }
 
     /// Get overlay layout.

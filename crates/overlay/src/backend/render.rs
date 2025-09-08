@@ -45,7 +45,7 @@ impl RenderData {
         Ok(())
     }
 
-    pub fn set_surface_updated(&mut self) {
+    pub fn invalidate_surface(&mut self) {
         self.surface.updated = true;
     }
 }

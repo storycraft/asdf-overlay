@@ -98,13 +98,9 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                 }
 
                 WindowRequest::UpdateSharedHandle(shared) => {
-                    let res = backend.render.lock().update_surface(shared.handle);
-                    match res {
-                        Ok(_) => backend.invalidate_layout(),
-                        Err(err) => {
-                            error!("failed to open shared surface. err: {:?}", err);
-                            return false;
-                        }
+                    if let Err(err) = backend.update_surface(shared.handle) {
+                        error!("failed to open shared surface. err: {:?}", err);
+                        return false;
                     }
                 }
             }
