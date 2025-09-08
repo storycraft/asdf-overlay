@@ -34,6 +34,7 @@ use crate::{
     },
     event_sink::OverlayEventSink,
     interop::DxInterop,
+    layout::OverlayLayout,
     types::IntDashMap,
     util::get_client_size,
 };
@@ -92,8 +93,9 @@ impl Backends {
                 });
 
                 Ok::<_, anyhow::Error>(WindowBackend {
-                    hwnd: id,
+                    id,
                     original_proc,
+                    layout: Mutex::new(OverlayLayout::new()),
                     proc: Mutex::new(WindowProcData::new()),
                     render: Mutex::new(RenderData::new(interop, window_size)),
                     proc_queue: Mutex::new(VecDeque::new()),
@@ -124,8 +126,9 @@ impl Backends {
 pub type ProcDispatchFn = Box<dyn FnOnce(&WindowBackend) + Send>;
 
 pub struct WindowBackend {
-    pub hwnd: u32,
+    pub id: u32,
     pub(crate) original_proc: WNDPROC,
+    pub(crate) layout: Mutex<OverlayLayout>,
     pub proc: Mutex<WindowProcData>,
     pub render: Mutex<RenderData>,
     pub(crate) proc_queue: Mutex<VecDeque<ProcDispatchFn>>,
@@ -134,16 +137,26 @@ pub struct WindowBackend {
 impl WindowBackend {
     #[tracing::instrument(skip(self))]
     pub fn reset(&self) {
-        trace!("backend hwnd: {:?} reset", HWND(self.hwnd as _));
+        trace!("backend id: {:?} reset", self.id);
+        *self.layout.lock() = OverlayLayout::new();
         self.render.lock().reset();
         self.proc.lock().reset();
         self.block_input(false);
     }
 
-    pub fn recalc_position(&self) {
-        let mut proc = self.proc.lock();
+    pub fn layout(&self) -> OverlayLayout {
+        OverlayLayout::clone(&self.layout.lock())
+    }
+
+    pub fn update_layout(&self, f: impl FnOnce(&mut OverlayLayout)) {
+        let mut layout = self.layout.lock();
+        f(&mut layout);
+        self.invalidate_layout();
+    }
+
+    pub fn invalidate_layout(&self) {
         let mut render = self.render.lock();
-        let position = proc.layout.calc(
+        let position = self.layout.lock().calc(
             render
                 .surface
                 .get()
@@ -152,7 +165,7 @@ impl WindowBackend {
             render.window_size,
         );
 
-        proc.position = position;
+        self.proc.lock().position = position;
         render.position = position;
     }
 
@@ -160,12 +173,7 @@ impl WindowBackend {
         let mut proc_queue = self.proc_queue.lock();
         proc_queue.push_back(Box::new(f));
         unsafe {
-            _ = PostMessageA(
-                Some(HWND(self.hwnd as _)),
-                msg::WM_NULL,
-                WPARAM(0),
-                LPARAM(0),
-            );
+            _ = PostMessageA(Some(HWND(self.id as _)), msg::WM_NULL, WPARAM(0), LPARAM(0));
         }
     }
 
@@ -197,14 +205,14 @@ impl WindowBackend {
                 };
 
                 let old_ime_cx =
-                    ImmAssociateContext(HWND(backend.hwnd as _), ImmCreateContext()).0 as usize;
+                    ImmAssociateContext(HWND(backend.id as _), ImmCreateContext()).0 as usize;
 
                 // give focus to target window
-                _ = SetFocus(Some(HWND(backend.hwnd as _)));
+                _ = SetFocus(Some(HWND(backend.id as _)));
 
                 // In case of ime is already enabled, hide composition windows
                 DefWindowProcA(
-                    HWND(backend.hwnd as _),
+                    HWND(backend.id as _),
                     msg::WM_IME_SETCONTEXT,
                     WPARAM(1),
                     LPARAM(0),
@@ -217,7 +225,7 @@ impl WindowBackend {
         } else {
             self.execute_gui(|backend| unsafe {
                 ShowCursor(false);
-                if GetCapture().0 as u32 == backend.hwnd {
+                if GetCapture().0 as u32 == backend.id {
                     _ = ReleaseCapture();
                 }
 
@@ -225,12 +233,11 @@ impl WindowBackend {
                     return;
                 };
                 _ = ClipCursor(data.clip_cursor.as_ref().map(|r| r as _));
-                let ime_cx =
-                    ImmAssociateContext(HWND(backend.hwnd as _), HIMC(data.old_ime_cx as _));
+                let ime_cx = ImmAssociateContext(HWND(backend.id as _), HIMC(data.old_ime_cx as _));
                 _ = ImmDestroyContext(ime_cx);
 
                 OverlayEventSink::emit(OverlayEvent::Window {
-                    id: backend.hwnd,
+                    id: backend.id,
                     event: WindowEvent::InputBlockingEnded,
                 });
             });

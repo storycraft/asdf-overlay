@@ -2,12 +2,10 @@ pub(crate) mod cursor;
 pub(crate) mod proc;
 
 use super::WindowBackend;
-use crate::layout::OverlayLayout;
 use asdf_overlay_common::cursor::Cursor;
 use windows::Win32::Foundation::RECT;
 
 pub struct WindowProcData {
-    pub layout: OverlayLayout,
     pub position: (i32, i32),
 
     pub listen_input: ListenInputFlags,
@@ -15,14 +13,13 @@ pub struct WindowProcData {
     pub blocking_cursor: Option<Cursor>,
 
     cursor_state: CursorState,
-    pub ime: ImeState,
+    ime: ImeState,
     last_click_time: i32,
 }
 
 impl WindowProcData {
     pub(crate) fn new() -> Self {
         Self {
-            layout: OverlayLayout::new(),
             position: (0, 0),
 
             listen_input: ListenInputFlags::empty(),
@@ -36,7 +33,6 @@ impl WindowProcData {
     }
 
     pub fn reset(&mut self) {
-        self.layout = OverlayLayout::new();
         self.position = (0, 0);
         self.listen_input = ListenInputFlags::empty();
         self.blocking_cursor = Some(Cursor::Default);
@@ -57,7 +53,7 @@ impl WindowProcData {
         self.blocking_state.is_some()
     }
 
-    pub fn update_click_time(&mut self, new_time: i32) -> u32 {
+    pub(crate) fn update_click_time(&mut self, new_time: i32) -> u32 {
         let delta = (new_time as u32).wrapping_sub(self.last_click_time as _);
         self.last_click_time = new_time;
         delta
@@ -77,7 +73,7 @@ enum CursorState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ImeState {
+enum ImeState {
     Enabled,
     Compose,
     Disabled,

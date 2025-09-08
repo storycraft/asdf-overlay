@@ -64,20 +64,21 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
         let res = Backends::with_backend(hwnd, |backend| {
             match req {
                 WindowRequest::SetPosition(position) => {
-                    backend.proc.lock().layout.position = (position.x, position.y);
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.position = (position.x, position.y);
+                    });
                 }
 
                 WindowRequest::SetAnchor(anchor) => {
-                    backend.proc.lock().layout.anchor = (anchor.x, anchor.y);
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.anchor = (anchor.x, anchor.y);
+                    });
                 }
 
                 WindowRequest::SetMargin(margin) => {
-                    backend.proc.lock().layout.margin =
-                        (margin.top, margin.right, margin.bottom, margin.left);
-
-                    backend.recalc_position();
+                    backend.update_layout(|layout| {
+                        layout.margin = (margin.top, margin.right, margin.bottom, margin.left);
+                    });
                 }
 
                 WindowRequest::ListenInput(cmd) => {
@@ -99,7 +100,7 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                 WindowRequest::UpdateSharedHandle(shared) => {
                     let res = backend.render.lock().update_surface(shared.handle);
                     match res {
-                        Ok(_) => backend.recalc_position(),
+                        Ok(_) => backend.invalidate_layout(),
                         Err(err) => {
                             error!("failed to open shared surface. err: {:?}", err);
                             return false;
