@@ -1,3 +1,7 @@
+//! Manage window states for rendering overlays.
+//! You can access states for specific window using [`Backends::with_backend`].
+//! This allows you to interact with the overlay state of a window, including its layout and rendering data.
+
 pub mod render;
 pub mod window;
 
@@ -31,7 +35,7 @@ use windows::Win32::{
 use crate::{
     backend::{
         render::RenderData,
-        window::{cursor::load_cursor, InputBlockData, ListenInputFlags, WindowProcData},
+        window::{InputBlockData, ListenInputFlags, WindowProcData, cursor::load_cursor},
     },
     event_sink::OverlayEventSink,
     interop::DxInterop,
@@ -44,20 +48,24 @@ static BACKENDS: Lazy<Backends> = Lazy::new(|| Backends {
     map: IntDashMap::default(),
 });
 
+/// Global store for window backends.
 pub struct Backends {
     map: IntDashMap<u32, WindowBackend>,
 }
 
 impl Backends {
+    /// Iterate over all window backends.
     pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, u32, WindowBackend>> {
         BACKENDS.map.iter()
     }
 
     #[must_use]
+    /// Run closure with the specified backend, if it exists.
     pub fn with_backend<R>(id: u32, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
         Some(f(&*BACKENDS.map.get(&id)?))
     }
 
+    #[doc(hidden)]
     pub fn with_or_init_backend<R>(
         id: u32,
         adapter_fn: impl FnOnce() -> Option<IDXGIAdapter>,
@@ -117,6 +125,7 @@ impl Backends {
         });
     }
 
+    /// Reset backend states for all windows.
     pub fn cleanup_backends() {
         for backend in BACKENDS.map.iter() {
             backend.reset();
@@ -126,7 +135,9 @@ impl Backends {
 
 pub type ProcDispatchFn = Box<dyn FnOnce(&WindowBackend) + Send>;
 
+/// Data associated to a specific window for overlay rendering.
 pub struct WindowBackend {
+    /// Unique identifier for the window.
     pub id: u32,
     pub(crate) original_proc: WNDPROC,
     pub(crate) layout: Mutex<OverlayLayout>,

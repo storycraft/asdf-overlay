@@ -81,8 +81,11 @@ enum ImeState {
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// Flags for listening to input events.
     pub struct ListenInputFlags: u8 {
+        /// Listen for cursor events.
         const CURSOR = 0b00000001;
+        /// Listen for keyboard events.
         const KEYBOARD = 0b00000010;
     }
 }
