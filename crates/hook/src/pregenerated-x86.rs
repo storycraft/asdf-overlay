@@ -2,19 +2,19 @@
 
 pub type PVOID = *mut ::core::ffi::c_void;
 pub type LONG = ::core::ffi::c_long;
-unsafe extern "system" {
+unsafe extern "stdcall" {
     #[doc = " Transaction APIs."]
     pub fn DetourTransactionBegin() -> LONG;
 }
-unsafe extern "system" {
+unsafe extern "stdcall" {
     pub fn DetourTransactionAbort() -> LONG;
 }
-unsafe extern "system" {
+unsafe extern "stdcall" {
     pub fn DetourTransactionCommit() -> LONG;
 }
-unsafe extern "system" {
+unsafe extern "stdcall" {
     pub fn DetourTransactionCommitEx(pppFailedPointer: *mut *mut PVOID) -> LONG;
 }
-unsafe extern "system" {
+unsafe extern "stdcall" {
     pub fn DetourAttach(ppPointer: *mut PVOID, pDetour: PVOID) -> LONG;
 }
