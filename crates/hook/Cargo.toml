@@ -16,6 +16,3 @@ tracing = "0.1"
 anyhow = "1.0.97"
 bindgen = "0.71.0"
 cc = "1.2.18"
-
-[package.metadata.docs.rs]
-targets = ["x86_64-pc-windows-msvc"]
