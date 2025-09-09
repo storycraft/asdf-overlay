@@ -5,7 +5,7 @@
 
 #[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
 mod detours {
-    // Generated using `bindgen detours_wrapper.h --allowlist-function DetourTransaction.* --allowlist-function DetourAttach -o src/pregenerated.rs`
+    // Generated using `bindgen detours_wrapper.h --allowlist-function DetourTransaction.* --allowlist-function DetourAttach --override-abi ".*=system" --use-core -o src/pregenerated.rs`
     include!("./pregenerated.rs");
 }
 
