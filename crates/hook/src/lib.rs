@@ -6,9 +6,9 @@
 #[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
 mod detours {
     // Generated using `bindgen detours_wrapper.h --allowlist-function DetourTransaction.* --allowlist-function DetourAttach --override-abi ".*=stdcall" --use-core -o src/pregenerated.rs`
-    #[cfg(target_pointer_width="32")]
+    #[cfg(target_pointer_width = "32")]
     include!("./pregenerated-x86.rs");
-    #[cfg(target_pointer_width="64")]
+    #[cfg(target_pointer_width = "64")]
     include!("./pregenerated-x64.rs");
 }
 
