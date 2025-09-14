@@ -183,8 +183,7 @@ impl WindowBackend {
 
     /// Update overlay layout.
     pub fn update_layout(&self, f: impl FnOnce(&mut OverlayLayout)) {
-        let mut layout = self.layout.lock();
-        f(&mut layout);
+        f(&mut self.layout.lock());
         self.invalidate_layout();
     }
 
