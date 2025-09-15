@@ -14,7 +14,7 @@ panic = "abort"
 panic = "abort"
 
 [workspace.package]
-version = "0.9.3"
+version = "0.9.4"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
@@ -22,13 +22,13 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 rust-version = "1.88"
 
 [workspace.dependencies]
-asdf-overlay = { version = "0.9.3", path = "./crates/overlay" }
-asdf-overlay-dll = { version = "0.9.3", path = "./crates/dll" }
-asdf-overlay-hook = { version = "0.9.3", path = "./crates/hook" }
-asdf-overlay-client = { version = "0.9.3", path = "./crates/client" }
-asdf-overlay-common = { version = "0.9.3", path = "./crates/common" }
-asdf-overlay-event = { version = "0.9.3", path = "./crates/event" }
-asdf-overlay-vulkan-layer = { version = "0.9.3", path = "./crates/vulkan-layer" }
+asdf-overlay = { version = "0.9.4", path = "./crates/overlay" }
+asdf-overlay-dll = { version = "0.9.4", path = "./crates/dll" }
+asdf-overlay-hook = { version = "0.9.4", path = "./crates/hook" }
+asdf-overlay-client = { version = "0.9.4", path = "./crates/client" }
+asdf-overlay-common = { version = "0.9.4", path = "./crates/common" }
+asdf-overlay-event = { version = "0.9.4", path = "./crates/event" }
+asdf-overlay-vulkan-layer = { version = "0.9.4", path = "./crates/vulkan-layer" }
 
 tokio = "1.47.1"
 
