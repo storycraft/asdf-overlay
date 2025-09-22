@@ -1,10 +1,21 @@
-use crate::{MANAGER, runtime};
-use asdf_overlay_client::client::IpcClientConn;
+use asdf_overlay_client::event::GpuLuid;
 use neon::{
     prelude::{Context, FunctionContext},
-    result::JsResult,
+    result::{JsResult, NeonResult},
     types::{JsPromise, JsUndefined},
 };
+use once_cell::sync::OnceCell;
+use tokio::runtime::Runtime;
+use windows::Win32::{
+    Foundation::LUID,
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
+};
+
+pub fn runtime<'a, C: Context<'a>>(cx: &mut C) -> NeonResult<&'static Runtime> {
+    static RUNTIME: OnceCell<Runtime> = OnceCell::new();
+
+    RUNTIME.get_or_try_init(|| Runtime::new().or_else(|err| cx.throw_error(format!("{err:?}"))))
+}
 
 pub fn with_rt<'a>(
     cx: &mut FunctionContext<'a>,
@@ -25,13 +36,24 @@ pub fn with_rt<'a>(
     Ok(promise)
 }
 
-pub async fn try_with_ipc<T>(
-    id: u32,
-    f: impl AsyncFnOnce(&mut IpcClientConn) -> anyhow::Result<T>,
-) -> anyhow::Result<T> {
-    MANAGER
-        .with(id, async move |overlay| {
-            f(&mut *overlay.ipc.lock().await).await
-        })
-        .await?
+pub fn create_adapter_by_luid(luid: GpuLuid) -> anyhow::Result<Option<IDXGIAdapter>> {
+    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>()? };
+
+    let luid = LUID {
+        LowPart: luid.low,
+        HighPart: luid.high,
+    };
+    let mut i = 0;
+    while let Ok(adapter) = unsafe { factory.EnumAdapters(i) } {
+        i += 1;
+        let Ok(desc) = (unsafe { adapter.GetDesc() }) else {
+            continue;
+        };
+
+        if desc.AdapterLuid == luid {
+            return Ok(Some(adapter));
+        }
+    }
+
+    Ok(None)
 }
