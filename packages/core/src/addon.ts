@@ -1,5 +1,5 @@
 import { OverlayEventEmitter } from './index.js';
-import { CopyRect, Cursor, PercentLength, type UpdateSharedHandle } from './types.js';
+import { CopyRect, Cursor, PercentLength, type GpuLuid, type UpdateSharedHandle } from './types.js';
 
 export type Addon = {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -47,7 +47,7 @@ export type Addon = {
 
   overlayDestroy(id: number): void,
 
-  surfaceCreate(luid: unknown): number,
+  surfaceCreate(luid: GpuLuid): number,
   surfaceClear(id: number): void,
   surfaceUpdateBitmap(id: number, width: number, data: Buffer): UpdateSharedHandle | null,
   surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,

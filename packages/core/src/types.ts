@@ -7,6 +7,21 @@ export type PercentLength = {
 };
 
 /**
+ * Locally unique identifier for a GPU.
+ */
+export type GpuLuid = {
+  /**
+   * Low part of the LUID.
+   */
+  low: number,
+
+  /**
+   * High part of the LUID.
+   */
+  high: number,
+};
+
+/**
  * Describe a update of overlay surface texture handle.
  */
 export type UpdateSharedHandle = {
