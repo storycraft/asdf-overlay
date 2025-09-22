@@ -214,8 +214,7 @@ pub fn deserialize_handle_update<'a>(
         .prop(cx, "handle")
         .get::<f64>()
         .ok()
-        .map(|v| NonZeroU32::new(v as u32))
-        .flatten();
+        .and_then(|v| NonZeroU32::new(v as u32));
     Ok(UpdateSharedHandle { handle })
 }
 

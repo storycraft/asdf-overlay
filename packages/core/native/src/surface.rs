@@ -40,7 +40,7 @@ impl SurfaceStore {
             .overlay_map
             .get_mut(&id)
             .context("Invalid surface id.")?;
-        Ok(f(&mut surface)?)
+        f(&mut surface)
     }
 
     fn destroy(&self, id: u32) -> bool {
@@ -62,10 +62,10 @@ fn surface_create(mut cx: FunctionContext) -> JsResult<JsNumber> {
         None => None,
     };
 
-    Ok(STORE
+    STORE
         .create(luid)
         .map(|id| cx.number(id))
-        .or_else(|err| cx.throw_error(format!("Failed to create surface. {err:?}")))?)
+        .or_else(|err| cx.throw_error(format!("Failed to create surface. {err:?}")))
 }
 
 fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
