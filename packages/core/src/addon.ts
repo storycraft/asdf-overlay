@@ -33,10 +33,6 @@ export type Addon = {
     cursor?: Cursor,
   ): Promise<void>,
 
-  overlayUpdateBitmap(id: number, winId: number, width: number, data: Buffer): Promise<void>,
-  overlayUpdateShtex(id: number, winId: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
-  overlayClearSurface(id: number, winId: number): Promise<void>,
-
   overlayCallNextEvent(
     id: number,
     emitter: OverlayEventEmitter,
@@ -44,4 +40,10 @@ export type Addon = {
   ): Promise<boolean>,
 
   overlayDestroy(id: number): void,
+
+  surfaceCreate(luid: unknown): number,
+  surfaceClear(id: number): void,
+  surfaceUpdateBitmap(id: number, width: number, data: Buffer): void,
+  surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): void,
+  surfaceDestroy(id: number): void,
 };

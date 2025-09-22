@@ -207,6 +207,7 @@ dependencies = [
  "rustc-hash",
  "static_vcruntime",
  "tokio",
+ "windows",
 ]
 
 [[package]]
