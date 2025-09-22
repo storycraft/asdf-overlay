@@ -96,8 +96,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     }
 
     /// Update the surface from a KMT handle of a Direct3D texture.
-    /// * Returns [`None`]` if the update is done to an existing internal texture.
-    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
+    /// * Returns [`None`] if the update is done to an existing internal texture.
+    /// * Returns [`Some`] if a new internal texture is created, due to size change.
     /// * Returns error if handle is invalid to be opened.
     pub fn update_from_shared(
         &mut self,
