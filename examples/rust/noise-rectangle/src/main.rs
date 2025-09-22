@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
 
-    let mut surface: OverlaySurface = OverlaySurface::new()?;
+    let mut surface: OverlaySurface = OverlaySurface::new(None)?;
     let mut data = Vec::new();
     for i in 0..200 {
         // make noise rectangle bigger
