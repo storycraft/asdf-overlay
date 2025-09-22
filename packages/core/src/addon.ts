@@ -1,5 +1,5 @@
 import { OverlayEventEmitter } from './index.js';
-import { CopyRect, Cursor, PercentLength } from './types.js';
+import { CopyRect, Cursor, PercentLength, type UpdateSharedHandle } from './types.js';
 
 export type Addon = {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -13,6 +13,12 @@ export type Addon = {
     right: PercentLength,
     bottom: PercentLength,
     left: PercentLength,
+  ): Promise<void>,
+
+  overlayUpdateHandle(
+    id: number,
+    winId: number,
+    update: UpdateSharedHandle,
   ): Promise<void>,
 
   overlayListenInput(
@@ -43,7 +49,7 @@ export type Addon = {
 
   surfaceCreate(luid: unknown): number,
   surfaceClear(id: number): void,
-  surfaceUpdateBitmap(id: number, width: number, data: Buffer): void,
-  surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): void,
+  surfaceUpdateBitmap(id: number, width: number, data: Buffer): UpdateSharedHandle | null,
+  surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,
   surfaceDestroy(id: number): void,
 };
