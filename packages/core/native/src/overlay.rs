@@ -6,7 +6,7 @@ use std::{path::PathBuf, sync::LazyLock};
 
 use super::conv::{deserialize_percent_length, emit_event};
 use super::util::with_rt;
-use crate::util::runtime;
+use crate::{conv::deserialize_handle_update, util::runtime};
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
     OverlayDll,
@@ -128,6 +128,23 @@ fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
         &mut cx,
         try_with_ipc(id, async move |conn| {
             conn.window(win_id).request(SetPosition { x, y }).await?;
+            Ok(())
+        }),
+    )
+}
+
+fn overlay_update_handle(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
+    let update = {
+        let obj = cx.argument::<JsObject>(2)?;
+        deserialize_handle_update(&mut cx, &obj)?
+    };
+
+    with_rt(
+        &mut cx,
+        try_with_ipc(id, async move |conn| {
+            conn.window(win_id).request(update).await?;
             Ok(())
         }),
     )
@@ -292,6 +309,7 @@ pub fn export_module_functions(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("overlaySetPosition", overlay_set_position)?;
     cx.export_function("overlaySetAnchor", overlay_set_anchor)?;
     cx.export_function("overlaySetMargin", overlay_set_margin)?;
+    cx.export_function("overlayUpdateHandle", overlay_update_handle)?;
     cx.export_function("overlayListenInput", overlay_listen_input)?;
     cx.export_function("overlayBlockInput", overlay_block_input)?;
     cx.export_function("overlaySetBlockingCursor", overlay_set_blocking_cursor)?;

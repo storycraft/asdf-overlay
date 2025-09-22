@@ -7,6 +7,18 @@ export type PercentLength = {
 };
 
 /**
+ * Describe a update of overlay surface texture handle.
+ */
+export type UpdateSharedHandle = {
+  /**
+   * KMT handle to surface texture.
+   *
+   * Not supplying this value will clear the existing texture.
+   */
+  handle?: number,
+};
+
+/**
  * Describe a rectangle when copying from source to destination.
  */
 export type CopyRect = {

@@ -6,13 +6,13 @@ use bytemuck::pod_read_unaligned;
 use neon::{
     prelude::{Context, FunctionContext, ModuleContext},
     result::{JsResult, NeonResult},
-    types::{JsBuffer, JsNumber, JsObject, JsUndefined, buffer::TypedArray},
+    types::{JsBuffer, JsNumber, JsObject, JsUndefined, JsValue, Value, buffer::TypedArray},
 };
 use once_cell::sync::Lazy;
 
 use crate::{
     FxDashMap,
-    conv::{deserialize_copy_rect, deserialize_gpu_luid},
+    conv::{deserialize_copy_rect, deserialize_gpu_luid, serialize_handle_update},
     util::create_adapter_by_luid,
 };
 
@@ -31,12 +31,16 @@ impl SurfaceStore {
         Ok(id)
     }
 
-    fn with_mut<R>(&self, id: u32, f: impl FnOnce(&mut OverlaySurface) -> R) -> anyhow::Result<R> {
+    fn with_mut<R>(
+        &self,
+        id: u32,
+        f: impl FnOnce(&mut OverlaySurface) -> anyhow::Result<R>,
+    ) -> anyhow::Result<R> {
         let mut surface = self
             .overlay_map
             .get_mut(&id)
             .context("Invalid surface id.")?;
-        Ok(f(&mut surface))
+        Ok(f(&mut surface)?)
     }
 
     fn destroy(&self, id: u32) -> bool {
@@ -64,7 +68,7 @@ fn surface_create(mut cx: FunctionContext) -> JsResult<JsNumber> {
         .or_else(|err| cx.throw_error(format!("Failed to create surface. {err:?}")))?)
 }
 
-fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let height = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
@@ -78,21 +82,29 @@ fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         })
         .transpose()?;
 
-    let res = STORE.with_mut(id, |surface| {
-        surface.update_from_shared(width, height, handle as u32, rect)
-    });
-    // TODO:: update
-    Ok(cx.undefined())
+    let update = STORE
+        .with_mut(id, |surface| {
+            surface.update_from_shared(width, height, handle as u32, rect)
+        })
+        .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
+    match update {
+        Some(update) => Ok(serialize_handle_update(&mut cx, update)?.as_value(&mut cx)),
+        None => Ok(cx.undefined().as_value(&mut cx)),
+    }
 }
 
-fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsValue> {
     let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    STORE.with_mut(id, |surface| surface.update_bitmap(width, &data));
-    // TODO:: update
-    Ok(cx.undefined())
+    let update = STORE
+        .with_mut(id, |surface| surface.update_bitmap(width, &data))
+        .or_else(|err| cx.throw_error(format!("Failed to update bitmap. {err:?}")))?;
+    match update {
+        Some(update) => Ok(serialize_handle_update(&mut cx, update)?.as_value(&mut cx)),
+        None => Ok(cx.undefined().as_value(&mut cx)),
+    }
 }
 
 fn surface_clear(mut cx: FunctionContext) -> JsResult<JsUndefined> {
@@ -101,6 +113,7 @@ fn surface_clear(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     STORE
         .with_mut(id, |surface| {
             surface.clear();
+            Ok(())
         })
         .or_else(|err| cx.throw_error(format!("Failed to clear surface. {err:?}")))?;
     Ok(cx.undefined())
