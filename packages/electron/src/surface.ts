@@ -72,8 +72,8 @@ export class ElectronOverlaySurface {
    */
   async disconnect() {
     this.contents.off('paint', this.handler);
-    this.surface.destroy();
     await this.window.overlay.updateHandle(this.window.id, {});
+    this.surface.destroy();
   }
 
   /**
