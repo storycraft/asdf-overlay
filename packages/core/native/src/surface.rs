@@ -84,7 +84,7 @@ fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
 
     let update = STORE
         .with_mut(id, |surface| {
-            surface.update_from_shared(width, height, handle as u32, rect)
+            surface.update_from_nt_shared(width, height, handle as u32, rect)
         })
         .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
     match update {

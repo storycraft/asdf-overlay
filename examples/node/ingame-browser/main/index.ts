@@ -82,7 +82,9 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    void surface?.disconnect();
+    void surface?.disconnect().then(() => {
+      surface = null;
+    });
     void overlayInput?.disconnect().then(() => {
       overlayInput = null;
     });
