@@ -212,8 +212,7 @@ pub fn deserialize_handle_update<'a>(
 ) -> NeonResult<UpdateSharedHandle> {
     let handle = obj
         .prop(cx, "handle")
-        .get::<f64>()
-        .ok()
+        .get::<Option<f64>>()?
         .and_then(|v| NonZeroU32::new(v as u32));
     Ok(UpdateSharedHandle { handle })
 }
