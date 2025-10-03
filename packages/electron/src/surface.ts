@@ -72,6 +72,9 @@ export class ElectronOverlaySurface {
    * Copy overlay texture in gpu accelerated shared texture mode.
    */
   private async paintAccelerated(texture: TextureInfo) {
+    if (texture.widgetType !== 'frame') {
+      return;
+    }
     const rect = texture.metadata.captureUpdateRect ?? texture.contentRect;
 
     // update only changed part
