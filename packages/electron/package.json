@@ -1,6 +1,6 @@
 {
   "name": "@asdf-overlay/electron",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "Asdf overlay Electron integration",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
