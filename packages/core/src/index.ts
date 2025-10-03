@@ -5,7 +5,7 @@ import { Addon } from './addon.js';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { CursorInput, KeyboardInput } from './input.js';
-import { PercentLength, CopyRect, Cursor } from './types.js';
+import { PercentLength, CopyRect, Cursor, type UpdateSharedHandle, type GpuLuid } from './types.js';
 
 export * from './types.js';
 export * from './util.js';
@@ -54,7 +54,7 @@ export type OverlayEventEmitter = EventEmitter<{
   /**
    * A window has been added.
    */
-  added: [id: number, width: number, height: number],
+  added: [id: number, width: number, height: number, luid: GpuLuid],
 
   /**
    * A window has been resized.
@@ -204,33 +204,12 @@ export class Overlay {
   }
 
   /**
-   * Update overlay using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
+   * Update overlay surface.
    * @param id target window id
-   * @param width width of the bitmap
-   * @param data bgra formatted bitmap
+   * @param update shared handle update
    */
-  async updateBitmap(id: number, width: number, data: Buffer) {
-    await addon.overlayUpdateBitmap(this[idSym], id, width, data);
-  }
-
-  /**
-   * Update overlay using D3D11 shared texture.
-   * @param id target window id
-   * @param width width of the surface
-   * @param height height of the surface
-   * @param handle NT Handle of shared D3D11 Texture
-   * @param rect Area to update
-   */
-  async updateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect) {
-    await addon.overlayUpdateShtex(this[idSym], id, width, height, handle, rect);
-  }
-
-  /**
-   * Clear overlay
-   * @param id target window id
-   */
-  async clearSurface(id: number) {
-    await addon.overlayClearSurface(this[idSym], id);
+  async updateHandle(id: number, update: UpdateSharedHandle) {
+    await addon.overlayUpdateHandle(this[idSym], id, update);
   }
 
   /**
@@ -252,6 +231,59 @@ export class Overlay {
    */
   static async attach(dllDir: string, pid: number, timeout?: number): Promise<Overlay> {
     return new Overlay(await addon.attach(dllDir, pid, timeout));
+  }
+}
+
+/**
+ * Represent a surface for overlay.
+ */
+export class OverlaySurface {
+  readonly [idSym]: number;
+
+  private constructor(id: number) {
+    this[idSym] = id;
+  }
+
+  /**
+   * Update surface using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
+   * @param width width of the bitmap
+   * @param data bgra formatted bitmap
+   */
+  updateBitmap(width: number, data: Buffer): UpdateSharedHandle | null {
+    return addon.surfaceUpdateBitmap(this[idSym], width, data);
+  }
+
+  /**
+   * Update surface using D3D11 shared texture.
+   * @param width width of the surface
+   * @param height height of the surface
+   * @param handle NT Handle of shared D3D11 Texture
+   * @param rect Area to update
+   */
+  updateShtex(width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null {
+    return addon.surfaceUpdateShtex(this[idSym], width, height, handle, rect);
+  }
+
+  /**
+   * Clear the surface.
+   */
+  clear() {
+    addon.surfaceClear(this[idSym]);
+  }
+
+  /**
+   * Destroy the surface.
+   */
+  destroy() {
+    addon.surfaceDestroy(this[idSym]);
+  }
+
+  /**
+   * Create a new overlay surface.
+   * @param luid The GPU LUID for surface textures.
+   */
+  static create(luid: GpuLuid): OverlaySurface {
+    return new OverlaySurface(addon.surfaceCreate(luid));
   }
 }
 
