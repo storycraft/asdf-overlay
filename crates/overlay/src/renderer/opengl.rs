@@ -7,13 +7,19 @@ use crate::{
     },
     wgl,
 };
-use anyhow::bail;
+use anyhow::{Context, bail};
 use scopeguard::defer;
 use tracing::trace;
 use windows::{
     Win32::Graphics::{
         Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
-        Dxgi::IDXGIResource,
+        Dxgi::{
+            Common::{
+                DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
+                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+            },
+            IDXGIResource,
+        },
     },
     core::Interface,
 };
@@ -84,7 +90,11 @@ impl OpenglRenderer {
             return Ok(());
         }
 
-        self.interop = Some(GlInteropTexture::new(texture, (size.0 as _, size.1 as _))?);
+        self.interop = Some(GlInteropTexture::new(
+            texture,
+            desc.Format,
+            (size.0 as _, size.1 as _),
+        )?);
         Ok(())
     }
 
@@ -158,9 +168,13 @@ enum GlInteropTexture {
 }
 
 impl GlInteropTexture {
-    pub fn new(texture: &ID3D11Texture2D, size: (u32, u32)) -> anyhow::Result<Self> {
+    pub fn new(
+        texture: &ID3D11Texture2D,
+        format: DXGI_FORMAT,
+        size: (u32, u32),
+    ) -> anyhow::Result<Self> {
         if gl::ImportMemoryWin32HandleEXT::is_loaded()
-            && let Ok(memory_object) = MemoryObjectTexture::open(texture, size)
+            && let Ok(memory_object) = MemoryObjectTexture::open(texture, format, size)
         {
             Ok(Self::MemoryObject(memory_object))
         } else if wgl::DXOpenDeviceNV::is_loaded() {
@@ -186,7 +200,11 @@ struct MemoryObjectTexture {
 }
 
 impl MemoryObjectTexture {
-    fn open(texture: &ID3D11Texture2D, size: (u32, u32)) -> anyhow::Result<Self> {
+    fn open(
+        texture: &ID3D11Texture2D,
+        format: DXGI_FORMAT,
+        size: (u32, u32),
+    ) -> anyhow::Result<Self> {
         unsafe {
             let handle = texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0.cast();
 
@@ -214,15 +232,10 @@ impl MemoryObjectTexture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as _);
-            gl::TexParameteriv(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_SWIZZLE_RGBA_EXT,
-                [gl::BLUE, gl::GREEN, gl::RED, gl::ALPHA].as_ptr() as _,
-            );
             gl::TexStorageMem2DEXT(
                 gl::TEXTURE_2D,
                 1,
-                gl::RGBA8,
+                map_dxgi_to_gl(format).context("Unsupported DXGI format")?,
                 size.0 as _,
                 size.1 as _,
                 memory_object,
@@ -333,3 +346,12 @@ impl Drop for NvInteropTexture {
 }
 
 unsafe impl Send for NvInteropTexture {}
+
+fn map_dxgi_to_gl(format: DXGI_FORMAT) -> Option<GLuint> {
+    match format {
+        DXGI_FORMAT_R8G8B8A8_UNORM => Some(gl::RGBA8),
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(gl::SRGB8_ALPHA8),
+        DXGI_FORMAT_B8G8R8A8_UNORM => Some(gl::BGRA),
+        _ => None,
+    }
+}
