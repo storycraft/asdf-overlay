@@ -27,5 +27,14 @@ bytemuck = "1.22.0"
 futures = "0.3.31"
 num = "0.4.3"
 
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common"
+]
+
 [target.'cfg(target_env = "msvc")'.build-dependencies]
 static_vcruntime = "2.0"

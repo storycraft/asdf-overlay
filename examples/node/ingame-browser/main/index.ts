@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay, percent } from '@asdf-overlay/core';
+import { defaultDllDir, Overlay, percent, type GpuLuid } from '@asdf-overlay/core';
 import { InputState } from '@asdf-overlay/core/input';
 import find from 'find-process';
 import { type OverlayWindow } from '@asdf-overlay/electron';
@@ -21,14 +21,19 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  const id = await new Promise<number>(resolve => overlay.event.once('added', resolve));
+  const [id, luid] = await new Promise<[number, GpuLuid]>(resolve => overlay.event.once(
+    'added',
+    (id, _width, _height, luid) => {
+      resolve([id, luid]);
+    }),
+  );
   const window: OverlayWindow = { id, overlay };
 
   // centre layout
   void overlay.setPosition(id, percent(0.5), percent(0.5));
   void overlay.setAnchor(id, percent(0.5), percent(0.5));
 
-  ElectronOverlaySurface.connect(window, mainWindow.webContents);
+  let surface: ElectronOverlaySurface | null = null;
 
   // always listen keyboard events
   await overlay.listenInput(id, false, true);
@@ -53,6 +58,9 @@ async function createOverlayWindow(pid: number) {
         block = !block;
 
         if (block) {
+          overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
+          surface = ElectronOverlaySurface.connect(window, luid, mainWindow.webContents);
+
           // do full repaint
           mainWindow.webContents.startPainting();
           mainWindow.webContents.invalidate();
@@ -60,7 +68,6 @@ async function createOverlayWindow(pid: number) {
 
           // Open the DevTools.
           mainWindow.webContents.openDevTools();
-          overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
         }
 
         // block all inputs reaching window and listen
@@ -75,7 +82,9 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    void overlay.clearSurface(id);
+    void surface?.disconnect().then(() => {
+      surface = null;
+    });
     void overlayInput?.disconnect().then(() => {
       overlayInput = null;
     });

@@ -1,5 +1,7 @@
+use core::num::NonZeroU32;
+
 use asdf_overlay_client::{
-    common::size::PercentLength,
+    common::{request::UpdateSharedHandle, size::PercentLength},
     event::{
         GpuLuid, OverlayEvent, WindowEvent,
         input::{
@@ -182,6 +184,37 @@ fn serialize_gpu_luid<'a>(cx: &mut Cx<'a>, id: GpuLuid) -> JsResult<'a, JsObject
     obj.prop(cx, "high").set(high)?;
 
     Ok(obj)
+}
+
+pub fn deserialize_gpu_luid<'a>(cx: &mut Cx<'a>, obj: &JsObject) -> NeonResult<GpuLuid> {
+    let low = obj.prop(cx, "low").get::<f64>()? as u32;
+    let high = obj.prop(cx, "high").get::<f64>()? as i32;
+
+    Ok(GpuLuid { low, high })
+}
+
+pub fn serialize_handle_update<'a>(
+    cx: &mut Cx<'a>,
+    update: UpdateSharedHandle,
+) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+
+    if let Some(handle) = update.handle {
+        obj.prop(cx, "handle").set(handle.get())?;
+    }
+
+    Ok(obj)
+}
+
+pub fn deserialize_handle_update<'a>(
+    cx: &mut Cx<'a>,
+    obj: &JsObject,
+) -> NeonResult<UpdateSharedHandle> {
+    let handle = obj
+        .prop(cx, "handle")
+        .get::<Option<f64>>()?
+        .and_then(|v| NonZeroU32::new(v as u32));
+    Ok(UpdateSharedHandle { handle })
 }
 
 fn serialize_key_input_state<'a>(cx: &mut Cx<'a>, state: KeyInputState) -> Handle<'a, JsString> {
