@@ -8,7 +8,7 @@ use crate::{
     wgl,
 };
 use anyhow::{Context, bail};
-use scopeguard::defer;
+use scopeguard::{ScopeGuard, defer};
 use tracing::trace;
 use windows::{
     Win32::Graphics::{
@@ -208,26 +208,41 @@ impl MemoryObjectTexture {
         unsafe {
             let handle = texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0.cast();
 
-            let mut memory_object = 0;
-            gl::CreateMemoryObjectsEXT(1, &mut memory_object);
+            let memory_object = scopeguard::guard(
+                {
+                    let mut id = 0;
+                    gl::CreateMemoryObjectsEXT(1, &mut id);
+                    id
+                },
+                |value| {
+                    gl::DeleteMemoryObjectsEXT(1, &value);
+                },
+            );
 
             // reset previous error before
             _ = gl::GetError();
             gl::ImportMemoryWin32HandleEXT(
-                memory_object,
+                *memory_object,
                 0,
                 gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
                 handle,
             );
             if gl::GetError() != gl::NO_ERROR {
-                gl::DeleteMemoryObjectsEXT(1, &memory_object);
                 bail!("ImportMemoryWin32HandleEXT failed");
             }
 
-            let mut texture = 0;
-            gl::GenTextures(1, &mut texture);
+            let texture = scopeguard::guard(
+                {
+                    let mut id = 0;
+                    gl::GenTextures(1, &mut id);
+                    id
+                },
+                |value| {
+                    gl::DeleteTextures(1, &value);
+                },
+            );
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::BindTexture(gl::TEXTURE_2D, *texture);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
@@ -238,13 +253,16 @@ impl MemoryObjectTexture {
                 map_dxgi_to_gl(format).context("Unsupported DXGI format")?,
                 size.0 as _,
                 size.1 as _,
-                memory_object,
+                *memory_object,
                 0,
             );
+            if gl::GetError() != gl::NO_ERROR {
+                bail!("TexStorageMem2DEXT failed");
+            }
 
             Ok(Self {
-                memory_object,
-                id: texture,
+                memory_object: ScopeGuard::into_inner(memory_object),
+                id: ScopeGuard::into_inner(texture),
             })
         }
     }
