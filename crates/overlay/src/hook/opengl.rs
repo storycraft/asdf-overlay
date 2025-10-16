@@ -14,7 +14,7 @@ use windows::{
         Foundation::{HMODULE, HWND},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
-            Gdi::{GetWindowDC, HDC, WindowFromDC},
+            Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
