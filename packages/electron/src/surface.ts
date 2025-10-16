@@ -1,6 +1,7 @@
 import type { NativeImage, TextureInfo, WebContents, WebContentsPaintEventParams } from 'electron';
 import type { OverlayWindow } from './index.js';
 import EventEmitter from 'node:events';
+import { OverlaySurface, type GpuLuid } from '@asdf-overlay/core';
 
 type Emitter = EventEmitter<{
   /**
@@ -24,10 +25,15 @@ export class ElectronOverlaySurface {
     image: NativeImage,
   ) => void;
 
+  private readonly surface: OverlaySurface;
+
   private constructor(
     private readonly window: OverlayWindow,
+    luid: GpuLuid,
     private readonly contents: WebContents,
   ) {
+    this.surface = OverlaySurface.create(luid);
+
     this.handler = (e, rect, image) => {
       const offscreenTexture = e.texture;
 
@@ -55,9 +61,10 @@ export class ElectronOverlaySurface {
    */
   static connect(
     window: OverlayWindow,
+    luid: GpuLuid,
     contents: WebContents,
   ): ElectronOverlaySurface {
-    return new ElectronOverlaySurface({ ...window }, contents);
+    return new ElectronOverlaySurface({ ...window }, luid, contents);
   }
 
   /**
@@ -65,7 +72,8 @@ export class ElectronOverlaySurface {
    */
   async disconnect() {
     this.contents.off('paint', this.handler);
-    await this.window.overlay.clearSurface(this.window.id);
+    await this.window.overlay.updateHandle(this.window.id, {});
+    this.surface.destroy();
   }
 
   /**
@@ -79,8 +87,7 @@ export class ElectronOverlaySurface {
 
     // update only changed part
     try {
-      await this.window.overlay.updateShtex(
-        this.window.id,
+      const update = this.surface.updateShtex(
         texture.codedSize.width,
         texture.codedSize.height,
         texture.sharedTextureHandle,
@@ -90,6 +97,10 @@ export class ElectronOverlaySurface {
           src: rect,
         },
       );
+
+      if (update) {
+        await this.window.overlay.updateHandle(this.window.id, update);
+      }
     } catch (e) {
       this.emitError(e);
     }
@@ -104,11 +115,14 @@ export class ElectronOverlaySurface {
   ) {
     // TODO:: update only changed part
     try {
-      await this.window.overlay.updateBitmap(
-        this.window.id,
+      const update = this.surface.updateBitmap(
         image.getSize().width,
         image.toBitmap(),
       );
+
+      if (update) {
+        await this.window.overlay.updateHandle(this.window.id, update);
+      }
     } catch (e) {
       this.emitError(e);
     }
