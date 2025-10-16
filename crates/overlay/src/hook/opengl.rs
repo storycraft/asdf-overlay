@@ -14,7 +14,7 @@ use windows::{
         Foundation::{HMODULE, HWND},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
-            Gdi::{GetWindowDC, HDC, WindowFromDC},
+            Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
@@ -202,11 +202,6 @@ fn draw_overlay(hdc: HDC) {
     let res = Backends::with_or_init_backend(
         data.hwnd,
         || {
-            let hdc = unsafe { GetWindowDC(Some(HWND(data.hwnd as _))) };
-            if hdc.is_invalid() {
-                return None;
-            }
-
             let luid = get_hdc_adapter_luid(hdc)?;
             let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>().ok()? };
             find_adapter_by_luid(&factory, luid)
