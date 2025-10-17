@@ -1,5 +1,4 @@
 mod data;
-mod hdc;
 
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
@@ -11,7 +10,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::{HMODULE, HWND},
+        Foundation::{HMODULE, HWND, LUID},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
             Gdi::{HDC, WindowFromDC},
@@ -28,7 +27,7 @@ use crate::{
     backend::{Backends, WindowBackend, render::Renderer},
     event_sink::OverlayEventSink,
     gl,
-    hook::opengl::{data::with_renderer_gl_data, hdc::get_hdc_adapter_luid},
+    hook::opengl::data::with_renderer_gl_data,
     renderer::opengl::OpenglRenderer,
     types::IntDashMap,
     util::find_adapter_by_luid,
@@ -202,7 +201,15 @@ fn draw_overlay(hdc: HDC) {
     let res = Backends::with_or_init_backend(
         data.hwnd,
         || {
-            let luid = get_hdc_adapter_luid(hdc)?;
+            let mut luid = LUID::default();
+            unsafe {
+                _ = gl::GetError();
+                gl::GetUnsignedBytevEXT(gl::DEVICE_LUID_EXT, &mut luid as *mut _ as _);
+                if gl::GetError() != gl::NO_ERROR {
+                    return None;
+                }
+            }
+
             let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>().ok()? };
             find_adapter_by_luid(&factory, luid)
         },
