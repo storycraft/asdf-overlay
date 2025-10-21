@@ -1,1 +1,0 @@
-# Surface connection and layout
