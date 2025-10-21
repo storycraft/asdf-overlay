@@ -8,5 +8,10 @@
 # User Guide
 - [Node.js (Electron)](./user-guide/node.md)
   - [Installation](./user-guide/node/installation.md)
+  - [Attaching](./user-guide/node/attaching.md)
+  - [Closing](./user-guide/node/closing.md)
+  - [Obtaining window information](./user-guide/node/obtaining-window-info.md)
+  - [Layout and Surface connection](./user-guide/node/layout-surface-connection.md)
+
 - [Rust](./user-guide/rust.md)
   - [Installation](./user-guide/rust/installation.md)
