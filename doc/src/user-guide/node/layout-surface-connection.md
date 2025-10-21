@@ -4,7 +4,28 @@ This section explains how to layout overlay surface and connect overlay surface 
 ## Layout
 After obtaining window id, you can set overlay layout using various options.
 
-TBA
+There are two types of specifying length: absolute length in pixels and relative length in percentage.
+
+Relative length is specified as a number between `0.0` and `1.0`, representing percentage of target window size.
+
+Layout can be done using `setPosition`, `setAnchor` and `setMargin` methods of `Overlay` instance.
+```typescript
+const overlay: Overlay = /* Attached Overlay instance */;
+const id: number = /* Id of target window */;
+
+// Set position to center of target window
+void overlay.setPosition(id, percent(0.5), percent(0.5));
+// Set anchor to center of overlay surface
+void overlay.setAnchor(id, percent(0.5), percent(0.5));
+// Set margin to 10 pixels from each side
+void overlay.setMargin(id, length(10), length(10), length(10), length(10));
+```
+* Position: Specifies the position of overlay surface relative to target window's client area.
+  The position is determined by the anchor point of overlay surface.
+* Anchor: Specifies the anchor point of overlay surface.
+   The anchor point is a point on the overlay surface that will be aligned to the position in the target window.
+* Margin: Specifies the margin between overlay surface and target window's client area.
+  Margin is specified for each side: top, right, bottom and left.
 
 ## Surface connection
 After obtaining main window information, you can connect overlay surface to show overlay.
