@@ -1,4 +1,4 @@
-## Attaching
+## Attaching to target process
 To control overlay, you first need to attach overlay dll to target process.
 The `@asdf-overlay/core` package provides a function for attaching overlay and initialize IPC connection.
 

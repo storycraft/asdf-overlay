@@ -1,4 +1,4 @@
-## Closing
+## Closing the connection
 After opening a connection to Asdf Overlay, it is important to close the connection properly to free up resources.
 The `Overlay` instance provides a method to close the connection and unload the overlay dll from the target process.
 
