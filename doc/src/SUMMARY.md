@@ -12,6 +12,7 @@
   - [Closing the connection](./user-guide/node/closing.md)
   - [Obtaining window information](./user-guide/node/obtaining-window-info.md)
   - [Layout and Surface connection](./user-guide/node/layout-surface-connection.md)
+  - [Input Control](./user-guide/node/input-control.md)
 
 - [Rust](./user-guide/rust.md)
   - [Installation](./user-guide/rust/installation.md)

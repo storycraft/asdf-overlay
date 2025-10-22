@@ -31,13 +31,15 @@ void overlay.setMargin(id, length(10), length(10), length(10), length(10));
 After obtaining main window information, you can connect overlay surface to show overlay.
 By using `@asdf-overlay/electron` package, you can easily connect Electron window as overlay surface.
 
+Code example is shown below.
 ```typescript
 import { Overlay } from '@asdf-overlay/core';
-import { ElectronOverlaySurface } from '@asdf-overlay/electron';
+import { ElectronOverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
 
 const overlay: Overlay = /* Attached Overlay instance */;
-const id: number = /* Id of target window */;
+const windowId: number = /* Id of target window */;
 const gpuLuid: GpuLuid = /* GPU LUID of target window */;
+const window: OverlayWindow = { id: windowId, overlay };
 
 const window = new BrowserWindow({
   webPreferences: {
@@ -47,7 +49,7 @@ const window = new BrowserWindow({
   },
 });
 
-const surface = ElectronOverlaySurface.connect({ id, overlay }, gpuLuid, mainWindow.webContents);
+const surface = ElectronOverlaySurface.connect(window, gpuLuid, mainWindow.webContents);
 
 // Disconnecting surface
 await surface.disconnect();
