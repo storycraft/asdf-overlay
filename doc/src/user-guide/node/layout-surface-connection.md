@@ -20,11 +20,11 @@ void overlay.setAnchor(id, percent(0.5), percent(0.5));
 // Set margin to 10 pixels from each side
 void overlay.setMargin(id, length(10), length(10), length(10), length(10));
 ```
-* Position: Specifies the position of overlay surface relative to target window's client area.
+* **Position**: Specifies the position of overlay surface relative to target window's client area.
   The position is determined by the anchor point of overlay surface.
-* Anchor: Specifies the anchor point of overlay surface.
+* **Anchor**: Specifies the anchor point of overlay surface.
    The anchor point is a point on the overlay surface that will be aligned to the position in the target window.
-* Margin: Specifies the margin between overlay surface and target window's client area.
+* **Margin**: Specifies the margin between overlay surface and target window's client area.
   Margin is specified for each side: top, right, bottom and left.
 
 ## Surface connection
