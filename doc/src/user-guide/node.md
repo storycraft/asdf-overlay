@@ -7,3 +7,5 @@ This section provides information on how to use Asdf Overlay with Node.js and El
 * **[Obtaining window information](./node/obtaining-window-info.md)** Guide on how to obtain main window information of target application.
 * **[Layout and Surface connection](./node/layout-surface-connection.md)** Guide on how to layout overlay surface and connect overlay surface to target window in Electron.
 * **[Input Control](./node/input-control.md)** Guide on how to control input events and passthrough of overlay window.
+
+For more examples, see example projects in the `examples/node` directory of the repository.
