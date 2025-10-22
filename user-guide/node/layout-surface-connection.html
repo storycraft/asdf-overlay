@@ -214,7 +214,7 @@ const windowId: number = /* Id of target window */;
 const gpuLuid: GpuLuid = /* GPU LUID of target window */;
 const window: OverlayWindow = { id: windowId, overlay };
 
-const window = new BrowserWindow({
+const mainWindow = new BrowserWindow({
   webPreferences: {
     offscreen: {
       useSharedTexture: true,
