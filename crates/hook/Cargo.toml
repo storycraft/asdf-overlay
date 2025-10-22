@@ -14,5 +14,4 @@ tracing = "0.1"
 
 [build-dependencies]
 anyhow = "1.0.97"
-bindgen = "0.71.0"
 cc = "1.2.18"

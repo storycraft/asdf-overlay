@@ -18,7 +18,7 @@ Blazingly fast™ Windows Overlay library
 [lyrs-url]: https://github.com/organization/lyrs
 [tosu-url]: https://github.com/tosuapp/tosu
 
-| | | |
+| Logo | Project | Usage |
 | :-----: | ----- | ----- |
 | [![Lyrs logo](.github/images/lyrs-logo.png)][lyrs-url] | [Lyrs][lyrs-url] | Ingame lyrics overlay
 | [![Tosu logo](.github/images/tosu-logo.png)][tosu-url] | [Tosu][tosu-url] | Ingame overlay
@@ -27,7 +27,7 @@ Blazingly fast™ Windows Overlay library
 [sign-path-io-url]: https://signpath.io/
 [sign-path-foundation-url]: https://signpath.org/
 
-| | |
+| Logo | Description |
 | :-----: | ----- |
 | [![SignPath logo](.github/images/signpath-logo.png)][sign-path-io-url] | Free code signing provided by [SignPath.io][sign-path-io-url], certificate by [SignPath Foundation][sign-path-foundation-url] |
 

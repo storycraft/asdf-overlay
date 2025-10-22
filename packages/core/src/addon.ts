@@ -1,5 +1,5 @@
 import { OverlayEventEmitter } from './index.js';
-import { CopyRect, Cursor, PercentLength } from './types.js';
+import { CopyRect, Cursor, PercentLength, type GpuLuid, type UpdateSharedHandle } from './types.js';
 
 export type Addon = {
   attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
@@ -13,6 +13,12 @@ export type Addon = {
     right: PercentLength,
     bottom: PercentLength,
     left: PercentLength,
+  ): Promise<void>,
+
+  overlayUpdateHandle(
+    id: number,
+    winId: number,
+    update: UpdateSharedHandle,
   ): Promise<void>,
 
   overlayListenInput(
@@ -33,10 +39,6 @@ export type Addon = {
     cursor?: Cursor,
   ): Promise<void>,
 
-  overlayUpdateBitmap(id: number, winId: number, width: number, data: Buffer): Promise<void>,
-  overlayUpdateShtex(id: number, winId: number, width: number, height: number, handle: Buffer, rect?: CopyRect): Promise<void>,
-  overlayClearSurface(id: number, winId: number): Promise<void>,
-
   overlayCallNextEvent(
     id: number,
     emitter: OverlayEventEmitter,
@@ -44,4 +46,10 @@ export type Addon = {
   ): Promise<boolean>,
 
   overlayDestroy(id: number): void,
+
+  surfaceCreate(luid: GpuLuid): number,
+  surfaceClear(id: number): void,
+  surfaceUpdateBitmap(id: number, width: number, data: Buffer): UpdateSharedHandle | null,
+  surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,
+  surfaceDestroy(id: number): void,
 };

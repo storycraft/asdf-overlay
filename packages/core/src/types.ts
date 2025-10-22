@@ -7,6 +7,33 @@ export type PercentLength = {
 };
 
 /**
+ * Locally unique identifier for a GPU.
+ */
+export type GpuLuid = {
+  /**
+   * Low part of the LUID.
+   */
+  low: number,
+
+  /**
+   * High part of the LUID.
+   */
+  high: number,
+};
+
+/**
+ * Describe a update of overlay surface texture handle.
+ */
+export type UpdateSharedHandle = {
+  /**
+   * KMT handle to surface texture.
+   *
+   * Not supplying this value will clear the existing texture.
+   */
+  handle?: number,
+};
+
+/**
  * Describe a rectangle when copying from source to destination.
  */
 export type CopyRect = {

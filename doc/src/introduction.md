@@ -17,7 +17,6 @@ By reading the documentation you will learn how to
 ## Supported graphics backend
 * [x] OpenGL
 * [x] DX9
-* [ ] DX10
 * [x] DX11
 * [x] DX12
 * [x] Vulkan (via loading as vulkan layer)

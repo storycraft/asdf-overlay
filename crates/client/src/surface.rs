@@ -16,7 +16,7 @@ use windows::{
             Direct3D11::*,
             Dxgi::{
                 Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
-                IDXGIKeyedMutex, IDXGIResource,
+                IDXGIAdapter, IDXGIKeyedMutex, IDXGIResource,
             },
         },
     },
@@ -42,13 +42,17 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     /// Create a new [`OverlaySurface`].
     /// This will create a Direct3D11 device and context internally.
     /// * Returns error if failed to create Direct3D11 device or context.
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         let mut device = None;
         let mut cx = None;
         unsafe {
             D3D11CreateDevice(
-                None,
-                D3D_DRIVER_TYPE_HARDWARE,
+                adapter,
+                if adapter.is_none() {
+                    D3D_DRIVER_TYPE_HARDWARE
+                } else {
+                    D3D_DRIVER_TYPE_UNKNOWN
+                },
                 HMODULE(ptr::null_mut()),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 Some(&DEFAULT_FEATURE_LEVELS),
@@ -92,8 +96,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     }
 
     /// Update the surface from a KMT handle of a Direct3D texture.
-    /// * Returns [`None`]` if the update is done to an existing internal texture.
-    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
+    /// * Returns [`None`] if the update is done to an existing internal texture.
+    /// * Returns [`Some`] if a new internal texture is created, due to size change.
     /// * Returns error if handle is invalid to be opened.
     pub fn update_from_shared(
         &mut self,
