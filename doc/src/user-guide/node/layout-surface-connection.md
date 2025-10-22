@@ -16,11 +16,11 @@ const overlay: Overlay = /* Attached Overlay instance */;
 const id: number = /* Id of target window */;
 
 // Set position to center of target window
-void overlay.setPosition(id, percent(0.5), percent(0.5));
+await overlay.setPosition(id, percent(0.5), percent(0.5));
 // Set anchor to center of overlay surface
-void overlay.setAnchor(id, percent(0.5), percent(0.5));
+await overlay.setAnchor(id, percent(0.5), percent(0.5));
 // Set margin to 10 pixels from each side
-void overlay.setMargin(id, length(10), length(10), length(10), length(10));
+await overlay.setMargin(id, length(10), length(10), length(10), length(10));
 ```
 * **Position**: Specifies the position of overlay surface relative to target window's client area.
   The position is determined by the anchor point of overlay surface.
