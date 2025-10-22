@@ -26,5 +26,3 @@ Once you done set up workspace, you can build the project using following comman
 ```bash
 pnpm build
 ```
-
-For more detail, see [Pnpm Command - build](./pnpm/build.md).
