@@ -259,7 +259,7 @@ Use external debug log viewer (ex: <a href="https://learn.microsoft.com/en-us/sy
 <p>Following command will install core Node.js package and Electron integration package</p>
 <pre><code class="language-bash">npm install @asdf-overlay/core @asdf-overlay/electron
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h2 id="attaching-to-target-process"><a class="header" href="#attaching-to-target-process">Attaching to target process</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="attaching-to-target-process"><a class="header" href="#attaching-to-target-process">Attaching to target process</a></h1>
 <p>To control overlay, you first need to attach overlay dll to target process.
 The <code>@asdf-overlay/core</code> package provides a function for attaching overlay and initialize IPC connection.</p>
 <p>Following code connects overlay to target process.</p>
@@ -283,7 +283,7 @@ The <code>defaultDllDir</code> function returns path to the directory containing
 <li>On Electron, <code>defaultDllDir</code> function may return path inside <code>app.asar</code> archive.
 In such cases, you need to replace <code>app.asar</code> with <code>app.asar.unpacked</code> to access the dll files.</li>
 </ol>
-<div style="break-before: page; page-break-before: always;"></div><h2 id="closing-the-connection"><a class="header" href="#closing-the-connection">Closing the connection</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="closing-the-connection"><a class="header" href="#closing-the-connection">Closing the connection</a></h1>
 <p>After opening a connection to Asdf Overlay, it is important to close the connection properly to free up resources.
 The <code>Overlay</code> instance provides a method to close the connection and unload the overlay dll from the target process.</p>
 <p>Following code demonstrates how to close the overlay connection.</p>
@@ -297,7 +297,7 @@ overlay.destroy();
 <li>After calling the <code>destroy</code> method, the overlay setup in the target process will be reset, and the resources will be released.</li>
 <li>You cannot use the <code>Overlay</code> instance after calling this method.</li>
 </ol>
-<div style="break-before: page; page-break-before: always;"></div><h2 id="obtaining-window-information"><a class="header" href="#obtaining-window-information">Obtaining Window Information</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="obtaining-window-information"><a class="header" href="#obtaining-window-information">Obtaining Window Information</a></h1>
 <p>Before showing overlay, you need to specify which window to show overlay.
 In most case, you need to obtain main window information of target application.</p>
 <p>This heuristic code can be used to obtain main window information.</p>
@@ -309,7 +309,7 @@ In most case, you need to obtain main window information of target application.<
 );
 </code></pre>
 <p>It will return first found window ID and its associated GPU LUID.</p>
-<div style="break-before: page; page-break-before: always;"></div><h2 id="layout-and-surface-connection"><a class="header" href="#layout-and-surface-connection">Layout and Surface connection</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="layout-and-surface-connection"><a class="header" href="#layout-and-surface-connection">Layout and Surface connection</a></h1>
 <p>This section explains how to layout overlay surface and connect overlay surface to target window in Electron.</p>
 <h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
 <p>After obtaining window id, you can set overlay layout using various options.</p>
