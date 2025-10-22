@@ -10,6 +10,8 @@ Relative length is specified as a number between `0.0` and `1.0`, representing p
 
 Layout can be done using `setPosition`, `setAnchor` and `setMargin` methods of `Overlay` instance.
 ```typescript
+import { Overlay, percent, length } from '@asdf-overlay/core';
+
 const overlay: Overlay = /* Attached Overlay instance */;
 const id: number = /* Id of target window */;
 
