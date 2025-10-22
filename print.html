@@ -198,8 +198,6 @@ It is primarily targeting games, but it can be used on any programs using GPU.</
 OpenGL</li>
 <li><input disabled="" type="checkbox" checked=""/>
 DX9</li>
-<li><input disabled="" type="checkbox"/>
-DX10</li>
 <li><input disabled="" type="checkbox" checked=""/>
 DX11</li>
 <li><input disabled="" type="checkbox" checked=""/>
@@ -246,36 +244,231 @@ To debug overlay DLL, you need to build with debug profile.</p>
 <p>After building, replace overlay DLL.
 Overlay DLL with debug profile will emit tracing to Debug Output Window.
 Use external debug log viewer (ex: <a href="https://learn.microsoft.com/en-us/sysinternals/downloads/debugview">DebugView</a>) to see debug output.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="nodejs-electron-user-guide"><a class="header" href="#nodejs-electron-user-guide">Node.js (Electron) User Guide</a></h1>
+<p>This section provides information on how to use Asdf Overlay with Node.js and Electron.</p>
+<ul>
+<li><strong><a href="user-guide/./node/installation.html">Installation</a></strong> Instructions on how to install Asdf Overlay for Node.js and Electron.</li>
+<li><strong><a href="user-guide/./node/attaching.html">Attaching to target process</a></strong> Guide on how to attach Asdf Overlay to a target process.</li>
+<li><strong><a href="user-guide/./node/closing.html">Closing the connection</a></strong> Instructions on how to properly close the Asdf Overlay connection in a Node.js environment.</li>
+<li><strong><a href="user-guide/./node/obtaining-window-info.html">Obtaining window information</a></strong> Guide on how to obtain main window information of target application.</li>
+<li><strong><a href="user-guide/./node/layout-surface-connection.html">Layout and Surface connection</a></strong> Guide on how to layout overlay surface and connect overlay surface to target window in Electron.</li>
+<li><strong><a href="user-guide/./node/input-control.html">Input Control</a></strong> Guide on how to control input events and passthrough of overlay window.</li>
+</ul>
+<p>For more examples, see example projects in the <code>examples/node</code> directory of the repository.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
-<p>Asdf Overlay is distributed as Rust crate and Node.js package.
-Follow the relevant sections.</p>
-<h2 id="nodejs-package"><a class="header" href="#nodejs-package">Node.js Package</a></h2>
-<p>Following command can be used to install Node.js package</p>
-<pre><code class="language-bash">npm add asdf-overlay-node
+<p>Following command will install core Node.js package and Electron integration package</p>
+<pre><code class="language-bash">npm install @asdf-overlay/core @asdf-overlay/electron
 </code></pre>
-<h2 id="rust-crate"><a class="header" href="#rust-crate">Rust crate</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="attaching-to-target-process"><a class="header" href="#attaching-to-target-process">Attaching to target process</a></h2>
+<p>To control overlay, you first need to attach overlay dll to target process.
+The <code>@asdf-overlay/core</code> package provides a function for attaching overlay and initialize IPC connection.</p>
+<p>Following code connects overlay to target process.</p>
+<pre><code class="language-typescript">import { defaultDllDir, Overlay } from '@asdf-overlay/core';
+
+const overlay = await Overlay.attach(
+  defaultDllDir().replace('app.asar', 'app.asar.unpacked'),
+  /* target process id */ 12345,
+  /* optional timeout in ms */ 5000,
+);
+</code></pre>
+<p>Some caveats included below:</p>
+<ol>
+<li><code>@asdf-overlay/core</code> package includes overlay dll files for x64, ia32 and arm64 architectures.
+Asdf overlay will choose appropriate one based on the target process architecture.
+The <code>defaultDllDir</code> function returns path to the directory containing these dll files.</li>
+<li>Onced injected, the dll will not be unloaded until the target process exits and maybe reused later if another connection is established.</li>
+<li>If optional timeout is not provided, it will wait indefinitely.</li>
+<li>The <code>Overlay.attach</code> function returns an <code>Overlay</code> instance upon successful attachment and can be used to control the overlay.</li>
+<li>On Electron, <code>@asdf-overlay/core</code> must be specified as external to work correctly.</li>
+<li>On Electron, <code>defaultDllDir</code> function may return path inside <code>app.asar</code> archive.
+In such cases, you need to replace <code>app.asar</code> with <code>app.asar.unpacked</code> to access the dll files.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="closing-the-connection"><a class="header" href="#closing-the-connection">Closing the connection</a></h2>
+<p>After opening a connection to Asdf Overlay, it is important to close the connection properly to free up resources.
+The <code>Overlay</code> instance provides a method to close the connection and unload the overlay dll from the target process.</p>
+<p>Following code demonstrates how to close the overlay connection.</p>
+<pre><code class="language-typescript">import { Overlay } from '@asdf-overlay/core';
+
+const overlay: Overlay = /* previously attached Overlay instance */;
+overlay.destroy();
+</code></pre>
+<p>Some caveats included below:</p>
+<ol>
+<li>After calling the <code>destroy</code> method, the overlay setup in the target process will be reset, and the resources will be released.</li>
+<li>You cannot use the <code>Overlay</code> instance after calling this method.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="obtaining-window-information"><a class="header" href="#obtaining-window-information">Obtaining Window Information</a></h2>
+<p>Before showing overlay, you need to specify which window to show overlay.
+In most case, you need to obtain main window information of target application.</p>
+<p>This heuristic code can be used to obtain main window information.</p>
+<pre><code class="language-typescript">const [id, luid] = await new Promise&lt;[number, GpuLuid]&gt;(resolve =&gt; overlay.event.once(
+  'added',
+  (id, _width, _height, luid) =&gt; {
+    resolve([id, luid]);
+  }),
+);
+</code></pre>
+<p>It will return first found window ID and its associated GPU LUID.</p>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="layout-and-surface-connection"><a class="header" href="#layout-and-surface-connection">Layout and Surface connection</a></h2>
+<p>This section explains how to layout overlay surface and connect overlay surface to target window in Electron.</p>
+<h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
+<p>After obtaining window id, you can set overlay layout using various options.</p>
+<p>There are two types of specifying length: absolute length in pixels and relative length in percentage.</p>
+<p>Relative length is specified as a number between <code>0.0</code> and <code>1.0</code>, representing percentage of target window size.</p>
+<p>Layout can be done using <code>setPosition</code>, <code>setAnchor</code> and <code>setMargin</code> methods of <code>Overlay</code> instance.</p>
+<pre><code class="language-typescript">import { Overlay, percent, length } from '@asdf-overlay/core';
+
+const overlay: Overlay = /* Attached Overlay instance */;
+const id: number = /* Id of target window */;
+
+// Set position to center of target window
+void overlay.setPosition(id, percent(0.5), percent(0.5));
+// Set anchor to center of overlay surface
+void overlay.setAnchor(id, percent(0.5), percent(0.5));
+// Set margin to 10 pixels from each side
+void overlay.setMargin(id, length(10), length(10), length(10), length(10));
+</code></pre>
+<ul>
+<li><strong>Position</strong>: Specifies the position of overlay surface relative to target window's client area.
+The position is determined by the anchor point of overlay surface.</li>
+<li><strong>Anchor</strong>: Specifies the anchor point of overlay surface.
+The anchor point is a point on the overlay surface that will be aligned to the position in the target window.</li>
+<li><strong>Margin</strong>: Specifies the margin between overlay surface and target window's client area.
+Margin is specified for each side: top, right, bottom and left.</li>
+</ul>
+<h2 id="surface-connection"><a class="header" href="#surface-connection">Surface connection</a></h2>
+<p>After obtaining main window information, you can connect overlay surface to show overlay.
+By using <code>@asdf-overlay/electron</code> package, you can easily connect Electron window as overlay surface.</p>
+<p>Code example is shown below.</p>
+<pre><code class="language-typescript">import { Overlay } from '@asdf-overlay/core';
+import { ElectronOverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
+
+const overlay: Overlay = /* Attached Overlay instance */;
+const windowId: number = /* Id of target window */;
+const gpuLuid: GpuLuid = /* GPU LUID of target window */;
+const window: OverlayWindow = { id: windowId, overlay };
+
+const window = new BrowserWindow({
+  webPreferences: {
+    offscreen: {
+      useSharedTexture: true,
+    },
+  },
+});
+
+const surface = ElectronOverlaySurface.connect(window, gpuLuid, mainWindow.webContents);
+
+// Disconnecting surface
+await surface.disconnect();
+</code></pre>
+<p>Caveats include:</p>
+<ol>
+<li>Make sure to enable <code>offscreen.useSharedTexture</code> in <code>webPreferences</code> when creating <code>BrowserWindow</code>.
+Without this option, overlay will be presented using CPU which causes high latency and low performance.</li>
+<li>You need to provide correct <code>GpuLuid</code> when connecting surface.
+On hybrid GPU systems like laptops with integrated and discrete GPUs, providing wrong <code>GpuLuid</code> will result in no overlay shown.</li>
+<li>While overlay position can be changed, size is fixed to connected surface texture.
+To change size of surface, change the size of browser.
+<code>ElectronOverlaySurface</code> instance takes care of resizing overlay surface automatically.</li>
+<li>To disconnect surface, call <code>disconnect</code> method of <code>ElectronOverlaySurface</code> instance.
+This will disconnect and release surface resources.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="input-control"><a class="header" href="#input-control">Input Control</a></h1>
+<p>This section provides a guide on how to listen to input events and control input passthrough to overlay window.</p>
+<h2 id="listening-to-input-events"><a class="header" href="#listening-to-input-events">Listening to input events</a></h2>
+<p>To listen to input events going to the overlay window, you can use <code>listenInput</code> method from the <code>Overlay</code> instance.
+This method allows you to listen cursor and keyboard events using event listeners.</p>
+<p>Example:</p>
+<pre><code class="language-typescript">import { Overlay } from '@asdf-overlay/core';
+
+const overlay: Overlay = /* Attached Overlay instance */;
+const windowId: number = /* Target window ID */;
+
+await overlay.listenInput(
+  windowId,
+  true, /* listen to cursor events */
+  true, /* listen to keyboard events */
+);
+
+// Register listener for cursor events
+overlay.on('cursor_input', (windowId, event) =&gt; {
+  // Cursor event listener 
+});
+
+// Register listener for keyboard events
+overlay.on('keyboard_input', (windowId, event) =&gt; {
+  // Keyboard event listener 
+});
+</code></pre>
+<p>Caveats:</p>
+<ol>
+<li>Raw input will not be captured as you can register platform specific raw input listeners.</li>
+<li>Listening to unnecessary input events may cause performance issues.</li>
+<li>IME input events are provided as best-effort basis and may not work as expected in all cases.</li>
+</ol>
+<h2 id="controlling-input-passthrough"><a class="header" href="#controlling-input-passthrough">Controlling input passthrough</a></h2>
+<p>Sometimes you may want to control whether input events are passed through to the underlying window or not.
+For example, you may want to show interactive overlay UI and you don't want input events to reach the underlying window.</p>
+<p>By using <code>blockInput</code> method from the <code>Overlay</code> instance, you can block or unblock input events reaching the underlying window.</p>
+<p>Example:</p>
+<pre><code class="language-typescript">import { Overlay } from '@asdf-overlay/core';
+
+const overlay: Overlay = /* Attached Overlay instance */;
+const windowId: number = /* Target window ID */;
+
+await overlay.blockInput(
+  windowId,
+  block, // true to block input, false to unblock input
+);
+
+overlay.event.on('input_blocking_ended', () =&gt; {
+  // Event listener called when input blocking ends
+});
+</code></pre>
+<p>Caveats:</p>
+<ol>
+<li>All input events will be captured, regardless of whether you are listening to them or not.</li>
+<li>Raw input will be blocked.</li>
+<li>User can interrupt input blocking by pressing <code>Alt + F4</code> shortcut.
+Always listen to <code>input_blocking_ended</code> event to handle such cases.</li>
+</ol>
+<h2 id="electron-input-redirection"><a class="header" href="#electron-input-redirection">Electron input redirection</a></h2>
+<p>When using <code>@asdf-overlay/electron</code> package, utility for input redirection is provided.
+By using <code>ElectronOverlayInput</code>, you can easily redirect captured input events to Electron's <code>BrowserWindow</code>.</p>
+<p>Example:</p>
+<pre><code class="language-typescript">import { Overlay } from '@asdf-overlay/core';
+import { ElectronOverlayInput, type OverlayWindow } from '@asdf-overlay/electron';
+import { BrowserWindow } from 'electron';
+
+const overlay: Overlay = /* Attached Overlay instance */;
+const windowId: number = /* Target window ID */;
+const browserWindow: BrowserWindow = /* Target Electron BrowserWindow */;
+const window: OverlayWindow = { id: windowId, overlay };
+
+// Connect overlay input to Electron BrowserWindow.
+const overlayInput = ElectronOverlayInput.connect(window, browserWindow.webContents);
+
+// Control which input events to listen and redirect.
+overlay.listenInput(windowId, true, true);
+
+// Disconnect when no longer needed.
+await overlayInput.disconnect();
+</code></pre>
+<p>Caveats:</p>
+<ol>
+<li>Due to limitations of Electron, some input events may not be redirected properly.</li>
+<li>If <code>browserWindow</code> is not focused, some input events may not be redirected properly.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rust-user-guide"><a class="header" href="#rust-user-guide">Rust User Guide</a></h1>
+<p>This section provides information on how to use Asdf Overlay with Rust.</p>
+<ul>
+<li><strong><a href="user-guide/./rust/installation.html">Installation</a></strong> Instructions on how to install Asdf Overlay for Rust.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation-1"><a class="header" href="#installation-1">Installation</a></h1>
 <p>Following command can be used to install Rust crate</p>
 <pre><code class="language-bash">cargo add asdf-overlay-client
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="concepts"><a class="header" href="#concepts">Concepts</a></h1>
-<p>To expose consistent interface from the target process, the library introduces some concepts.
-These concepts are important as they represents how Asdf Overlay hook and abstracts underlying rendering infrastructure.</p>
-<h2 id="window"><a class="header" href="#window">Window</a></h2>
-<p>Each window can accept inputs and have one surface associated to a swapchain.</p>
-<h2 id="swapchain"><a class="header" href="#swapchain">Swapchain</a></h2>
-<p>Swapchain represents collection of framebuffers associated to an window.
-The actual implementation varies by GPU backends.</p>
-<p>For each swapchain, Asdf Overlay accept any BGRA formatted Direct3D 11 shared texture to be set as overlay surface.
-Provided Direct3D 11 texture is drew on top of actual framebuffer before presentation.</p>
-<p>Overlay texture must be drew using same GPU with target swapchain as it uses shared texture to avoid expensive cpu copy.
-If provided texture is rendered on other GPU, the rendering will fail and overlay will not be displayed.
-This is not significant issue on desktop as most desktops have only one GPU.
-However some laptops have integrated GPU and discrete one then it can be problem.</p>
-<h2 id="input"><a class="header" href="#input">Input</a></h2>
-<p>Input is mouse and keyboard inputs coming from window.
-This also includes raw inputs coming from event loop associated to a window.</p>
-<p>Asdf Overlay let you listen these inputs, intercept and block them so users can interact with overlay.
-To prevent abuse, blocking is disabled when the user attempts to close the window.</p>
+<p>TBA</p>
 
                     </main>
 

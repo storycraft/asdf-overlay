@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Concepts - Asdf Overlay Documentation</title>
+        <title>Node.js (Electron) - Asdf Overlay Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -175,34 +175,29 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="concepts"><a class="header" href="#concepts">Concepts</a></h1>
-<p>To expose consistent interface from the target process, the library introduces some concepts.
-These concepts are important as they represents how Asdf Overlay hook and abstracts underlying rendering infrastructure.</p>
-<h2 id="window"><a class="header" href="#window">Window</a></h2>
-<p>Each window can accept inputs and have one surface associated to a swapchain.</p>
-<h2 id="swapchain"><a class="header" href="#swapchain">Swapchain</a></h2>
-<p>Swapchain represents collection of framebuffers associated to an window.
-The actual implementation varies by GPU backends.</p>
-<p>For each swapchain, Asdf Overlay accept any BGRA formatted Direct3D 11 shared texture to be set as overlay surface.
-Provided Direct3D 11 texture is drew on top of actual framebuffer before presentation.</p>
-<p>Overlay texture must be drew using same GPU with target swapchain as it uses shared texture to avoid expensive cpu copy.
-If provided texture is rendered on other GPU, the rendering will fail and overlay will not be displayed.
-This is not significant issue on desktop as most desktops have only one GPU.
-However some laptops have integrated GPU and discrete one then it can be problem.</p>
-<h2 id="input"><a class="header" href="#input">Input</a></h2>
-<p>Input is mouse and keyboard inputs coming from window.
-This also includes raw inputs coming from event loop associated to a window.</p>
-<p>Asdf Overlay let you listen these inputs, intercept and block them so users can interact with overlay.
-To prevent abuse, blocking is disabled when the user attempts to close the window.</p>
+                        <h1 id="nodejs-electron-user-guide"><a class="header" href="#nodejs-electron-user-guide">Node.js (Electron) User Guide</a></h1>
+<p>This section provides information on how to use Asdf Overlay with Node.js and Electron.</p>
+<ul>
+<li><strong><a href="./node/installation.html">Installation</a></strong> Instructions on how to install Asdf Overlay for Node.js and Electron.</li>
+<li><strong><a href="./node/attaching.html">Attaching to target process</a></strong> Guide on how to attach Asdf Overlay to a target process.</li>
+<li><strong><a href="./node/closing.html">Closing the connection</a></strong> Instructions on how to properly close the Asdf Overlay connection in a Node.js environment.</li>
+<li><strong><a href="./node/obtaining-window-info.html">Obtaining window information</a></strong> Guide on how to obtain main window information of target application.</li>
+<li><strong><a href="./node/layout-surface-connection.html">Layout and Surface connection</a></strong> Guide on how to layout overlay surface and connect overlay surface to target window in Electron.</li>
+<li><strong><a href="./node/input-control.html">Input Control</a></strong> Guide on how to control input events and passthrough of overlay window.</li>
+</ul>
+<p>For more examples, see example projects in the <code>examples/node</code> directory of the repository.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../developer-guide/debugging.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
+                            <a rel="next prefetch" href="../user-guide/node/installation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -210,10 +205,13 @@ To prevent abuse, blocking is disabled when the user attempts to close the windo
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../developer-guide/debugging.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
+                    <a rel="next prefetch" href="../user-guide/node/installation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
             </nav>
 
         </div>
