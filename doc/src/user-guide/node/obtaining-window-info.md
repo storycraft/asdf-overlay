@@ -1,4 +1,4 @@
-## Obtaining Window Information
+# Obtaining Window Information
 Before showing overlay, you need to specify which window to show overlay.
 In most case, you need to obtain main window information of target application.
 

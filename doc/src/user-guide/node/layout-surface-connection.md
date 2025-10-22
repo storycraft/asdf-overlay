@@ -1,4 +1,4 @@
-## Layout and Surface connection
+# Layout and Surface connection
 This section explains how to layout overlay surface and connect overlay surface to target window in Electron.
 
 ## Layout
