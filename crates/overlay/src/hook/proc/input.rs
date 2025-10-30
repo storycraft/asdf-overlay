@@ -9,7 +9,7 @@ use windows::{
         UI::{
             Input::{
                 HRAWINPUT, KeyboardAndMouse::GetActiveWindow, RAW_INPUT_DATA_COMMAND_FLAGS,
-                RAWINPUT,
+                RAWINPUT, RAWINPUTHEADER, RID_HEADER, RID_INPUT,
             },
             WindowsAndMessaging::GetForegroundWindow,
         },
@@ -247,8 +247,10 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
 #[tracing::instrument]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
     if foreground_hwnd_input_blocked() {
-        // buf is 256 bytes array according to doc. 
-        unsafe { buf.write_bytes(0u8, 256); };
+        // buf is 256 bytes array according to doc.
+        unsafe {
+            buf.write_bytes(0u8, 256);
+        };
         return BOOL(1);
     }
 
@@ -264,7 +266,24 @@ extern "system" fn hooked_get_raw_input_data(
     cbsizeheader: u32,
 ) -> u32 {
     if foreground_hwnd_input_blocked() {
-        unsafe { *pcbsize = 0 };
+        if !pdata.is_null() {
+            match uicommand {
+                RID_HEADER => {
+                    unsafe {
+                        pdata
+                            .cast::<RAWINPUTHEADER>()
+                            .write(RAWINPUTHEADER::default());
+                    };
+                }
+
+                RID_INPUT => unsafe {
+                    pdata.cast::<RAWINPUT>().write(RAWINPUT::default());
+                },
+
+                _ => {}
+            }
+        }
+
         return 0;
     }
 
