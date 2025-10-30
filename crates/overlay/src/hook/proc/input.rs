@@ -175,6 +175,11 @@ fn foreground_hwnd_input_blocked() -> bool {
             .unwrap_or(false)
 }
 
+#[inline]
+fn active_hwnd_input_blocked() -> bool {
+    active_hwnd_with(|_| ()).is_some()
+}
+
 #[tracing::instrument]
 extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
     if active_hwnd_with(|data| {
@@ -237,7 +242,7 @@ extern "system" fn hooked_get_async_key_state(vkey: i32) -> i16 {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
-    if foreground_hwnd_input_blocked() {
+    if active_hwnd_input_blocked() {
         return 0;
     }
 
@@ -246,7 +251,7 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
-    if foreground_hwnd_input_blocked() {
+    if active_hwnd_input_blocked() {
         // buf is 256 bytes array according to doc.
         unsafe {
             buf.write_bytes(0u8, 256);
