@@ -247,6 +247,8 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
 #[tracing::instrument]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
     if foreground_hwnd_input_blocked() {
+        // buf is 256 bytes array according to doc. 
+        unsafe { buf.write_bytes(0u8, 256); };
         return BOOL(1);
     }
 
@@ -262,6 +264,7 @@ extern "system" fn hooked_get_raw_input_data(
     cbsizeheader: u32,
 ) -> u32 {
     if foreground_hwnd_input_blocked() {
+        unsafe { *pcbsize = 0 };
         return 0;
     }
 
@@ -283,6 +286,7 @@ extern "system" fn hooked_get_raw_input_buffer(
     cbsizeheader: u32,
 ) -> u32 {
     if foreground_hwnd_input_blocked() {
+        unsafe { *pcbsize = 0 };
         return 0;
     }
 
