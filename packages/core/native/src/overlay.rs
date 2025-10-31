@@ -51,7 +51,9 @@ impl OverlayStore {
         .context("cannot inject to the process")?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map.upsert_sync(id, Overlay { ipc, event });
+        self.overlay_map
+            .upsert_async(id, Overlay { ipc, event })
+            .await;
 
         Ok(id)
     }
