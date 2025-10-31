@@ -1,12 +1,14 @@
 use core::{
+    pin::pin,
     sync::atomic::{AtomicU32, Ordering},
+    task::Poll,
     time::Duration,
 };
 use std::{path::PathBuf, sync::LazyLock};
 
 use super::conv::{deserialize_percent_length, emit_event};
 use super::util::with_rt;
-use crate::{conv::deserialize_handle_update, util::runtime};
+use crate::{FxSccMap, conv::deserialize_handle_update, util::runtime};
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
     OverlayDll,
@@ -18,12 +20,9 @@ use asdf_overlay_client::{
     event::OverlayEvent,
     inject,
 };
-use dashmap::DashMap;
+use futures::future::poll_fn;
 use neon::prelude::*;
 use num::FromPrimitive;
-use rustc_hash::FxBuildHasher;
-
-type FxDashMap<K, V> = DashMap<K, V, FxBuildHasher>;
 
 struct Overlay {
     ipc: IpcClientConn,
@@ -32,7 +31,7 @@ struct Overlay {
 
 struct OverlayStore {
     next_id: AtomicU32,
-    overlay_map: FxDashMap<u32, Overlay>,
+    overlay_map: FxSccMap<u32, Overlay>,
 }
 
 impl OverlayStore {
@@ -55,7 +54,9 @@ impl OverlayStore {
         .context("cannot inject to the process")?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map.insert(id, Overlay { ipc, event });
+        self.overlay_map
+            .upsert_async(id, Overlay { ipc, event })
+            .await;
 
         Ok(id)
     }
@@ -65,12 +66,27 @@ impl OverlayStore {
         id: u32,
         f: impl AsyncFnOnce(&mut Overlay) -> R,
     ) -> anyhow::Result<R> {
-        let mut overlay = self.overlay_map.get_mut(&id).context("invalid id")?;
+        let mut overlay = self
+            .overlay_map
+            .get_async(&id)
+            .await
+            .context("invalid id")?;
         Ok(f(&mut *overlay).await)
     }
 
+    async fn next_event(&self, id: u32) -> anyhow::Result<Option<OverlayEvent>> {
+        poll_fn(|cx| {
+            let Some(mut overlay) = self.overlay_map.get_sync(&id) else {
+                return Poll::Ready(Err(anyhow::anyhow!("invalid id")));
+            };
+
+            pin!(overlay.event.recv()).poll(cx).map(Ok)
+        })
+        .await
+    }
+
     fn destroy(&self, id: u32) -> anyhow::Result<()> {
-        self.overlay_map.remove(&id).context("invalid id")?;
+        self.overlay_map.remove_sync(&id).context("invalid id")?;
 
         Ok(())
     }
@@ -78,7 +94,7 @@ impl OverlayStore {
 
 static STORE: LazyLock<OverlayStore> = LazyLock::new(|| OverlayStore {
     next_id: AtomicU32::new(0),
-    overlay_map: FxDashMap::default(),
+    overlay_map: FxSccMap::default(),
 });
 
 pub async fn try_with_ipc<T>(
@@ -214,15 +230,8 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = async move {
-            let event: Option<OverlayEvent> = STORE
-                .with_mut(id, async move |overlay| overlay.event.recv().await)
-                .await?;
-            Ok::<_, anyhow::Error>(event)
-        }
-        .await;
-
-        deferred.settle_with(&channel, move |mut cx| match res {
+        let event = STORE.next_event(id).await;
+        deferred.settle_with(&channel, move |mut cx| match event {
             Ok(Some(event)) => {
                 let emitter = emitter.into_inner(&mut cx);
                 let emit = emit.into_inner(&mut cx);

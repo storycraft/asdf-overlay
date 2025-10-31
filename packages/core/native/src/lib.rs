@@ -3,12 +3,11 @@ mod overlay;
 mod surface;
 mod util;
 
-use dashmap::DashMap;
 use mimalloc::MiMalloc;
 use neon::prelude::*;
 use rustc_hash::FxBuildHasher;
 
-type FxDashMap<K, V> = DashMap<K, V, FxBuildHasher>;
+type FxSccMap<K, V> = scc::HashMap<K, V, FxBuildHasher>;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;

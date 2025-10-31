@@ -11,7 +11,6 @@ use asdf_overlay_common::{
 };
 use asdf_overlay_event::OverlayEvent;
 use bincode::Decode;
-use dashmap::DashMap;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
     net::windows::named_pipe::NamedPipeClient,
@@ -24,7 +23,7 @@ pub struct IpcClientConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeClient>,
     buf: Vec<u8>,
-    map: Weak<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
+    map: Weak<scc::HashMap<u32, oneshot::Sender<Vec<u8>>>>,
     read_task: JoinHandle<anyhow::Result<()>>,
 }
 
@@ -33,7 +32,7 @@ impl IpcClientConn {
     pub async fn new(client: NamedPipeClient) -> anyhow::Result<(Self, IpcClientEventStream)> {
         let (mut rx, tx) = split(client);
 
-        let map = Arc::new(DashMap::<u32, oneshot::Sender<Vec<u8>>>::new());
+        let map = Arc::new(scc::HashMap::<u32, oneshot::Sender<Vec<u8>>>::new());
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
         let read_task = tokio::spawn({
@@ -51,7 +50,7 @@ impl IpcClientConn {
 
                     match packet {
                         ServerToClientPacket::Response(res) => {
-                            if let Some((_, sender)) = map.remove(&res.id) {
+                            if let Some((_, sender)) = map.remove_async(&res.id).await {
                                 _ = sender.send(res.data);
                             }
                         }
@@ -129,7 +128,7 @@ impl IpcClientConn {
         .await?;
 
         let (tx, rx) = oneshot::channel();
-        map.insert(id, tx);
+        map.upsert_async(id, tx).await;
         self.tx.write_all(&self.buf).await?;
 
         self.tx.flush().await?;

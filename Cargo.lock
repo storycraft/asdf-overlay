@@ -128,9 +128,9 @@ dependencies = [
  "asdf-overlay-event",
  "bincode",
  "bytemuck",
- "dashmap",
  "goblin",
  "ntapi",
+ "scc",
  "scopeguard",
  "tokio",
  "windows",
@@ -197,14 +197,13 @@ dependencies = [
  "anyhow",
  "asdf-overlay-client",
  "bytemuck",
- "dashmap",
  "futures",
  "mimalloc",
  "neon",
  "num",
  "once_cell",
- "parking_lot",
  "rustc-hash",
+ "scc",
  "static_vcruntime",
  "tokio",
  "windows",
@@ -1258,6 +1257,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
+name = "saa"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72344f6e377b9a2f08843cbbc803422547d7af9f7a00e3d4f57db7ca164ce67e"
+
+[[package]]
+name = "scc"
+version = "3.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd37c88f5f67ce08ba7773895d0be51a6772af8a7e2de41e6af63c182d2fd736"
+dependencies = [
+ "saa",
+ "sdd",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1282,6 +1297,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "sdd"
+version = "4.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a8729f5224c38cb041e72fa9968dd4e379d3487b85359539d31d75ed95992d8"
 
 [[package]]
 name = "semver"
