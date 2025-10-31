@@ -61,7 +61,11 @@ impl OverlayStore {
         id: u32,
         f: impl AsyncFnOnce(&mut Overlay) -> R,
     ) -> anyhow::Result<R> {
-        let mut overlay = self.overlay_map.get_async(&id).await.context("invalid id")?;
+        let mut overlay = self
+            .overlay_map
+            .get_async(&id)
+            .await
+            .context("invalid id")?;
         Ok(f(&mut *overlay).await)
     }
 
