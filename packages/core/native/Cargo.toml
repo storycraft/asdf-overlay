@@ -17,7 +17,6 @@ asdf-overlay-client = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 neon = "1"
-parking_lot = "0.12.3"
 anyhow = "1.0.97"
 once_cell = "1.21.3"
 rustc-hash = "2.1.1"

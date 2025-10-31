@@ -202,7 +202,6 @@ dependencies = [
  "neon",
  "num",
  "once_cell",
- "parking_lot",
  "rustc-hash",
  "scc",
  "static_vcruntime",

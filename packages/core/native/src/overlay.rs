@@ -1,5 +1,7 @@
 use core::{
+    pin::pin,
     sync::atomic::{AtomicU32, Ordering},
+    task::Poll,
     time::Duration,
 };
 use std::{path::PathBuf, sync::LazyLock};
@@ -18,6 +20,7 @@ use asdf_overlay_client::{
     event::OverlayEvent,
     inject,
 };
+use futures::{ future::poll_fn};
 use neon::prelude::*;
 use num::FromPrimitive;
 
@@ -69,6 +72,17 @@ impl OverlayStore {
             .await
             .context("invalid id")?;
         Ok(f(&mut *overlay).await)
+    }
+
+    async fn next_event(&self, id: u32) -> anyhow::Result<Option<OverlayEvent>> {
+        poll_fn(|cx| {
+            let Some(mut overlay) = self.overlay_map.get_sync(&id) else {
+                return Poll::Ready(Err(anyhow::anyhow!("invalid id")));
+            };
+
+            pin!(overlay.event.recv()).poll(cx).map(Ok)
+        })
+        .await
     }
 
     fn destroy(&self, id: u32) -> anyhow::Result<()> {
@@ -216,15 +230,8 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = async move {
-            let event: Option<OverlayEvent> = STORE
-                .with_mut(id, async move |overlay| overlay.event.recv().await)
-                .await?;
-            Ok::<_, anyhow::Error>(event)
-        }
-        .await;
-
-        deferred.settle_with(&channel, move |mut cx| match res {
+        let event = STORE.next_event(id).await;
+        deferred.settle_with(&channel, move |mut cx| match event {
             Ok(Some(event)) => {
                 let emitter = emitter.into_inner(&mut cx);
                 let emit = emit.into_inner(&mut cx);
