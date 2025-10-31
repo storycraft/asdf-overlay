@@ -6,7 +6,7 @@ use std::{path::PathBuf, sync::LazyLock};
 
 use super::conv::{deserialize_percent_length, emit_event};
 use super::util::with_rt;
-use crate::{conv::deserialize_handle_update, util::runtime};
+use crate::{FxSccMap, conv::deserialize_handle_update, util::runtime};
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
     OverlayDll,
@@ -18,12 +18,8 @@ use asdf_overlay_client::{
     event::OverlayEvent,
     inject,
 };
-use dashmap::DashMap;
 use neon::prelude::*;
 use num::FromPrimitive;
-use rustc_hash::FxBuildHasher;
-
-type FxDashMap<K, V> = DashMap<K, V, FxBuildHasher>;
 
 struct Overlay {
     ipc: IpcClientConn,
@@ -32,7 +28,7 @@ struct Overlay {
 
 struct OverlayStore {
     next_id: AtomicU32,
-    overlay_map: FxDashMap<u32, Overlay>,
+    overlay_map: FxSccMap<u32, Overlay>,
 }
 
 impl OverlayStore {
@@ -55,7 +51,7 @@ impl OverlayStore {
         .context("cannot inject to the process")?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map.insert(id, Overlay { ipc, event });
+        self.overlay_map.upsert_sync(id, Overlay { ipc, event });
 
         Ok(id)
     }
@@ -65,12 +61,14 @@ impl OverlayStore {
         id: u32,
         f: impl AsyncFnOnce(&mut Overlay) -> R,
     ) -> anyhow::Result<R> {
-        let mut overlay = self.overlay_map.get_mut(&id).context("invalid id")?;
+        dbg!(1);
+        let mut overlay = self.overlay_map.get_async(&id).await.context("invalid id")?;
+        dbg!(2);
         Ok(f(&mut *overlay).await)
     }
 
     fn destroy(&self, id: u32) -> anyhow::Result<()> {
-        self.overlay_map.remove(&id).context("invalid id")?;
+        self.overlay_map.remove_sync(&id).context("invalid id")?;
 
         Ok(())
     }
@@ -78,7 +76,7 @@ impl OverlayStore {
 
 static STORE: LazyLock<OverlayStore> = LazyLock::new(|| OverlayStore {
     next_id: AtomicU32::new(0),
-    overlay_map: FxDashMap::default(),
+    overlay_map: FxSccMap::default(),
 });
 
 pub async fn try_with_ipc<T>(

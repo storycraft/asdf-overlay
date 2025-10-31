@@ -11,14 +11,14 @@ use neon::{
 use once_cell::sync::Lazy;
 
 use crate::{
-    FxDashMap,
+    FxSccMap,
     conv::{deserialize_copy_rect, deserialize_gpu_luid, serialize_handle_update},
     util::create_adapter_by_luid,
 };
 
 struct SurfaceStore {
     next_id: AtomicU32,
-    overlay_map: FxDashMap<u32, OverlaySurface>,
+    overlay_map: FxSccMap<u32, OverlaySurface>,
 }
 
 impl SurfaceStore {
@@ -27,7 +27,7 @@ impl SurfaceStore {
         let surface = OverlaySurface::new(adapter.as_ref())?;
 
         let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map.insert(id, surface);
+        self.overlay_map.upsert_sync(id, surface);
         Ok(id)
     }
 
@@ -38,19 +38,19 @@ impl SurfaceStore {
     ) -> anyhow::Result<R> {
         let mut surface = self
             .overlay_map
-            .get_mut(&id)
+            .get_sync(&id)
             .context("Invalid surface id.")?;
         f(&mut surface)
     }
 
     fn destroy(&self, id: u32) -> bool {
-        self.overlay_map.remove(&id).is_some()
+        self.overlay_map.remove_sync(&id).is_some()
     }
 }
 
 static STORE: Lazy<SurfaceStore> = Lazy::new(|| SurfaceStore {
     next_id: AtomicU32::new(0),
-    overlay_map: FxDashMap::default(),
+    overlay_map: FxSccMap::default(),
 });
 
 fn surface_create(mut cx: FunctionContext) -> JsResult<JsNumber> {
