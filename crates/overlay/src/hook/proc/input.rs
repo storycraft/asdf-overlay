@@ -9,7 +9,7 @@ use windows::{
         UI::{
             Input::{
                 HRAWINPUT, KeyboardAndMouse::GetActiveWindow, RAW_INPUT_DATA_COMMAND_FLAGS,
-                RAWINPUT,
+                RAWINPUT, RAWINPUTHEADER, RID_HEADER, RID_INPUT,
             },
             WindowsAndMessaging::GetForegroundWindow,
         },
@@ -37,6 +37,8 @@ use crate::{
 )]
 unsafe extern "system" {
     fn ClipCursor(lprect: *const RECT) -> BOOL;
+    fn SetCursorPos(x: i32, y: i32) -> BOOL;
+
     fn GetClipCursor(lprect: *mut RECT) -> BOOL;
     fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
     fn GetPhysicalCursorPos(lppoint: *mut POINT) -> BOOL;
@@ -55,6 +57,8 @@ unsafe extern "system" {
 
 struct Hook {
     clip_cursor: DetourHook<ClipCursorFn>,
+    set_cursor_pos: DetourHook<SetCursorFn>,
+
     get_clip_cursor: DetourHook<GetClipCursorFn>,
     get_cursor_pos: DetourHook<GetCursorPos>,
     get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
@@ -67,6 +71,8 @@ struct Hook {
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
+type SetCursorFn = unsafe extern "system" fn(i32, i32) -> BOOL;
+
 type GetClipCursorFn = unsafe extern "system" fn(*mut RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetPhysicalCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
@@ -87,15 +93,17 @@ pub fn hook() -> anyhow::Result<()> {
         debug!("hooking ClipCursor");
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
 
+        debug!("hooking SetCursorPos");
+        let set_cursor_pos = DetourHook::attach(SetCursorPos as _, hooked_set_cursor_pos as _)?;
+
         debug!("hooking GetClipCursor");
         let get_clip_cursor = DetourHook::attach(GetClipCursor as _, hooked_get_clip_cursor as _)?;
 
         debug!("hooking GetCursorPos");
-        let get_physical_cursor_pos =
-            DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
+        let get_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
 
         debug!("hooking GetPhysicalCursorPos");
-        let get_cursor_pos = DetourHook::attach(
+        let get_physical_cursor_pos = DetourHook::attach(
             GetPhysicalCursorPos as _,
             hooked_get_physical_cursor_pos as _,
         )?;
@@ -121,6 +129,8 @@ pub fn hook() -> anyhow::Result<()> {
 
         Ok::<_, anyhow::Error>(Hook {
             clip_cursor,
+            set_cursor_pos,
+
             get_clip_cursor,
             get_cursor_pos,
             get_physical_cursor_pos,
@@ -156,17 +166,17 @@ fn active_hwnd_with<R>(f: impl FnOnce(&mut InputBlockData) -> R) -> Option<R> {
 }
 
 #[inline]
-fn active_hwnd_input_blocked() -> bool {
-    active_hwnd_with(|_| ()).is_some()
-}
-
-#[inline]
 fn foreground_hwnd_input_blocked() -> bool {
     let hwnd = unsafe { GetForegroundWindow() };
 
     !hwnd.is_invalid()
         && Backends::with_backend(hwnd.0 as _, |backend| backend.proc.lock().input_blocking())
             .unwrap_or(false)
+}
+
+#[inline]
+fn active_hwnd_input_blocked() -> bool {
+    active_hwnd_with(|_| ()).is_some()
 }
 
 #[tracing::instrument]
@@ -183,6 +193,15 @@ extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
 }
 
 #[tracing::instrument]
+extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
+    if foreground_hwnd_input_blocked() {
+        return BOOL(1);
+    }
+
+    unsafe { HOOK.wait().set_cursor_pos.original_fn()(x, y) }
+}
+
+#[tracing::instrument]
 extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
     match active_hwnd_with(|data| data.clip_cursor).flatten() {
         Some(rect) => {
@@ -195,7 +214,7 @@ extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if active_hwnd_input_blocked() {
+    if foreground_hwnd_input_blocked() {
         return BOOL(1);
     }
 
@@ -204,7 +223,7 @@ extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if active_hwnd_input_blocked() {
+    if foreground_hwnd_input_blocked() {
         return BOOL(1);
     }
 
@@ -232,6 +251,10 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
 #[tracing::instrument]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
     if active_hwnd_input_blocked() {
+        // buf is 256 bytes array according to doc.
+        unsafe {
+            buf.write_bytes(0u8, 256);
+        };
         return BOOL(1);
     }
 
@@ -246,7 +269,25 @@ extern "system" fn hooked_get_raw_input_data(
     pcbsize: *mut u32,
     cbsizeheader: u32,
 ) -> u32 {
-    if active_hwnd_input_blocked() {
+    if foreground_hwnd_input_blocked() {
+        if !pdata.is_null() {
+            match uicommand {
+                RID_HEADER => {
+                    unsafe {
+                        pdata
+                            .cast::<RAWINPUTHEADER>()
+                            .write(RAWINPUTHEADER::default());
+                    };
+                }
+
+                RID_INPUT => unsafe {
+                    pdata.cast::<RAWINPUT>().write(RAWINPUT::default());
+                },
+
+                _ => {}
+            }
+        }
+
         return 0;
     }
 
@@ -267,7 +308,8 @@ extern "system" fn hooked_get_raw_input_buffer(
     pcbsize: *mut u32,
     cbsizeheader: u32,
 ) -> u32 {
-    if active_hwnd_input_blocked() {
+    if foreground_hwnd_input_blocked() {
+        unsafe { *pcbsize = 0 };
         return 0;
     }
 
