@@ -1,6 +1,6 @@
 {
   "name": "@asdf-overlay/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Asdf overlay core Node addon",
   "main": "./lib/index.js",
   "type": "module",
