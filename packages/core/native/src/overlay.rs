@@ -20,7 +20,7 @@ use asdf_overlay_client::{
     event::OverlayEvent,
     inject,
 };
-use futures::{ future::poll_fn};
+use futures::future::poll_fn;
 use neon::prelude::*;
 use num::FromPrimitive;
 
