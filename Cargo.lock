@@ -187,8 +187,6 @@ dependencies = [
  "neon",
  "num",
  "once_cell",
- "rustc-hash",
- "scc",
  "static_vcruntime",
  "tokio",
  "windows",

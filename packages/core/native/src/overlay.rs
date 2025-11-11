@@ -1,14 +1,11 @@
-use core::{
-    pin::pin,
-    sync::atomic::{AtomicU32, Ordering},
-    task::Poll,
-    time::Duration,
-};
-use std::{path::PathBuf, sync::LazyLock};
+use core::cell::RefCell;
+use core::time::Duration;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::conv::{deserialize_percent_length, emit_event};
 use super::util::with_rt;
-use crate::{FxSccMap, conv::deserialize_handle_update, util::runtime};
+use crate::{conv::deserialize_handle_update, util::runtime};
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{
     OverlayDll,
@@ -17,93 +14,51 @@ use asdf_overlay_client::{
         cursor::Cursor,
         request::{BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition},
     },
-    event::OverlayEvent,
     inject,
 };
-use futures::future::poll_fn;
 use neon::prelude::*;
 use num::FromPrimitive;
+use tokio::sync::Mutex;
 
-struct Overlay {
-    ipc: IpcClientConn,
-    event: IpcClientEventStream,
-}
+struct Overlay(RefCell<Option<Inner>>);
 
-struct OverlayStore {
-    next_id: AtomicU32,
-    overlay_map: FxSccMap<u32, Overlay>,
-}
-
-impl OverlayStore {
-    async fn attach(
-        &self,
-        dll_dir: PathBuf,
-        pid: u32,
-        timeout: Option<Duration>,
-    ) -> anyhow::Result<u32> {
-        let (ipc, event) = inject(
-            pid,
-            OverlayDll {
-                x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
-                x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
-                arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
-            },
-            timeout,
-        )
-        .await
-        .context("cannot inject to the process")?;
-
-        let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map
-            .upsert_async(id, Overlay { ipc, event })
-            .await;
-
-        Ok(id)
+impl Overlay {
+    pub fn new(ipc: IpcClientConn, event: IpcClientEventStream) -> Self {
+        Self(RefCell::new(Some(Inner {
+            ipc: Arc::new(Mutex::new(ipc)),
+            event: Arc::new(Mutex::new(event)),
+        })))
     }
 
-    async fn with_mut<R>(
-        &self,
-        id: u32,
-        f: impl AsyncFnOnce(&mut Overlay) -> R,
-    ) -> anyhow::Result<R> {
-        let mut overlay = self
-            .overlay_map
-            .get_async(&id)
-            .await
-            .context("invalid id")?;
-        Ok(f(&mut *overlay).await)
+    pub fn ipc(&self, cx: &mut Cx) -> NeonResult<Arc<Mutex<IpcClientConn>>> {
+        match *self.0.borrow() {
+            Some(ref inner) => Ok(inner.ipc.clone()),
+            None => cx.throw_error("Overlay is destroyed"),
+        }
     }
 
-    async fn next_event(&self, id: u32) -> anyhow::Result<Option<OverlayEvent>> {
-        poll_fn(|cx| {
-            let Some(mut overlay) = self.overlay_map.get_sync(&id) else {
-                return Poll::Ready(Err(anyhow::anyhow!("invalid id")));
-            };
-
-            pin!(overlay.event.recv()).poll(cx).map(Ok)
-        })
-        .await
+    pub fn events(&self, cx: &mut Cx) -> NeonResult<Arc<Mutex<IpcClientEventStream>>> {
+        match *self.0.borrow() {
+            Some(ref inner) => Ok(inner.event.clone()),
+            None => cx.throw_error("Overlay is destroyed"),
+        }
     }
 
-    fn destroy(&self, id: u32) -> anyhow::Result<()> {
-        self.overlay_map.remove_sync(&id).context("invalid id")?;
-
-        Ok(())
+    pub fn destroy(&self, cx: &mut Cx) -> NeonResult<()> {
+        match self.0.borrow_mut().take() {
+            Some(_) => Ok(()),
+            None => cx.throw_error("Overlay is already destroyed"),
+        }
     }
 }
 
-static STORE: LazyLock<OverlayStore> = LazyLock::new(|| OverlayStore {
-    next_id: AtomicU32::new(0),
-    overlay_map: FxSccMap::default(),
-});
+struct Inner {
+    ipc: Arc<Mutex<IpcClientConn>>,
+    event: Arc<Mutex<IpcClientEventStream>>,
+}
 
-pub async fn try_with_ipc<T>(
-    id: u32,
-    f: impl AsyncFnOnce(&mut IpcClientConn) -> anyhow::Result<T>,
-) -> anyhow::Result<T> {
-    STORE
-        .with_mut(id, async move |overlay| f(&mut overlay.ipc).await)
-        .await?
+impl Finalize for Overlay {
+    fn finalize<'a, C: Context<'a>>(self, _: &mut C) {}
 }
 
 fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -121,10 +76,21 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let res = STORE.attach(PathBuf::from(dll_dir), pid, timeout).await;
+        let dll_dir = PathBuf::from(dll_dir);
+        let res = inject(
+            pid,
+            OverlayDll {
+                x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
+                x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
+                arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
+            },
+            timeout,
+        )
+        .await
+        .context("cannot inject to the process");
 
         deferred.settle_with(&channel, move |mut cx| match res {
-            Ok(id) => Ok(JsNumber::new(&mut cx, id)),
+            Ok((ipc, event)) => Ok(cx.boxed(Overlay::new(ipc, event))),
             Err(err) => cx.throw_error(format!("{err:?}")),
         });
     });
@@ -133,58 +99,57 @@ fn attach(mut cx: FunctionContext) -> JsResult<JsPromise> {
 }
 
 fn overlay_set_position(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let x = cx.argument::<JsObject>(2)?;
     let x = deserialize_percent_length(&mut cx, &x)?;
     let y = cx.argument::<JsObject>(3)?;
     let y = deserialize_percent_length(&mut cx, &y)?;
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id).request(SetPosition { x, y }).await?;
-            Ok(())
-        }),
-    )
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(SetPosition { x, y })
+            .await?;
+        Ok(())
+    })
 }
 
 fn overlay_update_handle(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let update = {
         let obj = cx.argument::<JsObject>(2)?;
         deserialize_handle_update(&mut cx, &obj)?
     };
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id).request(update).await?;
-            Ok(())
-        }),
-    )
+    with_rt(&mut cx, async move {
+        ipc.lock().await.window(win_id).request(update).await?;
+        Ok(())
+    })
 }
 
 fn overlay_set_anchor(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let x = cx.argument::<JsObject>(2)?;
     let x = deserialize_percent_length(&mut cx, &x)?;
     let y = cx.argument::<JsObject>(3)?;
     let y = deserialize_percent_length(&mut cx, &y)?;
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id).request(SetAnchor { x, y }).await?;
-            Ok(())
-        }),
-    )
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(SetAnchor { x, y })
+            .await?;
+        Ok(())
+    })
 }
 
 fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let top = cx.argument::<JsObject>(2)?;
     let top = deserialize_percent_length(&mut cx, &top)?;
@@ -195,33 +160,28 @@ fn overlay_set_margin(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let left = cx.argument::<JsObject>(5)?;
     let left = deserialize_percent_length(&mut cx, &left)?;
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id)
-                .request(SetMargin {
-                    top,
-                    right,
-                    bottom,
-                    left,
-                })
-                .await?;
-            Ok(())
-        }),
-    )
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(SetMargin {
+                top,
+                right,
+                bottom,
+                left,
+            })
+            .await?;
+        Ok(())
+    })
 }
 
 fn overlay_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-
-    match STORE.destroy(id) {
-        Ok(_) => Ok(JsUndefined::new(&mut cx)),
-        Err(err) => cx.throw_error(format!("{err:?}")),
-    }
+    cx.argument::<JsBox<Overlay>>(0)?.destroy(&mut cx)?;
+    Ok(cx.undefined())
 }
 
 fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let events = cx.argument::<JsBox<Overlay>>(0)?.events(&mut cx)?;
     let emitter = cx.argument::<JsObject>(1)?.root(&mut cx);
     let emit = cx.argument::<JsFunction>(2)?.root(&mut cx);
 
@@ -230,17 +190,16 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     let (deferred, promise) = cx.promise();
     rt.spawn(async move {
-        let event = STORE.next_event(id).await;
+        let event = events.lock().await.recv().await;
         deferred.settle_with(&channel, move |mut cx| match event {
-            Ok(Some(event)) => {
+            Some(event) => {
                 let emitter = emitter.into_inner(&mut cx);
                 let emit = emit.into_inner(&mut cx);
                 emit_event(&mut cx, event, emitter, emit)?;
 
                 Ok(cx.boolean(true))
             }
-            Ok(None) => Ok(cx.boolean(false)),
-            Err(err) => cx.throw_error(format!("{err:?}")),
+            None => Ok(cx.boolean(false)),
         });
     });
 
@@ -248,40 +207,40 @@ fn overlay_call_next_event(mut cx: FunctionContext) -> JsResult<JsPromise> {
 }
 
 fn overlay_listen_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx.argument::<JsBoolean>(2)?.value(&mut cx);
     let keyboard = cx.argument::<JsBoolean>(3)?.value(&mut cx);
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id)
-                .request(ListenInput { cursor, keyboard })
-                .await?;
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(ListenInput { cursor, keyboard })
+            .await?;
 
-            Ok(())
-        }),
-    )
+        Ok(())
+    })
 }
 
 fn overlay_block_input(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let block = cx.argument::<JsBoolean>(2)?.value(&mut cx);
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id).request(BlockInput { block }).await?;
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(BlockInput { block })
+            .await?;
 
-            Ok(())
-        }),
-    )
+        Ok(())
+    })
 }
 
 fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let ipc = cx.argument::<JsBox<Overlay>>(0)?.ipc(&mut cx)?;
     let win_id = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let cursor = cx
         .argument_opt(2)
@@ -300,16 +259,15 @@ fn overlay_set_blocking_cursor(mut cx: FunctionContext) -> JsResult<JsPromise> {
         None => None,
     };
 
-    with_rt(
-        &mut cx,
-        try_with_ipc(id, async move |conn| {
-            conn.window(win_id)
-                .request(SetBlockingCursor { cursor })
-                .await?;
+    with_rt(&mut cx, async move {
+        ipc.lock()
+            .await
+            .window(win_id)
+            .request(SetBlockingCursor { cursor })
+            .await?;
 
-            Ok(())
-        }),
-    )
+        Ok(())
+    })
 }
 
 pub fn export_module_functions(cx: &mut ModuleContext) -> NeonResult<()> {

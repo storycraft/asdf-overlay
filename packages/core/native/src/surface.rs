@@ -1,59 +1,54 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::cell::RefCell;
 
-use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::{event::GpuLuid, surface::OverlaySurface};
 use bytemuck::pod_read_unaligned;
 use neon::{
-    prelude::{Context, FunctionContext, ModuleContext},
+    prelude::{Context, Cx, FunctionContext, ModuleContext},
     result::{JsResult, NeonResult},
-    types::{JsBuffer, JsNumber, JsObject, JsUndefined, JsValue, Value, buffer::TypedArray},
+    types::{
+        Finalize, JsBox, JsBuffer, JsNumber, JsObject, JsUndefined, JsValue, Value,
+        buffer::TypedArray,
+    },
 };
-use once_cell::sync::Lazy;
 
 use crate::{
-    FxSccMap,
     conv::{deserialize_copy_rect, deserialize_gpu_luid, serialize_handle_update},
     util::create_adapter_by_luid,
 };
 
-struct SurfaceStore {
-    next_id: AtomicU32,
-    overlay_map: FxSccMap<u32, OverlaySurface>,
-}
+struct Surface(RefCell<Option<OverlaySurface>>);
 
-impl SurfaceStore {
-    fn create(&self, luid: Option<GpuLuid>) -> anyhow::Result<u32> {
+impl Surface {
+    pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
         let adapter = luid.map(create_adapter_by_luid).transpose()?.flatten();
         let surface = OverlaySurface::new(adapter.as_ref())?;
-
-        let id = self.next_id.fetch_add(1, Ordering::AcqRel);
-        self.overlay_map.upsert_sync(id, surface);
-        Ok(id)
+        Ok(Self(RefCell::new(Some(surface))))
     }
 
-    fn with_mut<R>(
+    pub fn with_mut<R>(
         &self,
-        id: u32,
-        f: impl FnOnce(&mut OverlaySurface) -> anyhow::Result<R>,
-    ) -> anyhow::Result<R> {
-        let mut surface = self
-            .overlay_map
-            .get_sync(&id)
-            .context("Invalid surface id.")?;
-        f(&mut surface)
+        cx: &mut Cx,
+        f: impl FnOnce(&mut OverlaySurface) -> R,
+    ) -> NeonResult<R> {
+        match *self.0.borrow_mut() {
+            Some(ref mut v) => Ok(f(v)),
+            None => cx.throw_error("Surface is destroyed"),
+        }
     }
 
-    fn destroy(&self, id: u32) -> bool {
-        self.overlay_map.remove_sync(&id).is_some()
+    pub fn destroy(&self, cx: &mut Cx) -> NeonResult<()> {
+        match self.0.borrow_mut().take() {
+            Some(_) => Ok(()),
+            None => cx.throw_error("Surface is already destroyed"),
+        }
     }
 }
 
-static STORE: Lazy<SurfaceStore> = Lazy::new(|| SurfaceStore {
-    next_id: AtomicU32::new(0),
-    overlay_map: FxSccMap::default(),
-});
+impl Finalize for Surface {
+    fn finalize<'a, C: Context<'a>>(self, _: &mut C) {}
+}
 
-fn surface_create(mut cx: FunctionContext) -> JsResult<JsNumber> {
+fn surface_create(mut cx: FunctionContext) -> JsResult<JsBox<Surface>> {
     let luid = match cx.argument_opt(0) {
         Some(v) => {
             let obj = v.downcast_or_throw::<JsObject, _>(&mut cx)?;
@@ -62,14 +57,13 @@ fn surface_create(mut cx: FunctionContext) -> JsResult<JsNumber> {
         None => None,
     };
 
-    STORE
-        .create(luid)
-        .map(|id| cx.number(id))
-        .or_else(|err| cx.throw_error(format!("Failed to create surface. {err:?}")))
+    let surface = Surface::new(luid)
+        .or_else(|err| cx.throw_error(format!("Failed to create surface. {err:?}")))?;
+    Ok(cx.boxed(surface))
 }
 
 fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let surface = cx.argument::<JsBox<Surface>>(0)?;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let height = cx.argument::<JsNumber>(2)?.value(&mut cx) as u32;
     let handle = pod_read_unaligned::<usize>(cx.argument::<JsBuffer>(3)?.as_slice(&cx));
@@ -82,11 +76,12 @@ fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
         })
         .transpose()?;
 
-    let update = STORE
-        .with_mut(id, |surface| {
+    let update = surface
+        .with_mut(&mut cx, |surface| {
             surface.update_from_nt_shared(width, height, handle as u32, rect)
-        })
+        })?
         .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
+
     match update {
         Some(update) => Ok(serialize_handle_update(&mut cx, update)?.as_value(&mut cx)),
         None => Ok(cx.undefined().as_value(&mut cx)),
@@ -94,13 +89,14 @@ fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
 }
 
 fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsValue> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
+    let surface = cx.argument::<JsBox<Surface>>(0)?;
     let width = cx.argument::<JsNumber>(1)?.value(&mut cx) as u32;
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
-    let update = STORE
-        .with_mut(id, |surface| surface.update_bitmap(width, &data))
-        .or_else(|err| cx.throw_error(format!("Failed to update bitmap. {err:?}")))?;
+    let update = surface
+        .with_mut(&mut cx, |surface| surface.update_bitmap(width, &data))?
+        .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
+
     match update {
         Some(update) => Ok(serialize_handle_update(&mut cx, update)?.as_value(&mut cx)),
         None => Ok(cx.undefined().as_value(&mut cx)),
@@ -108,21 +104,15 @@ fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsValue> {
 }
 
 fn surface_clear(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-
-    STORE
-        .with_mut(id, |surface| {
-            surface.clear();
-            Ok(())
-        })
-        .or_else(|err| cx.throw_error(format!("Failed to clear surface. {err:?}")))?;
+    let surface = cx.argument::<JsBox<Surface>>(0)?;
+    surface.with_mut(&mut cx, |surface| {
+        surface.clear();
+    })?;
     Ok(cx.undefined())
 }
 
 fn surface_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    let id = cx.argument::<JsNumber>(0)?.value(&mut cx) as u32;
-    STORE.destroy(id);
-
+    cx.argument::<JsBox<Surface>>(0)?.destroy(&mut cx)?;
     Ok(cx.undefined())
 }
 

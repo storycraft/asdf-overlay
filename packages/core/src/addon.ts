@@ -2,12 +2,12 @@ import { OverlayEventEmitter } from './index.js';
 import { CopyRect, Cursor, PercentLength, type GpuLuid, type UpdateSharedHandle } from './types.js';
 
 export type Addon = {
-  attach(dllDir: string, pid: number, timeout?: number): Promise<number>,
+  attach(dllDir: string, pid: number, timeout?: number): Promise<unknown>,
 
-  overlaySetPosition(id: number, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
-  overlaySetAnchor(id: number, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetPosition(id: unknown, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
+  overlaySetAnchor(id: unknown, winId: number, x: PercentLength, y: PercentLength): Promise<void>,
   overlaySetMargin(
-    id: number,
+    id: unknown,
     winId: number,
     top: PercentLength,
     right: PercentLength,
@@ -16,40 +16,40 @@ export type Addon = {
   ): Promise<void>,
 
   overlayUpdateHandle(
-    id: number,
+    id: unknown,
     winId: number,
     update: UpdateSharedHandle,
   ): Promise<void>,
 
   overlayListenInput(
-    id: number,
+    id: unknown,
     winId: number,
     cursor: boolean,
     keyboard: boolean,
   ): Promise<void>,
 
   overlayBlockInput(
-    id: number,
+    id: unknown,
     winId: number,
     block: boolean,
   ): Promise<void>,
   overlaySetBlockingCursor(
-    id: number,
+    id: unknown,
     winId: number,
     cursor?: Cursor,
   ): Promise<void>,
 
   overlayCallNextEvent(
-    id: number,
+    id: unknown,
     emitter: OverlayEventEmitter,
     emit: OverlayEventEmitter['emit'],
   ): Promise<boolean>,
 
-  overlayDestroy(id: number): void,
+  overlayDestroy(id: unknown): void,
 
-  surfaceCreate(luid: GpuLuid): number,
-  surfaceClear(id: number): void,
-  surfaceUpdateBitmap(id: number, width: number, data: Buffer): UpdateSharedHandle | null,
-  surfaceUpdateShtex(id: number, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,
-  surfaceDestroy(id: number): void,
+  surfaceCreate(luid: GpuLuid): unknown,
+  surfaceClear(id: unknown): void,
+  surfaceUpdateBitmap(id: unknown, width: number, data: Buffer): UpdateSharedHandle | null,
+  surfaceUpdateShtex(id: unknown, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,
+  surfaceDestroy(id: unknown): void,
 };
