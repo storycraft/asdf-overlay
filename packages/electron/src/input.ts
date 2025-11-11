@@ -1,4 +1,4 @@
-import type { MouseInputEvent, MouseWheelInputEvent, WebContents } from 'electron';
+import { screen, type MouseInputEvent, type MouseWheelInputEvent, type WebContents } from 'electron';
 import type { OverlayWindow } from './index.js';
 import type { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
 import { mapCssCursor, mapKeycode } from './input/conv.js';
@@ -12,12 +12,22 @@ export class ElectronOverlayInput {
   private readonly keyboardInputHandler: (id: number, input: KeyboardInput) => void;
 
   private readonly cursorChangedHandler: (e: Electron.Event, type: string) => void;
+  private readonly displayMetricsChangedHandler: () => void;
+
+  private screenScaleFactor: number;
 
   private constructor(
     private readonly window: OverlayWindow,
     private readonly contents: WebContents,
   ) {
     this.window = { ...window };
+    this.screenScaleFactor = screen.getPrimaryDisplay().scaleFactor;
+    screen.addListener(
+      'display-metrics-changed',
+      this.displayMetricsChangedHandler = () => {
+        this.screenScaleFactor = screen.getPrimaryDisplay().scaleFactor;
+      },
+    );
 
     this.window.overlay.event.on(
       'cursor_input',
@@ -58,6 +68,8 @@ export class ElectronOverlayInput {
    * Disconnect overlay inputs.
    */
   async disconnect() {
+    screen.removeListener('display-metrics-changed', this.displayMetricsChangedHandler);
+
     this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
     this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);
     this.contents.off('cursor-changed', this.cursorChangedHandler);
@@ -72,6 +84,10 @@ export class ElectronOverlayInput {
   private readonly clickCounts: number[] = [];
   private processCursorAction(
     input: CursorInput & { kind: 'Action', },
+    x: number,
+    y: number,
+    globalX: number,
+    globalY: number,
     movementX: number,
     movementY: number,
   ) {
@@ -106,10 +122,10 @@ export class ElectronOverlayInput {
         type: 'mouseDown',
         button,
         clickCount,
-        x: input.clientX,
-        y: input.clientY,
-        globalX: input.windowX,
-        globalY: input.windowY,
+        x,
+        y,
+        globalX,
+        globalY,
         movementX,
         movementY,
         modifiers: this.modifiers,
@@ -120,10 +136,10 @@ export class ElectronOverlayInput {
         type: 'mouseUp',
         button,
         clickCount,
-        x: input.clientX,
-        y: input.clientY,
-        globalX: input.windowX,
-        globalY: input.windowY,
+        x,
+        y,
+        globalX,
+        globalY,
         movementX,
         movementY,
         modifiers: this.modifiers,
@@ -137,17 +153,22 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const movementX = input.windowX - this.lastWindowCursor.x;
-    const movementY = input.windowY - this.lastWindowCursor.y;
+    const x = input.clientX * this.screenScaleFactor;
+    const y = input.clientY * this.screenScaleFactor;
+    const globalX = input.windowX * this.screenScaleFactor;
+    const globalY = input.windowY * this.screenScaleFactor;
+
+    const movementX = globalX - this.lastWindowCursor.x;
+    const movementY = globalY - this.lastWindowCursor.y;
 
     switch (input.kind) {
       case 'Enter': {
         this.contents.sendInputEvent({
           type: 'mouseEnter',
-          x: input.clientX,
-          y: input.clientY,
-          globalX: input.windowX,
-          globalY: input.windowY,
+          x,
+          y,
+          globalX,
+          globalY,
           movementX,
           movementY,
           modifiers: this.modifiers,
@@ -158,10 +179,10 @@ export class ElectronOverlayInput {
       case 'Leave': {
         this.contents.sendInputEvent({
           type: 'mouseLeave',
-          x: input.clientX,
-          y: input.clientY,
-          globalX: input.windowX,
-          globalY: input.windowY,
+          x,
+          y,
+          globalX,
+          globalY,
           movementX,
           movementY,
           modifiers: this.modifiers,
@@ -172,10 +193,10 @@ export class ElectronOverlayInput {
       case 'Move': {
         this.contents.sendInputEvent({
           type: 'mouseMove',
-          x: input.clientX,
-          y: input.clientY,
-          globalX: input.windowX,
-          globalY: input.windowY,
+          x,
+          y,
+          globalX,
+          globalY,
           movementX,
           movementY,
           modifiers: this.modifiers,
@@ -189,10 +210,10 @@ export class ElectronOverlayInput {
           scroll = {
             type: 'mouseWheel',
             deltaY: input.delta,
-            x: input.clientX,
-            y: input.clientY,
-            globalX: input.windowX,
-            globalY: input.windowY,
+            x,
+            y,
+            globalX,
+            globalY,
             movementX,
             movementY,
             modifiers: this.modifiers,
@@ -201,10 +222,10 @@ export class ElectronOverlayInput {
           scroll = {
             type: 'mouseWheel',
             deltaX: input.delta,
-            x: input.clientX,
-            y: input.clientY,
-            globalX: input.windowX,
-            globalY: input.windowY,
+            x,
+            y,
+            globalX,
+            globalY,
             movementX,
             movementY,
             modifiers: this.modifiers,
@@ -215,13 +236,21 @@ export class ElectronOverlayInput {
       }
 
       case 'Action': {
-        this.processCursorAction(input, movementX, movementY);
+        this.processCursorAction(
+          input,
+          x,
+          y,
+          globalX,
+          globalY,
+          movementX,
+          movementY,
+        );
         break;
       }
     }
 
-    this.lastWindowCursor.x = input.windowX;
-    this.lastWindowCursor.y = input.windowY;
+    this.lastWindowCursor.x = globalX;
+    this.lastWindowCursor.y = globalY;
   }
 
   private readonly modifiersMap = {
