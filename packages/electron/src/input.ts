@@ -153,10 +153,10 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX * this.screenScaleFactor;
-    const y = input.clientY * this.screenScaleFactor;
-    const globalX = input.windowX * this.screenScaleFactor;
-    const globalY = input.windowY * this.screenScaleFactor;
+    const x = input.clientX / this.screenScaleFactor;
+    const y = input.clientY / this.screenScaleFactor;
+    const globalX = input.windowX / this.screenScaleFactor;
+    const globalY = input.windowY / this.screenScaleFactor;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;
