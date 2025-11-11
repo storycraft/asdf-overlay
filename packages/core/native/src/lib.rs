@@ -5,9 +5,6 @@ mod util;
 
 use mimalloc::MiMalloc;
 use neon::prelude::*;
-use rustc_hash::FxBuildHasher;
-
-type FxSccMap<K, V> = scc::HashMap<K, V, FxBuildHasher>;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;

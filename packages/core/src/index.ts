@@ -94,9 +94,9 @@ export type OverlayEventEmitter = EventEmitter<{
 
 export class Overlay {
   readonly event: OverlayEventEmitter = new EventEmitter();
-  readonly [idSym]: number;
+  readonly [idSym]: unknown;
 
-  private constructor(id: number) {
+  private constructor(id: unknown) {
     this[idSym] = id;
 
     void (async () => {
@@ -238,9 +238,9 @@ export class Overlay {
  * Represent a surface for overlay.
  */
 export class OverlaySurface {
-  readonly [idSym]: number;
+  readonly [idSym]: unknown;
 
-  private constructor(id: number) {
+  private constructor(id: unknown) {
     this[idSym] = id;
   }
 
