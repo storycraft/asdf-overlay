@@ -152,9 +152,7 @@ extern "system" fn hooked_get_message_a(
             // For SDL games: Emit events BEFORE filtering so overlay gets them
             // even if we filter the message to block SDL
             emit_input_event_from_message(&*lpmsg);
-            
-            // Filter messages for SDL games that poll events
-            // Only filter if blocking AND not listening (no overlay interaction needed)
+
             if should_filter_message(&*lpmsg) {
                 (*lpmsg).message = msg::WM_NULL;
             }
