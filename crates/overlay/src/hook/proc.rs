@@ -2,7 +2,7 @@ mod input;
 
 use asdf_overlay_event::{
     OverlayEvent, WindowEvent,
-    input::{InputEvent, Key, KeyInputState, KeyboardInput},
+    input::{CursorAction, CursorInput, InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis},
 };
 use asdf_overlay_hook::DetourHook;
 use core::cell::Cell;
@@ -11,7 +11,7 @@ use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT},
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         UI::{
             Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
             WindowsAndMessaging::{
@@ -24,7 +24,7 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, WindowBackend},
+    backend::{Backends, WindowBackend, window::WindowProcData},
     event_sink::OverlayEventSink,
 };
 
@@ -148,7 +148,18 @@ extern "system" fn hooked_get_message_a(
     set_message_read(|| unsafe {
         let ret =
             HOOK.wait().get_message_a.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
-        on_message_read(&*lpmsg);
+        if ret.as_bool() {
+            // For SDL games: Emit events BEFORE filtering so overlay gets them
+            // even if we filter the message to block SDL
+            emit_input_event_from_message(&*lpmsg);
+            
+            // Filter messages for SDL games that poll events
+            // Only filter if blocking AND not listening (no overlay interaction needed)
+            if should_filter_message(&*lpmsg) {
+                (*lpmsg).message = msg::WM_NULL;
+            }
+            on_message_read(&*lpmsg);
+        }
         ret
     })
 }
@@ -164,7 +175,14 @@ extern "system" fn hooked_get_message_w(
     set_message_read(|| unsafe {
         let ret =
             HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
-        on_message_read(&*lpmsg);
+        if ret.as_bool() {
+            emit_input_event_from_message(&*lpmsg);
+            
+            if should_filter_message(&*lpmsg) {
+                (*lpmsg).message = msg::WM_NULL;
+            }
+            on_message_read(&*lpmsg);
+        }
         ret
     })
 }
@@ -186,8 +204,15 @@ extern "system" fn hooked_peek_message_a(
             wmsgfiltermax,
             wremovemsg,
         );
-        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
-            on_message_read(&*lpmsg);
+        if ret.as_bool() {
+            emit_input_event_from_message(&*lpmsg);
+            
+            if should_filter_message(&*lpmsg) {
+                (*lpmsg).message = msg::WM_NULL;
+            }
+            if wremovemsg.contains(PM_REMOVE) {
+                on_message_read(&*lpmsg);
+            }
         }
         ret
     })
@@ -210,8 +235,15 @@ extern "system" fn hooked_peek_message_w(
             wmsgfiltermax,
             wremovemsg,
         );
-        if ret.as_bool() && wremovemsg.contains(PM_REMOVE) {
-            on_message_read(&*lpmsg);
+        if ret.as_bool() {
+            emit_input_event_from_message(&*lpmsg);
+            
+            if should_filter_message(&*lpmsg) {
+                (*lpmsg).message = msg::WM_NULL;
+            }
+            if wremovemsg.contains(PM_REMOVE) {
+                on_message_read(&*lpmsg);
+            }
         }
         ret
     })
@@ -232,6 +264,210 @@ fn on_message_read(msg: &MSG) {
             f(backend);
         }
     });
+}
+
+/// Emit input events for SDL games that use PeekMessage instead of DispatchMessage
+#[inline]
+fn emit_input_event_from_message(msg: &MSG) {
+    with_root_backend(msg, |backend| {
+        let proc = backend.proc.lock();
+        
+        if !proc.input_blocking() {
+            return;
+        }
+
+        if proc.listening_cursor() {
+            emit_cursor_event_from_message(backend.id, &proc, msg);
+        }
+
+        if proc.listening_keyboard() {
+            emit_keyboard_event_from_message(backend.id, msg);
+        }
+    });
+}
+
+#[inline]
+fn emit_cursor_event_from_message(id: u32, proc: &WindowProcData, msg: &MSG) {
+    match msg.message {
+        msg::WM_MOUSEMOVE => {
+            emit_cursor_move_event(id, proc, msg.lParam);
+        }
+        msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
+            emit_cursor_event(id, proc, CursorAction::Left, true, msg.lParam);
+        }
+        msg::WM_LBUTTONUP => {
+            emit_cursor_event(id, proc, CursorAction::Left, false, msg.lParam);
+        }
+        msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
+            emit_cursor_event(id, proc, CursorAction::Right, true, msg.lParam);
+        }
+        msg::WM_RBUTTONUP => {
+            emit_cursor_event(id, proc, CursorAction::Right, false, msg.lParam);
+        }
+        msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
+            emit_cursor_event(id, proc, CursorAction::Middle, true, msg.lParam);
+        }
+        msg::WM_MBUTTONUP => {
+            emit_cursor_event(id, proc, CursorAction::Middle, false, msg.lParam);
+        }
+        msg::WM_MOUSEWHEEL => {
+            emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, false);
+        }
+        msg::WM_MOUSEHWHEEL => {
+            emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, true);
+        }
+        _ => {}
+    }
+}
+
+#[inline]
+fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
+    match msg.message {
+        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
+            if let Some(key) = to_key(msg.lParam) {
+                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Key {
+                    key,
+                    state: KeyInputState::Pressed,
+                }));
+            }
+        }
+        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
+            if let Some(key) = to_key(msg.lParam) {
+                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Key {
+                    key,
+                    state: KeyInputState::Released,
+                }));
+            }
+        }
+        msg::WM_CHAR | msg::WM_SYSCHAR => {
+            if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
+                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Char(ch)));
+            }
+        }
+        _ => {}
+    }
+}
+
+#[inline]
+fn parse_cursor_position(
+    proc: &WindowProcData,
+    lparam: LPARAM,
+) -> (asdf_overlay_event::input::InputPosition, asdf_overlay_event::input::InputPosition) {
+    use asdf_overlay_event::input::InputPosition;
+    
+    let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
+    let window = InputPosition { x: x as _, y: y as _ };
+    let surface = InputPosition {
+        x: window.x - proc.position.0,
+        y: window.y - proc.position.1,
+    };
+    
+    (surface, window)
+}
+
+#[inline]
+fn emit_cursor_event(id: u32, proc: &WindowProcData, action: CursorAction, pressed: bool, lparam: LPARAM) {
+    use asdf_overlay_event::input::{CursorEvent, CursorInputState};
+    
+    let (surface, window) = parse_cursor_position(proc, lparam);
+    let state = if pressed {
+        CursorInputState::Pressed { double_click: false }
+    } else {
+        CursorInputState::Released
+    };
+    
+    OverlayEventSink::emit(OverlayEvent::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            event: CursorEvent::Action { action, state },
+            client: surface,
+            window,
+        })),
+    });
+}
+
+#[inline]
+fn emit_cursor_move_event(id: u32, proc: &WindowProcData, lparam: LPARAM) {
+    use asdf_overlay_event::input::CursorEvent;
+    
+    let (surface, window) = parse_cursor_position(proc, lparam);
+    
+    OverlayEventSink::emit(OverlayEvent::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            event: CursorEvent::Move,
+            client: surface,
+            window,
+        })),
+    });
+}
+
+#[inline]
+fn emit_cursor_scroll_event(id: u32, proc: &WindowProcData, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
+    use asdf_overlay_event::input::CursorEvent;
+    
+    let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+    let (surface, window) = parse_cursor_position(proc, lparam);
+    
+    OverlayEventSink::emit(OverlayEvent::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            event: CursorEvent::Scroll {
+                axis: if horizontal { ScrollAxis::X } else { ScrollAxis::Y },
+                delta,
+            },
+            client: surface,
+            window,
+        })),
+    });
+}
+
+const CURSOR_MESSAGES: &[u32] = &[
+    msg::WM_MOUSEMOVE,
+    msg::WM_LBUTTONDOWN,
+    msg::WM_LBUTTONUP,
+    msg::WM_LBUTTONDBLCLK,
+    msg::WM_RBUTTONDOWN,
+    msg::WM_RBUTTONUP,
+    msg::WM_RBUTTONDBLCLK,
+    msg::WM_MBUTTONDOWN,
+    msg::WM_MBUTTONUP,
+    msg::WM_MBUTTONDBLCLK,
+    msg::WM_XBUTTONDOWN,
+    msg::WM_XBUTTONUP,
+    msg::WM_XBUTTONDBLCLK,
+    msg::WM_MOUSEWHEEL,
+    msg::WM_MOUSEHWHEEL,
+];
+
+const KEYBOARD_MESSAGES: &[u32] = &[
+    msg::WM_KEYDOWN,
+    msg::WM_KEYUP,
+    msg::WM_CHAR,
+    msg::WM_SYSKEYDOWN,
+    msg::WM_SYSKEYUP,
+    msg::WM_SYSCHAR,
+];
+
+#[inline]
+fn is_cursor_message(message: u32) -> bool {
+    CURSOR_MESSAGES.contains(&message)
+}
+
+#[inline]
+fn is_keyboard_message(message: u32) -> bool {
+    KEYBOARD_MESSAGES.contains(&message)
+}
+
+/// Filter input messages when blocking is enabled
+#[inline]
+fn should_filter_message(msg: &MSG) -> bool {
+    if !is_cursor_message(msg.message) && !is_keyboard_message(msg.message) {
+        return false;
+    }
+    
+    with_root_backend(msg, |backend| backend.proc.lock().input_blocking())
+        .unwrap_or(false)
 }
 
 #[tracing::instrument]
