@@ -175,7 +175,7 @@ extern "system" fn hooked_get_message_w(
             HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
         if ret.as_bool() {
             emit_input_event_from_message(&*lpmsg);
-            
+
             if should_filter_message(&*lpmsg) {
                 (*lpmsg).message = msg::WM_NULL;
             }
@@ -204,7 +204,7 @@ extern "system" fn hooked_peek_message_a(
         );
         if ret.as_bool() {
             emit_input_event_from_message(&*lpmsg);
-            
+
             if should_filter_message(&*lpmsg) {
                 (*lpmsg).message = msg::WM_NULL;
             }
@@ -235,7 +235,7 @@ extern "system" fn hooked_peek_message_w(
         );
         if ret.as_bool() {
             emit_input_event_from_message(&*lpmsg);
-            
+
             if should_filter_message(&*lpmsg) {
                 (*lpmsg).message = msg::WM_NULL;
             }
@@ -269,7 +269,7 @@ fn on_message_read(msg: &MSG) {
 fn emit_input_event_from_message(msg: &MSG) {
     with_root_backend(msg, |backend| {
         let proc = backend.proc.lock();
-        
+
         if !proc.input_blocking() {
             return;
         }
@@ -323,18 +323,24 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             if let Some(key) = to_key(msg.lParam) {
-                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Key {
-                    key,
-                    state: KeyInputState::Pressed,
-                }));
+                OverlayEventSink::emit(keyboard_input(
+                    id,
+                    KeyboardInput::Key {
+                        key,
+                        state: KeyInputState::Pressed,
+                    },
+                ));
             }
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             if let Some(key) = to_key(msg.lParam) {
-                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Key {
-                    key,
-                    state: KeyInputState::Released,
-                }));
+                OverlayEventSink::emit(keyboard_input(
+                    id,
+                    KeyboardInput::Key {
+                        key,
+                        state: KeyInputState::Released,
+                    },
+                ));
             }
         }
         msg::WM_CHAR | msg::WM_SYSCHAR => {
@@ -350,30 +356,44 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
 fn parse_cursor_position(
     proc: &WindowProcData,
     lparam: LPARAM,
-) -> (asdf_overlay_event::input::InputPosition, asdf_overlay_event::input::InputPosition) {
+) -> (
+    asdf_overlay_event::input::InputPosition,
+    asdf_overlay_event::input::InputPosition,
+) {
     use asdf_overlay_event::input::InputPosition;
-    
+
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-    let window = InputPosition { x: x as _, y: y as _ };
+    let window = InputPosition {
+        x: x as _,
+        y: y as _,
+    };
     let surface = InputPosition {
         x: window.x - proc.position.0,
         y: window.y - proc.position.1,
     };
-    
+
     (surface, window)
 }
 
 #[inline]
-fn emit_cursor_event(id: u32, proc: &WindowProcData, action: CursorAction, pressed: bool, lparam: LPARAM) {
+fn emit_cursor_event(
+    id: u32,
+    proc: &WindowProcData,
+    action: CursorAction,
+    pressed: bool,
+    lparam: LPARAM,
+) {
     use asdf_overlay_event::input::{CursorEvent, CursorInputState};
-    
+
     let (surface, window) = parse_cursor_position(proc, lparam);
     let state = if pressed {
-        CursorInputState::Pressed { double_click: false }
+        CursorInputState::Pressed {
+            double_click: false,
+        }
     } else {
         CursorInputState::Released
     };
-    
+
     OverlayEventSink::emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
@@ -387,9 +407,9 @@ fn emit_cursor_event(id: u32, proc: &WindowProcData, action: CursorAction, press
 #[inline]
 fn emit_cursor_move_event(id: u32, proc: &WindowProcData, lparam: LPARAM) {
     use asdf_overlay_event::input::CursorEvent;
-    
+
     let (surface, window) = parse_cursor_position(proc, lparam);
-    
+
     OverlayEventSink::emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
@@ -401,17 +421,27 @@ fn emit_cursor_move_event(id: u32, proc: &WindowProcData, lparam: LPARAM) {
 }
 
 #[inline]
-fn emit_cursor_scroll_event(id: u32, proc: &WindowProcData, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
+fn emit_cursor_scroll_event(
+    id: u32,
+    proc: &WindowProcData,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    horizontal: bool,
+) {
     use asdf_overlay_event::input::CursorEvent;
-    
+
     let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let (surface, window) = parse_cursor_position(proc, lparam);
-    
+
     OverlayEventSink::emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Scroll {
-                axis: if horizontal { ScrollAxis::X } else { ScrollAxis::Y },
+                axis: if horizontal {
+                    ScrollAxis::X
+                } else {
+                    ScrollAxis::Y
+                },
                 delta,
             },
             client: surface,
@@ -463,9 +493,8 @@ fn should_filter_message(msg: &MSG) -> bool {
     if !is_cursor_message(msg.message) && !is_keyboard_message(msg.message) {
         return false;
     }
-    
-    with_root_backend(msg, |backend| backend.proc.lock().input_blocking())
-        .unwrap_or(false)
+
+    with_root_backend(msg, |backend| backend.proc.lock().input_blocking()).unwrap_or(false)
 }
 
 #[tracing::instrument]
