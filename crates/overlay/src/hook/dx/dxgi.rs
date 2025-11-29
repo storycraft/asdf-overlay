@@ -59,8 +59,8 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
         ) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
         }
-    } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() } {
-        if let Err(_err) = Backends::with_or_init_backend(
+    } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() }
+        && let Err(_err) = Backends::with_or_init_backend(
             hwnd.0 as _,
             || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
             |backend| {
@@ -69,7 +69,6 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
         ) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
         }
-    }
 }
 
 #[tracing::instrument]
