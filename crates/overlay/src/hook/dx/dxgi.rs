@@ -66,9 +66,10 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
             |backend| {
                 dx11::draw_overlay(backend, &device, swapchain);
             },
-        ) {
-            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-        }
+        )
+    {
+        error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+    }
 }
 
 #[tracing::instrument]

@@ -405,13 +405,14 @@ fn process_wnd_proc(
                     }
 
                     if comp.contains(ime::GCS_RESULTSTR)
-                        && let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR) {
-                            proc.ime = ImeState::Enabled;
-                            OverlayEventSink::emit(keyboard_input(
-                                backend.id,
-                                KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
-                            ));
-                        }
+                        && let Some(text) = get_ime_string(himc, ime::GCS_RESULTSTR)
+                    {
+                        proc.ime = ImeState::Enabled;
+                        OverlayEventSink::emit(keyboard_input(
+                            backend.id,
+                            KeyboardInput::Ime(Ime::Commit(text.to_utf8())),
+                        ));
+                    }
 
                     if comp.0 & (ime::GCS_COMPSTR | ime::GCS_COMPATTR | ime::GCS_CURSORPOS).0 != 0 {
                         let caret = if !comp.contains(IME_COMPOSITION_STRING(ime::CS_NOMOVECARET))
