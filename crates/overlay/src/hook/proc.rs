@@ -139,7 +139,10 @@ unsafe fn process_read_message<const UNICODE: bool>(
             emit_input_event_from_message(msg);
             if should_filter_message(msg) {
                 unsafe {
+                    // Call TranslateMessage for char messages
                     _ = TranslateMessage(msg);
+
+                    // Call Default WndProc so non client area works.
                     if UNICODE {
                         CallWindowProcW(
                             Some(DefWindowProcA),
@@ -187,6 +190,7 @@ unsafe fn process_peek_message(
             on_message_read(msg);
 
             if should_filter {
+                // Call TranslateMessage for char messages.
                 unsafe {
                     _ = TranslateMessage(msg);
                 }
