@@ -11,12 +11,12 @@ use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         UI::{
             Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
-                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE,
+                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
             },
         },
     },
@@ -59,6 +59,9 @@ unsafe extern "system" {
         wmsgfiltermax: u32,
         wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
     ) -> BOOL;
+
+    fn DefWindowProcA(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
+    fn DefWindowProcW(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
 }
 
 struct Hook {
@@ -135,13 +138,24 @@ unsafe fn process_read_message<const UNICODE: bool>(
             // even if we filter the message to block SDL
             emit_input_event_from_message(msg);
             if should_filter_message(msg) {
-                if UNICODE {
-                    unsafe {
-                        CallWindowProcW(None, msg.hwnd, msg.message, msg.wParam, msg.lParam);
-                    }
-                } else {
-                    unsafe {
-                        CallWindowProcA(None, msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                unsafe {
+                    _ = TranslateMessage(msg);
+                    if UNICODE {
+                        CallWindowProcW(
+                            Some(DefWindowProcA),
+                            msg.hwnd,
+                            msg.message,
+                            msg.wParam,
+                            msg.lParam,
+                        );
+                    } else {
+                        CallWindowProcA(
+                            Some(DefWindowProcW),
+                            msg.hwnd,
+                            msg.message,
+                            msg.wParam,
+                            msg.lParam,
+                        );
                     }
                 }
                 continue;
@@ -164,15 +178,22 @@ unsafe fn process_peek_message(
             return ret;
         }
         let msg = unsafe { &mut *msg };
+        let should_filter = should_filter_message(msg);
 
         if remove {
             // For SDL games: Emit events BEFORE filtering so overlay gets them
             // even if we filter the message to block SDL
             emit_input_event_from_message(msg);
             on_message_read(msg);
+
+            if should_filter {
+                unsafe {
+                    _ = TranslateMessage(msg);
+                }
+            }
         }
 
-        if should_filter_message(msg) {
+        if should_filter {
             msg.message = msg::WM_NULL;
         }
         ret
