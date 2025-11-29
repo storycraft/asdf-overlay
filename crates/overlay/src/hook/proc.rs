@@ -11,12 +11,12 @@ use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HWND, LPARAM, WPARAM},
         UI::{
             Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
             WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, DefWindowProcA, GA_ROOT,
-                GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE,
+                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
+                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE,
             },
         },
     },
@@ -59,9 +59,6 @@ unsafe extern "system" {
         wmsgfiltermax: u32,
         wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
     ) -> BOOL;
-
-    fn DispatchMessageA(msg: *const MSG) -> LRESULT;
-    fn DispatchMessageW(msg: *const MSG) -> LRESULT;
 }
 
 struct Hook {
@@ -70,9 +67,6 @@ struct Hook {
 
     peek_message_a: DetourHook<PeekMessageFn>,
     peek_message_w: DetourHook<PeekMessageFn>,
-
-    dispatch_message_a: DetourHook<DispatchMessageFn>,
-    dispatch_message_w: DetourHook<DispatchMessageFn>,
 }
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
@@ -80,7 +74,6 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
 type PeekMessageFn =
     unsafe extern "system" fn(*mut MSG, HWND, u32, u32, PEEK_MESSAGE_REMOVE_TYPE) -> BOOL;
-type DispatchMessageFn = unsafe extern "system" fn(*const MSG) -> LRESULT;
 
 pub fn hook() -> anyhow::Result<()> {
     input::hook()?;
@@ -98,23 +91,12 @@ pub fn hook() -> anyhow::Result<()> {
         debug!("hooking PeekMessageW");
         let peek_message_w = DetourHook::attach(PeekMessageW as _, hooked_peek_message_w as _)?;
 
-        debug!("hooking DispatchMessageA");
-        let dispatch_message_a =
-            DetourHook::attach(DispatchMessageA as _, hooked_dispatch_message_a as _)?;
-
-        debug!("hooking DispatchMessageW");
-        let dispatch_message_w =
-            DetourHook::attach(DispatchMessageW as _, hooked_dispatch_message_w as _)?;
-
         Ok::<_, anyhow::Error>(Hook {
             get_message_a,
             get_message_w,
 
             peek_message_a,
             peek_message_w,
-
-            dispatch_message_a,
-            dispatch_message_w,
         })
     })?;
 
@@ -183,16 +165,15 @@ unsafe fn process_peek_message(
         }
         let msg = unsafe { &mut *msg };
 
-        // For SDL games: Emit events BEFORE filtering so overlay gets them
-        // even if we filter the message to block SDL
-        emit_input_event_from_message(msg);
-        if should_filter_message(msg) {
-            msg.message = msg::WM_NULL;
-            return ret;
+        if remove {
+            // For SDL games: Emit events BEFORE filtering so overlay gets them
+            // even if we filter the message to block SDL
+            emit_input_event_from_message(msg);
+            on_message_read(msg);
         }
 
-        if remove {
-            on_message_read(msg);
+        if should_filter_message(msg) {
+            msg.message = msg::WM_NULL;
         }
         ret
     })
@@ -306,10 +287,6 @@ fn on_message_read(msg: &MSG) {
 fn emit_input_event_from_message(msg: &MSG) {
     with_root_backend(msg, |backend| {
         let proc = backend.proc.lock();
-
-        if !proc.input_blocking() {
-            return;
-        }
 
         if proc.listening_cursor() {
             emit_cursor_event_from_message(backend.id, &proc, msg);
@@ -534,78 +511,6 @@ fn should_filter_message(msg: &MSG) -> bool {
     with_root_backend(msg, |backend| backend.proc.lock().input_blocking()).unwrap_or(false)
 }
 
-#[tracing::instrument]
-extern "system" fn hooked_dispatch_message_a(msg: *const MSG) -> LRESULT {
-    trace!("DispatchMessageA called");
-
-    if let Some(ret) = dispatch_message(unsafe { &*msg }) {
-        return ret;
-    }
-
-    unsafe { HOOK.wait().dispatch_message_a.original_fn()(msg) }
-}
-
-#[tracing::instrument]
-extern "system" fn hooked_dispatch_message_w(msg: *const MSG) -> LRESULT {
-    trace!("DispatchMessageW called");
-
-    if let Some(ret) = dispatch_message(unsafe { &*msg }) {
-        return ret;
-    }
-
-    unsafe { HOOK.wait().dispatch_message_w.original_fn()(msg) }
-}
-
-#[inline]
-fn dispatch_message(msg: &MSG) -> Option<LRESULT> {
-    if msg.hwnd.is_invalid() {
-        return None;
-    }
-
-    // Keyboard messages only dispatched to focused window.
-    // Listening on DispatchMessage hook allow to hook keyboard messages going to child window
-    match msg.message {
-        msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            return with_root_backend(msg, |backend| {
-                emit_key_input(backend, msg, KeyInputState::Pressed)
-            })
-            .flatten();
-        }
-
-        msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            return with_root_backend(msg, |backend| {
-                emit_key_input(backend, msg, KeyInputState::Released)
-            })
-            .flatten();
-        }
-
-        // unicode characters are handled in WM_IME_COMPOSITION
-        msg::WM_CHAR | msg::WM_SYSCHAR => {
-            return with_root_backend(msg, |backend| {
-                let proc = backend.proc.lock();
-                if !proc.listening_keyboard() {
-                    return None;
-                }
-
-                if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                    OverlayEventSink::emit(keyboard_input(backend.id, KeyboardInput::Char(ch)));
-                }
-
-                if proc.input_blocking() {
-                    Some(LRESULT(0))
-                } else {
-                    None
-                }
-            })
-            .flatten();
-        }
-
-        _ => {}
-    }
-
-    None
-}
-
 #[inline]
 fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
     let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
@@ -614,28 +519,6 @@ fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Optio
     }
 
     Backends::with_backend(root_hwnd.0 as _, f)
-}
-
-#[inline]
-fn emit_key_input(backend: &WindowBackend, msg: &MSG, state: KeyInputState) -> Option<LRESULT> {
-    let proc = backend.proc.lock();
-    if !proc.listening_keyboard() {
-        return None;
-    }
-
-    if let Some(key) = to_key(msg.lParam) {
-        OverlayEventSink::emit(keyboard_input(
-            backend.id,
-            KeyboardInput::Key { key, state },
-        ));
-    }
-
-    if proc.input_blocking() {
-        drop(proc);
-        Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg.message, msg.wParam, msg.lParam) })
-    } else {
-        None
-    }
 }
 
 #[inline(always)]
