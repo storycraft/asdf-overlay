@@ -15,8 +15,8 @@ use windows::{
         UI::{
             Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
             WindowsAndMessaging::{
-                self as msg, DefWindowProcA, GA_ROOT, GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE,
-                PM_REMOVE,
+                self as msg, CallWindowProcA, CallWindowProcW, DefWindowProcA, GA_ROOT,
+                GetAncestor, MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE,
             },
         },
     },
@@ -137,6 +137,67 @@ fn set_message_read<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
+unsafe fn process_read_message<const UNICODE: bool>(
+    msg: *mut MSG,
+    reader: impl Fn(*mut MSG) -> bool,
+) -> bool {
+    set_message_read(move || {
+        loop {
+            let ret = reader(msg);
+            if !ret {
+                return ret;
+            }
+            let msg = unsafe { &mut *msg };
+
+            // For SDL games: Emit events BEFORE filtering so overlay gets them
+            // even if we filter the message to block SDL
+            emit_input_event_from_message(msg);
+            if should_filter_message(msg) {
+                if UNICODE {
+                    unsafe {
+                        CallWindowProcW(None, msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                    }
+                } else {
+                    unsafe {
+                        CallWindowProcA(None, msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                    }
+                }
+                continue;
+            }
+
+            on_message_read(msg);
+            return ret;
+        }
+    })
+}
+
+unsafe fn process_peek_message(
+    msg: *mut MSG,
+    remove: bool,
+    reader: impl Fn(*mut MSG) -> bool,
+) -> bool {
+    set_message_read(move || {
+        let ret = reader(msg);
+        if !ret {
+            return ret;
+        }
+        let msg = unsafe { &mut *msg };
+
+        // For SDL games: Emit events BEFORE filtering so overlay gets them
+        // even if we filter the message to block SDL
+        emit_input_event_from_message(msg);
+        if should_filter_message(msg) {
+            msg.message = msg::WM_NULL;
+            return ret;
+        }
+
+        if remove {
+            on_message_read(msg);
+        }
+        ret
+    })
+}
+
 #[tracing::instrument]
 extern "system" fn hooked_get_message_a(
     lpmsg: *mut MSG,
@@ -145,21 +206,14 @@ extern "system" fn hooked_get_message_a(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageA called");
-    set_message_read(|| unsafe {
-        let ret =
-            HOOK.wait().get_message_a.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
-        if ret.as_bool() {
-            // For SDL games: Emit events BEFORE filtering so overlay gets them
-            // even if we filter the message to block SDL
-            emit_input_event_from_message(&*lpmsg);
 
-            if should_filter_message(&*lpmsg) {
-                (*lpmsg).message = msg::WM_NULL;
-            }
-            on_message_read(&*lpmsg);
-        }
-        ret
-    })
+    unsafe {
+        process_read_message::<false>(lpmsg, |msg| {
+            HOOK.wait().get_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
+                .as_bool()
+        })
+    }
+    .into()
 }
 
 #[tracing::instrument]
@@ -170,19 +224,14 @@ extern "system" fn hooked_get_message_w(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageW called");
-    set_message_read(|| unsafe {
-        let ret =
-            HOOK.wait().get_message_w.original_fn()(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax);
-        if ret.as_bool() {
-            emit_input_event_from_message(&*lpmsg);
 
-            if should_filter_message(&*lpmsg) {
-                (*lpmsg).message = msg::WM_NULL;
-            }
-            on_message_read(&*lpmsg);
-        }
-        ret
-    })
+    unsafe {
+        process_read_message::<true>(lpmsg, |msg| {
+            HOOK.wait().get_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
+                .as_bool()
+        })
+    }
+    .into()
 }
 
 #[tracing::instrument]
@@ -194,26 +243,20 @@ extern "system" fn hooked_peek_message_a(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageA called");
-    set_message_read(|| unsafe {
-        let ret = HOOK.wait().peek_message_a.original_fn()(
-            lpmsg,
-            hwnd,
-            wmsgfiltermin,
-            wmsgfiltermax,
-            wremovemsg,
-        );
-        if ret.as_bool() {
-            emit_input_event_from_message(&*lpmsg);
 
-            if should_filter_message(&*lpmsg) {
-                (*lpmsg).message = msg::WM_NULL;
-            }
-            if wremovemsg.contains(PM_REMOVE) {
-                on_message_read(&*lpmsg);
-            }
-        }
-        ret
-    })
+    unsafe {
+        process_peek_message(lpmsg, wremovemsg.contains(PM_REMOVE), |msg| {
+            HOOK.wait().peek_message_a.original_fn()(
+                msg,
+                hwnd,
+                wmsgfiltermin,
+                wmsgfiltermax,
+                wremovemsg,
+            )
+            .as_bool()
+        })
+    }
+    .into()
 }
 
 #[tracing::instrument]
@@ -225,26 +268,20 @@ extern "system" fn hooked_peek_message_w(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageW called");
-    set_message_read(|| unsafe {
-        let ret = HOOK.wait().peek_message_w.original_fn()(
-            lpmsg,
-            hwnd,
-            wmsgfiltermin,
-            wmsgfiltermax,
-            wremovemsg,
-        );
-        if ret.as_bool() {
-            emit_input_event_from_message(&*lpmsg);
 
-            if should_filter_message(&*lpmsg) {
-                (*lpmsg).message = msg::WM_NULL;
-            }
-            if wremovemsg.contains(PM_REMOVE) {
-                on_message_read(&*lpmsg);
-            }
-        }
-        ret
-    })
+    unsafe {
+        process_peek_message(lpmsg, wremovemsg.contains(PM_REMOVE), |msg| {
+            HOOK.wait().peek_message_w.original_fn()(
+                msg,
+                hwnd,
+                wmsgfiltermin,
+                wmsgfiltermax,
+                wremovemsg,
+            )
+            .as_bool()
+        })
+    }
+    .into()
 }
 
 fn on_message_read(msg: &MSG) {
