@@ -75,7 +75,7 @@ pub async fn inject(
     let ipc_addr = create_ipc_addr(pid, module_handle);
 
     let connect = IpcClientConn::new(ClientOptions::new().open(ipc_addr)?);
-    let timeout = sleep(timeout.unwrap_or(Duration::from_secs(10)));
+    let timeout = sleep(timeout.unwrap_or(Duration::MAX));
     let conn = select! {
         res = connect => res?,
         _ = timeout => bail!("ipc client wait timeout"),
