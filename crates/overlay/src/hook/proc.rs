@@ -126,42 +126,42 @@ fn process_read_message<const UNICODE: bool>(
     msg: &mut MSG,
     reader: impl Fn(&mut MSG) -> bool,
 ) -> bool {
-    loop {
-        if !reader(msg) {
-            return false;
-        }
-
-        // For SDL games: Emit events BEFORE filtering so overlay gets them
-        // even if we filter the message to block SDL
+    if !reader(msg) {
         on_message_read(msg);
-        if should_filter_message(msg) {
-            unsafe {
-                // Call TranslateMessage for char messages
-                _ = TranslateMessage(msg);
-
-                // Call Default WndProc so non client area works.
-                if UNICODE {
-                    CallWindowProcW(
-                        Some(DefWindowProcA),
-                        msg.hwnd,
-                        msg.message,
-                        msg.wParam,
-                        msg.lParam,
-                    );
-                } else {
-                    CallWindowProcA(
-                        Some(DefWindowProcW),
-                        msg.hwnd,
-                        msg.message,
-                        msg.wParam,
-                        msg.lParam,
-                    );
-                }
-            }
-            continue;
-        }
-        return true;
+        return false;
     }
+
+    // For SDL games: Emit events BEFORE filtering so overlay gets them
+    // even if we filter the message to block SDL
+    on_message_read(msg);
+    if should_filter_message(msg) {
+        unsafe {
+            // Call TranslateMessage for char messages
+            _ = TranslateMessage(msg);
+
+            // Call Default WndProc so non client area works.
+            if UNICODE {
+                CallWindowProcW(
+                    Some(DefWindowProcA),
+                    msg.hwnd,
+                    msg.message,
+                    msg.wParam,
+                    msg.lParam,
+                );
+            } else {
+                CallWindowProcA(
+                    Some(DefWindowProcW),
+                    msg.hwnd,
+                    msg.message,
+                    msg.wParam,
+                    msg.lParam,
+                );
+            }
+        }
+
+        msg.message = msg::WM_NULL;
+    }
+    return true;
 }
 
 fn process_peek_message(
@@ -169,32 +169,29 @@ fn process_peek_message(
     remove: PEEK_MESSAGE_REMOVE_TYPE,
     reader: impl Fn(&mut MSG, PEEK_MESSAGE_REMOVE_TYPE) -> bool,
 ) -> bool {
-    loop {
-        if !reader(msg, remove) {
-            return false;
-        }
+    if !reader(msg, remove) {
+        return false;
+    }
 
-        let should_filter = should_filter_message(msg);
-        if remove.contains(PM_REMOVE) || should_filter {
-            // For SDL games: Emit events BEFORE filtering so overlay gets them
-            // even if we filter the message to block SDL
-            on_message_read(msg);
-        }
+    let should_filter = should_filter_message(msg);
+    if remove.contains(PM_REMOVE) {
+        // For SDL games: Emit events BEFORE filtering so overlay gets them
+        // even if we filter the message to block SDL
+        on_message_read(msg);
 
-        if !should_filter {
-            return true;
-        }
-
-        // Call TranslateMessage for char messages.
-        unsafe {
-            _ = TranslateMessage(msg);
-        }
-
-        if !remove.contains(PM_REMOVE) {
-            // Remove the message from the queue if we're filtering but not removing it.
-            _ = reader(msg, remove | PM_REMOVE);
+        if should_filter {
+            // Call TranslateMessage for char messages.
+            unsafe {
+                _ = TranslateMessage(msg);
+            }
         }
     }
+
+    if should_filter {
+        msg.message = msg::WM_NULL;
+    }
+
+    return true;
 }
 
 #[tracing::instrument]
