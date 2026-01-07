@@ -122,86 +122,79 @@ fn set_message_read<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
-unsafe fn process_read_message<const UNICODE: bool>(
-    msg: *mut MSG,
-    reader: impl Fn(*mut MSG) -> bool,
+fn process_read_message<const UNICODE: bool>(
+    msg: &mut MSG,
+    reader: impl Fn(&mut MSG) -> bool,
 ) -> bool {
-    set_message_read(move || {
-        loop {
-            let ret = reader(msg);
-            if !ret {
-                return ret;
-            }
-            let msg = unsafe { &mut *msg };
-
-            // For SDL games: Emit events BEFORE filtering so overlay gets them
-            // even if we filter the message to block SDL
-            emit_input_event_from_message(msg);
-            if should_filter_message(msg) {
-                unsafe {
-                    // Call TranslateMessage for char messages
-                    _ = TranslateMessage(msg);
-
-                    // Call Default WndProc so non client area works.
-                    if UNICODE {
-                        CallWindowProcW(
-                            Some(DefWindowProcA),
-                            msg.hwnd,
-                            msg.message,
-                            msg.wParam,
-                            msg.lParam,
-                        );
-                    } else {
-                        CallWindowProcA(
-                            Some(DefWindowProcW),
-                            msg.hwnd,
-                            msg.message,
-                            msg.wParam,
-                            msg.lParam,
-                        );
-                    }
-                }
-                continue;
-            }
-
-            on_message_read(msg);
-            return ret;
+    loop {
+        if !reader(msg) {
+            return false;
         }
-    })
+
+        // For SDL games: Emit events BEFORE filtering so overlay gets them
+        // even if we filter the message to block SDL
+        on_message_read(msg);
+        if should_filter_message(msg) {
+            unsafe {
+                // Call TranslateMessage for char messages
+                _ = TranslateMessage(msg);
+
+                // Call Default WndProc so non client area works.
+                if UNICODE {
+                    CallWindowProcW(
+                        Some(DefWindowProcA),
+                        msg.hwnd,
+                        msg.message,
+                        msg.wParam,
+                        msg.lParam,
+                    );
+                } else {
+                    CallWindowProcA(
+                        Some(DefWindowProcW),
+                        msg.hwnd,
+                        msg.message,
+                        msg.wParam,
+                        msg.lParam,
+                    );
+                }
+            }
+            continue;
+        }
+        return true;
+    }
 }
 
-unsafe fn process_peek_message(
-    msg: *mut MSG,
-    remove: bool,
-    reader: impl Fn(*mut MSG) -> bool,
+fn process_peek_message(
+    msg: &mut MSG,
+    remove: PEEK_MESSAGE_REMOVE_TYPE,
+    reader: impl Fn(&mut MSG, PEEK_MESSAGE_REMOVE_TYPE) -> bool,
 ) -> bool {
-    set_message_read(move || {
-        let ret = reader(msg);
-        if !ret {
-            return ret;
+    loop {
+        if !reader(msg, remove) {
+            return false;
         }
-        let msg = unsafe { &mut *msg };
-        let should_filter = should_filter_message(msg);
 
-        if remove {
+        let should_filter = should_filter_message(msg);
+        if remove.contains(PM_REMOVE) || should_filter {
             // For SDL games: Emit events BEFORE filtering so overlay gets them
             // even if we filter the message to block SDL
-            emit_input_event_from_message(msg);
             on_message_read(msg);
-
-            if should_filter {
-                // Call TranslateMessage for char messages.
-                unsafe {
-                    _ = TranslateMessage(msg);
-                }
-            }
         }
 
-        if should_filter {
-            msg.message = msg::WM_NULL;
+        if !should_filter {
+            return true;
         }
-        ret
-    })
+
+        // Call TranslateMessage for char messages.
+        unsafe {
+            _ = TranslateMessage(msg);
+        }
+
+        if !remove.contains(PM_REMOVE) {
+            // Remove the message from the queue if we're filtering but not removing it.
+            _ = reader(msg, remove | PM_REMOVE);
+        }
+    }
 }
 
 #[tracing::instrument]
@@ -212,13 +205,13 @@ extern "system" fn hooked_get_message_a(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageA called");
-
-    unsafe {
-        process_read_message::<false>(lpmsg, |msg| {
-            HOOK.wait().get_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
-                .as_bool()
-        })
+    if lpmsg.is_null() {
+        return BOOL(0);
     }
+
+    process_read_message::<false>(unsafe { &mut *lpmsg }, |msg| unsafe {
+        HOOK.wait().get_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax).as_bool()
+    })
     .into()
 }
 
@@ -230,13 +223,13 @@ extern "system" fn hooked_get_message_w(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageW called");
-
-    unsafe {
-        process_read_message::<true>(lpmsg, |msg| {
-            HOOK.wait().get_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
-                .as_bool()
-        })
+    if lpmsg.is_null() {
+        return BOOL(0);
     }
+
+    process_read_message::<true>(unsafe { &mut *lpmsg }, |msg| unsafe {
+        HOOK.wait().get_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax).as_bool()
+    })
     .into()
 }
 
@@ -249,19 +242,14 @@ extern "system" fn hooked_peek_message_a(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageA called");
-
-    unsafe {
-        process_peek_message(lpmsg, wremovemsg.contains(PM_REMOVE), |msg| {
-            HOOK.wait().peek_message_a.original_fn()(
-                msg,
-                hwnd,
-                wmsgfiltermin,
-                wmsgfiltermax,
-                wremovemsg,
-            )
-            .as_bool()
-        })
+    if lpmsg.is_null() {
+        return BOOL(0);
     }
+
+    process_peek_message(unsafe { &mut *lpmsg }, wremovemsg, |msg, remove| unsafe {
+        HOOK.wait().peek_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax, remove)
+            .as_bool()
+    })
     .into()
 }
 
@@ -274,51 +262,39 @@ extern "system" fn hooked_peek_message_w(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageW called");
-
-    unsafe {
-        process_peek_message(lpmsg, wremovemsg.contains(PM_REMOVE), |msg| {
-            HOOK.wait().peek_message_w.original_fn()(
-                msg,
-                hwnd,
-                wmsgfiltermin,
-                wmsgfiltermax,
-                wremovemsg,
-            )
-            .as_bool()
-        })
+    if lpmsg.is_null() {
+        return BOOL(0);
     }
+
+    process_peek_message(unsafe { &mut *lpmsg }, wremovemsg, |msg, remove| unsafe {
+        HOOK.wait().peek_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax, remove)
+            .as_bool()
+    })
     .into()
 }
 
 fn on_message_read(msg: &MSG) {
-    if msg.hwnd.is_invalid() {
-        return;
-    }
+    _ = with_root_backend(msg, |backend| {
+        set_message_read(|| {
+            let proc = backend.proc.lock();
+            if proc.listening_cursor() {
+                emit_cursor_event_from_message(backend.id, &proc, msg);
+            }
 
-    _ = Backends::with_backend(msg.hwnd.0 as _, |backend| {
-        let mut proc_queue = backend.proc_queue.lock();
-        if proc_queue.is_empty() {
-            return;
-        }
+            if proc.listening_keyboard() {
+                emit_keyboard_event_from_message(backend.id, msg);
+            }
+        });
 
-        for f in proc_queue.drain(..) {
-            f(backend);
-        }
-    });
-}
+        {
+            let mut proc_queue = backend.proc_queue.lock();
+            if proc_queue.is_empty() {
+                return;
+            }
 
-/// Emit input events for SDL games that use PeekMessage instead of DispatchMessage
-#[inline]
-fn emit_input_event_from_message(msg: &MSG) {
-    with_root_backend(msg, |backend| {
-        let proc = backend.proc.lock();
-
-        if proc.listening_cursor() {
-            emit_cursor_event_from_message(backend.id, &proc, msg);
-        }
-
-        if proc.listening_keyboard() {
-            emit_keyboard_event_from_message(backend.id, msg);
+            for f in proc_queue.drain(..) {
+                f(backend);
+            }
         }
     });
 }
