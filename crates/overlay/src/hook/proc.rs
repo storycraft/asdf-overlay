@@ -28,41 +28,25 @@ use crate::{
     event_sink::OverlayEventSink,
 };
 
-#[cfg_attr(
-    not(target_arch = "x86"),
-    link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")
-)]
-#[cfg_attr(
-    target_arch = "x86",
-    link(
-        name = "user32.dll",
-        kind = "raw-dylib",
-        modifiers = "+verbatim",
-        import_name_type = "undecorated"
-    )
-)]
-unsafe extern "system" {
-    fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;
-    fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL;
+windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
+windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 
-    fn PeekMessageA(
-        lpmsg: *mut MSG,
-        hwnd: HWND,
-        wmsgfiltermin: u32,
-        wmsgfiltermax: u32,
-        wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
-    ) -> BOOL;
-    fn PeekMessageW(
-        lpmsg: *mut MSG,
-        hwnd: HWND,
-        wmsgfiltermin: u32,
-        wmsgfiltermax: u32,
-        wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
-    ) -> BOOL;
-
-    fn DefWindowProcA(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
-    fn DefWindowProcW(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
-}
+windows::core::link!("user32.dll" "system" fn PeekMessageA(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+    wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+) -> BOOL);
+windows::core::link!("user32.dll" "system" fn PeekMessageW(
+    lpmsg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+    wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
+) -> BOOL);
+windows::core::link!("user32.dll" "system" fn DefWindowProcA(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
+windows::core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 
 struct Hook {
     get_message_a: DetourHook<GetMessageFn>,
@@ -161,7 +145,7 @@ fn process_read_message<const UNICODE: bool>(
 
         msg.message = msg::WM_NULL;
     }
-    return true;
+    true
 }
 
 fn process_peek_message(
@@ -191,7 +175,7 @@ fn process_peek_message(
         msg.message = msg::WM_NULL;
     }
 
-    return true;
+    true
 }
 
 #[tracing::instrument]
