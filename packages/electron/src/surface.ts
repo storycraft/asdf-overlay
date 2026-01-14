@@ -80,7 +80,8 @@ export class ElectronOverlaySurface {
    * Copy overlay texture in gpu accelerated shared texture mode.
    */
   private async paintAccelerated(texture: TextureInfo) {
-    if (texture.widgetType !== 'frame') {
+    // TODO:: cross platform handle
+    if (texture.widgetType !== 'frame' || !texture.handle.ntHandle) {
       return;
     }
     const rect = texture.metadata.captureUpdateRect ?? texture.contentRect;
@@ -90,7 +91,7 @@ export class ElectronOverlaySurface {
       const update = this.surface.updateShtex(
         texture.codedSize.width,
         texture.codedSize.height,
-        texture.sharedTextureHandle,
+        texture.handle.ntHandle,
         {
           dstX: rect.x,
           dstY: rect.y,
