@@ -48,8 +48,8 @@
     "asdf_overlay-aarch64.dll"
   ],
   "devDependencies": {
-    "@types/node": "^24.1.0",
-    "typescript": "^5.8.3"
+    "@types/node": "^25.0.8",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.13.1"
 }
