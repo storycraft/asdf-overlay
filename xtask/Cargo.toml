@@ -9,5 +9,5 @@ rust-version.workspace = true
 [dependencies]
 anyhow = "1.0.97"
 camino = "1.1.9"
-cargo_metadata = "0.21.0"
+cargo_metadata = "0.23.1"
 clap = { version = "4.5.35", features = ["derive"] }

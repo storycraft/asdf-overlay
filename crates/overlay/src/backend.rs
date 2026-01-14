@@ -85,7 +85,7 @@ impl Backends {
                     mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
                         HWND(id as _),
                         GWLP_WNDPROC,
-                        hooked_wnd_proc as usize as _,
+                        hooked_wnd_proc as *const () as _,
                     ) as _)
                 };
 

@@ -35,22 +35,9 @@ use windows::{
     core::PCSTR,
 };
 
-#[cfg_attr(
-    not(target_arch = "x86"),
-    link(name = "kernel32.dll", kind = "raw-dylib", modifiers = "+verbatim")
-)]
-#[cfg_attr(
-    target_arch = "x86",
-    link(
-        name = "kernel32.dll",
-        kind = "raw-dylib",
-        modifiers = "+verbatim",
-        import_name_type = "undecorated"
-    )
-)]
-unsafe extern "system" {
-    fn LoadLibraryW(lplibfilename: PCSTR) -> HMODULE;
-}
+windows::core::link!(
+    "kernel32.dll" "system" fn LoadLibraryW(lplibfilename: PCSTR) -> HMODULE
+);
 
 use crate::OverlayDll;
 
@@ -128,7 +115,7 @@ fn load_library_w_for(
     process_arch: IMAGE_FILE_MACHINE,
 ) -> anyhow::Result<usize> {
     if target_arch == process_arch {
-        Ok(LoadLibraryW as usize)
+        Ok(LoadLibraryW as *const () as usize)
     } else {
         match (process_arch, target_arch) {
             (IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_AMD64) => {
@@ -188,7 +175,9 @@ fn load_library_w_for(
             }
 
             // x64 on arm64
-            (IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_AMD64) => Ok(LoadLibraryW as usize),
+            (IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_AMD64) => {
+                Ok(LoadLibraryW as *const () as usize)
+            }
 
             (current_arch, target_arch) => {
                 bail!(

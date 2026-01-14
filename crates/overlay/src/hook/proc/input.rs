@@ -22,38 +22,26 @@ use crate::{
     hook::proc::message_reading,
 };
 
-#[cfg_attr(
-    not(target_arch = "x86"),
-    link(name = "user32.dll", kind = "raw-dylib", modifiers = "+verbatim")
-)]
-#[cfg_attr(
-    target_arch = "x86",
-    link(
-        name = "user32.dll",
-        kind = "raw-dylib",
-        modifiers = "+verbatim",
-        import_name_type = "undecorated"
-    )
-)]
-unsafe extern "system" {
-    fn ClipCursor(lprect: *const RECT) -> BOOL;
-    fn SetCursorPos(x: i32, y: i32) -> BOOL;
+windows::core::link!("user32.dll" "system" fn ClipCursor(lprect: *const RECT) -> BOOL);
+windows::core::link!("user32.dll" "system" fn SetCursorPos(x: i32, y: i32) -> BOOL);
 
-    fn GetClipCursor(lprect: *mut RECT) -> BOOL;
-    fn GetCursorPos(lppoint: *mut POINT) -> BOOL;
-    fn GetPhysicalCursorPos(lppoint: *mut POINT) -> BOOL;
-    fn GetKeyboardState(buf: *mut u8) -> BOOL;
-    fn GetKeyState(vkey: i32) -> i16;
-    fn GetAsyncKeyState(vkey: i32) -> i16;
+windows::core::link!("user32.dll" "system" fn GetClipCursor(lprect: *mut RECT) -> BOOL);
+windows::core::link!("user32.dll" "system" fn GetCursorPos(lppoint: *mut POINT) -> BOOL);
+windows::core::link!("user32.dll" "system" fn GetPhysicalCursorPos(lppoint: *mut POINT) -> BOOL);
+windows::core::link!("user32.dll" "system" fn GetKeyboardState(buf: *mut u8) -> BOOL);
+windows::core::link!("user32.dll" "system" fn GetKeyState(vkey: i32) -> i16);
+windows::core::link!("user32.dll" "system" fn GetAsyncKeyState(vkey: i32) -> i16);
+windows::core::link!(
+    "user32.dll" "system"
     fn GetRawInputData(
         hrawinput: HRAWINPUT,
         uicommand: RAW_INPUT_DATA_COMMAND_FLAGS,
         pdata: *mut c_void,
         pcbsize: *mut u32,
         cbsizeheader: u32,
-    ) -> u32;
-    fn GetRawInputBuffer(pdata: *mut RAWINPUT, pcbsize: *mut u32, cbsizeheader: u32) -> u32;
-}
+    ) -> u32
+);
+windows::core::link!("user32.dll" "system" fn GetRawInputBuffer(pdata: *mut RAWINPUT, pcbsize: *mut u32, cbsizeheader: u32) -> u32);
 
 struct Hook {
     clip_cursor: DetourHook<ClipCursorFn>,

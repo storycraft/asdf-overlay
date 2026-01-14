@@ -33,4 +33,4 @@ asdf-overlay-vulkan-layer = { version = "1.0.4", path = "./crates/vulkan-layer" 
 tokio = "1.47.1"
 
 [workspace.dependencies.windows]
-version = "0.61.1"
+version = "0.62.2"

@@ -3,9 +3,9 @@ import eslint from '@eslint/js';
 import prettier from 'eslint-plugin-prettier/recommended';
 import stylistic from '@stylistic/eslint-plugin';
 import tsEslint from 'typescript-eslint';
-import { globalIgnores } from 'eslint/config';
+import { defineConfig, globalIgnores } from 'eslint/config';
 
-export default tsEslint.config(
+export default defineConfig(
   globalIgnores([
     './target/**/*',
     './doc/book/**/*',

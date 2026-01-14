@@ -34,7 +34,7 @@ version = "0.1"
 features = ["max_level_trace", "release_max_level_off"]
 
 [target.'cfg(target_env = "msvc")'.build-dependencies]
-static_vcruntime = "2.0"
+static_vcruntime = "*"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

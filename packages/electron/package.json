@@ -33,12 +33,12 @@
     "lib/**/*"
   ],
   "devDependencies": {
-    "@types/node": "^24.1.0",
-    "typescript": "^5.8.3"
+    "@types/node": "^25.0.8",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@asdf-overlay/core": "workspace:*",
-    "electron": "^37.3.1"
+    "electron": "^39.2.7"
   },
   "packageManager": "pnpm@10.13.1"
 }
