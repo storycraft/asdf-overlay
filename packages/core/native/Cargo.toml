@@ -34,4 +34,4 @@ features = [
 ]
 
 [target.'cfg(target_env = "msvc")'.build-dependencies]
-static_vcruntime = "*"
+static_vcruntime = "3"
