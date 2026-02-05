@@ -3,7 +3,7 @@ use core::cell::RefCell;
 use asdf_overlay_client::{event::GpuLuid, surface::OverlaySurface};
 use bytemuck::pod_read_unaligned;
 use neon::{
-    prelude::{Context, Cx, FunctionContext, ModuleContext},
+    prelude::{Context, FunctionContext, ModuleContext},
     result::{JsResult, NeonResult},
     types::{
         Finalize, JsBox, JsBuffer, JsNumber, JsObject, JsUndefined, JsValue, Value,
@@ -16,31 +16,17 @@ use crate::{
     util::create_adapter_by_luid,
 };
 
-struct Surface(RefCell<Option<OverlaySurface>>);
+struct Surface(RefCell<OverlaySurface>);
 
 impl Surface {
     pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
         let adapter = luid.map(create_adapter_by_luid).transpose()?.flatten();
         let surface = OverlaySurface::new(adapter.as_ref())?;
-        Ok(Self(RefCell::new(Some(surface))))
+        Ok(Self(RefCell::new(surface)))
     }
 
-    pub fn with_mut<R>(
-        &self,
-        cx: &mut Cx,
-        f: impl FnOnce(&mut OverlaySurface) -> R,
-    ) -> NeonResult<R> {
-        match *self.0.borrow_mut() {
-            Some(ref mut v) => Ok(f(v)),
-            None => cx.throw_error("Surface is destroyed"),
-        }
-    }
-
-    pub fn destroy(&self, cx: &mut Cx) -> NeonResult<()> {
-        match self.0.borrow_mut().take() {
-            Some(_) => Ok(()),
-            None => cx.throw_error("Surface is already destroyed"),
-        }
+    pub fn with_mut<R>(&self, f: impl FnOnce(&mut OverlaySurface) -> R) -> R {
+        f(&mut *self.0.borrow_mut())
     }
 }
 
@@ -77,9 +63,7 @@ fn surface_update_shtex(mut cx: FunctionContext) -> JsResult<JsValue> {
         .transpose()?;
 
     let update = surface
-        .with_mut(&mut cx, |surface| {
-            surface.update_from_nt_shared(width, height, handle as u32, rect)
-        })?
+        .with_mut(|surface| surface.update_from_nt_shared(width, height, handle as u32, rect))
         .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
 
     match update {
@@ -94,7 +78,7 @@ fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsValue> {
     let data = cx.argument::<JsBuffer>(2)?.as_slice(&cx).to_vec();
 
     let update = surface
-        .with_mut(&mut cx, |surface| surface.update_bitmap(width, &data))?
+        .with_mut(|surface| surface.update_bitmap(width, &data))
         .or_else(|err| cx.throw_error(format!("Failed to update from shared handle. {err:?}")))?;
 
     match update {
@@ -105,14 +89,7 @@ fn surface_update_bitmap(mut cx: FunctionContext) -> JsResult<JsValue> {
 
 fn surface_clear(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let surface = cx.argument::<JsBox<Surface>>(0)?;
-    surface.with_mut(&mut cx, |surface| {
-        surface.clear();
-    })?;
-    Ok(cx.undefined())
-}
-
-fn surface_destroy(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    cx.argument::<JsBox<Surface>>(0)?.destroy(&mut cx)?;
+    surface.with_mut(|surface| surface.clear());
     Ok(cx.undefined())
 }
 
@@ -121,6 +98,5 @@ pub fn export_module_functions(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("surfaceUpdateBitmap", surface_update_bitmap)?;
     cx.export_function("surfaceUpdateShtex", surface_update_shtex)?;
     cx.export_function("surfaceClear", surface_clear)?;
-    cx.export_function("surfaceDestroy", surface_destroy)?;
     Ok(())
 }

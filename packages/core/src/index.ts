@@ -272,11 +272,11 @@ export class OverlaySurface {
   }
 
   /**
+   * @deprecated Do not need to be called.
+   *
    * Destroy the surface.
    */
-  destroy() {
-    addon.surfaceDestroy(this[idSym]);
-  }
+  destroy() {}
 
   /**
    * Create a new overlay surface.

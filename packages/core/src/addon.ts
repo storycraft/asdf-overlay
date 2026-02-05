@@ -51,5 +51,4 @@ export type Addon = {
   surfaceClear(id: unknown): void,
   surfaceUpdateBitmap(id: unknown, width: number, data: Buffer): UpdateSharedHandle | null,
   surfaceUpdateShtex(id: unknown, width: number, height: number, handle: Buffer, rect?: CopyRect): UpdateSharedHandle | null,
-  surfaceDestroy(id: unknown): void,
 };
