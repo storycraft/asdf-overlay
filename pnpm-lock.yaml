@@ -39,8 +39,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/electron
       electron:
-        specifier: ^39.4.0
-        version: 39.4.0
+        specifier: ^40.1.0
+        version: 40.1.0
       find-process:
         specifier: ^2.0.0
         version: 2.0.0
@@ -64,8 +64,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       electron:
-        specifier: ^39.2.7
-        version: 39.4.0
+        specifier: ^40.1.0
+        version: 40.1.0
     devDependencies:
       '@types/node':
         specifier: ^25.1.0
@@ -544,6 +544,9 @@ packages:
   '@types/node@22.19.7':
     resolution: {integrity: sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw==}
 
+  '@types/node@24.10.10':
+    resolution: {integrity: sha512-+0/4J266CBGPUq/ELg7QUHhN25WYjE0wYTPSQJn1xeu8DOlIOPxXxrNGiLmfAWl7HMMgWFWXpt9IDjMWrF5Iow==}
+
   '@types/node@25.1.0':
     resolution: {integrity: sha512-t7frlewr6+cbx+9Ohpl0NOTKXZNV9xHRmNOvql47BFJKcEG1CxtxlPEEe+gR9uhVWM4DwhnvTF110mIL4yP9RA==}
 
@@ -749,8 +752,8 @@ packages:
       '@swc/core':
         optional: true
 
-  electron@39.4.0:
-    resolution: {integrity: sha512-NCK/FTAqgG/N+09OXFES6bubamgPZs7TEPIjWZIrbEnm8GzEwxC22ZG6SEPid2DmJnJmBurJ6M0G4EShdSc28Q==}
+  electron@40.1.0:
+    resolution: {integrity: sha512-2j/kvw7uF0H1PnzYBzw2k2Q6q16J8ToKrtQzZfsAoXbbMY0l5gQi2DLOauIZLzwp4O01n8Wt/74JhSRwG0yj9A==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -1726,6 +1729,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@24.10.10':
+    dependencies:
+      undici-types: 7.16.0
+
   '@types/node@25.1.0':
     dependencies:
       undici-types: 7.16.0
@@ -1963,10 +1970,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@39.4.0:
+  electron@40.1.0:
     dependencies:
       '@electron/get': 2.0.3
-      '@types/node': 22.19.7
+      '@types/node': 24.10.10
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color

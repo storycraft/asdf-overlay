@@ -38,7 +38,7 @@
   },
   "peerDependencies": {
     "@asdf-overlay/core": "workspace:*",
-    "electron": "^39.2.7"
+    "electron": "^40.1.0"
   },
   "packageManager": "pnpm@10.13.1"
 }
