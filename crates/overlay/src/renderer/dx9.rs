@@ -98,13 +98,14 @@ impl Dx9Renderer {
         let size = surface.size();
         let src_texture = surface.texture();
         let mutex = surface.mutex();
+        let format = surface.format();
 
         let texture = match self.texture {
             Some(ref mut texture) => texture,
             None => {
                 self.size = size;
                 self.texture.insert(
-                    if let Ok((texture, handle)) = create_shared_texture(device, size) {
+                    if let Ok((texture, handle)) = create_shared_texture(device, size, format) {
                         let mut shared_texture = None;
                         unsafe {
                             d3d11_device
@@ -115,7 +116,7 @@ impl Dx9Renderer {
                         Dx9Texture::SharedTexture(texture, shared_texture.unwrap())
                     } else {
                         let (texture, staging) =
-                            create_fallback_texture(device, d3d11_device, surface.format(), size)?;
+                            create_fallback_texture(device, d3d11_device, format, size)?;
                         Dx9Texture::Fallback(texture, staging)
                     },
                 )
@@ -280,6 +281,7 @@ enum Dx9Texture {
 fn create_shared_texture(
     device: &IDirect3DDevice9,
     size: (u32, u32),
+    format: DXGI_FORMAT,
 ) -> anyhow::Result<(IDirect3DTexture9, HANDLE)> {
     let mut texture = None;
     let mut handle = HANDLE::default();
@@ -290,7 +292,7 @@ fn create_shared_texture(
                 size.1,
                 1,
                 0,
-                D3DFMT_A8R8G8B8,
+                map_dxgi_to_dx9(format).context("unsupported format for dx9 texture")?,
                 D3DPOOL_DEFAULT,
                 &mut texture,
                 &mut handle,
