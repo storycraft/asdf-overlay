@@ -145,7 +145,7 @@ pub struct UpdateSharedHandle {
     /// DirectX KMT shared handle to the overlay surface texture.
     ///
     /// ## Note
-    /// * The texture must be a 32-bit BGRA format texture.
+    /// * The texture is either a 32-bit BGRA(integer) or 32-bit RGBA(integer) or 64-bit RGBA(integer, float) format texture.
     /// * The texture must be created with `D3D11_RESOURCE_MISC_SHARED` flag.
     /// * If the texture is created with `D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX` flag, the `key` of the `IDXGIKeyedMutex` must be `0`.
     ///
