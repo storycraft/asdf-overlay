@@ -15,7 +15,9 @@ use windows::{
             Direct3D::*,
             Direct3D11::*,
             Dxgi::{
-                Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
+                Common::{
+                    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC,
+                },
                 IDXGIAdapter, IDXGIKeyedMutex, IDXGIResource,
             },
         },
@@ -123,7 +125,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         src_texture: &ID3D11Texture2D,
         rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
-        match *self.texture.texture_for(width, height) {
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe {
+            src_texture.GetDesc(&mut desc);
+        }
+
+        let format = desc.Format;
+        match *self.texture.texture_for(width, height, format) {
             Some((ref surface, ref mutex)) => {
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
@@ -138,8 +146,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             }
 
             ref mut slot @ None => {
-                let (surface, mutex) =
-                    slot.insert(create_surface_texture(&self.device, width, height, None)?);
+                let (surface, mutex) = slot.insert(create_surface_texture(
+                    &self.device,
+                    width,
+                    height,
+                    format,
+                    None,
+                )?);
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
                     defer!({
@@ -173,7 +186,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         }
 
         let size = (width, (data.len() / width as usize / 4) as u32);
-        let surface = self.texture.texture_for(size.0, size.1);
+        let surface = self
+            .texture
+            .texture_for(size.0, size.1, DXGI_FORMAT_B8G8R8A8_UNORM);
 
         let row_pitch = width * 4;
         match *surface {
@@ -196,6 +211,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     &self.device,
                     size.0,
                     size.1,
+                    DXGI_FORMAT_B8G8R8A8_UNORM,
                     Some(&D3D11_SUBRESOURCE_DATA {
                         pSysMem: data.as_ptr().cast(),
                         SysMemPitch: row_pitch,
@@ -292,6 +308,7 @@ fn create_surface_texture(
     device: &ID3D11Device,
     width: u32,
     height: u32,
+    format: DXGI_FORMAT,
     initial: Option<&D3D11_SUBRESOURCE_DATA>,
 ) -> anyhow::Result<(ID3D11Texture2D, IDXGIKeyedMutex)> {
     let mut texture = None;
@@ -302,7 +319,7 @@ fn create_surface_texture(
                 Height: height,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: format,
                 SampleDesc: DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,
@@ -345,19 +362,20 @@ impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
         &mut self,
         width: u32,
         height: u32,
+        format: DXGI_FORMAT,
     ) -> &mut Option<(ID3D11Texture2D, IDXGIKeyedMutex)> {
-        let prev_size = if let Some((ref texture, _)) = self.texture[self.index] {
+        let prev = if let Some((ref texture, _)) = self.texture[self.index] {
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             unsafe {
                 texture.GetDesc(&mut desc);
             }
 
-            (desc.Width, desc.Height)
+            (desc.Width, desc.Height, desc.Format)
         } else {
-            (0, 0)
+            (0, 0, DXGI_FORMAT_UNKNOWN)
         };
 
-        if prev_size.0 != width || prev_size.1 != height {
+        if prev.0 != width || prev.1 != height || prev.2 != format {
             self.index = (self.index + 1) % BUFFERS;
             let texture = &mut self.texture[self.index];
             texture.take();
