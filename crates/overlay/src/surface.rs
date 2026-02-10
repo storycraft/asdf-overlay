@@ -16,7 +16,7 @@ use windows::{
         Foundation::HANDLE,
         Graphics::{
             Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
-            Dxgi::{IDXGIKeyedMutex, IDXGIResource},
+            Dxgi::{Common::DXGI_FORMAT, IDXGIKeyedMutex, IDXGIResource},
         },
     },
     core::Interface,
@@ -28,6 +28,7 @@ pub struct OverlaySurface {
     resource: IDXGIResource,
     mutex: Option<IDXGIKeyedMutex>,
     size: (u32, u32),
+    format: DXGI_FORMAT,
 }
 
 impl OverlaySurface {
@@ -50,6 +51,7 @@ impl OverlaySurface {
                 resource,
                 mutex,
                 size: (desc.Width, desc.Height),
+                format: desc.Format,
             })
         }
     }
@@ -64,6 +66,12 @@ impl OverlaySurface {
     /// Size of the overlay surface in phyiscal pixel units.
     pub const fn size(&self) -> (u32, u32) {
         self.size
+    }
+
+    #[inline]
+    /// Format of the overlay surface.
+    pub const fn format(&self) -> DXGI_FORMAT {
+        self.format
     }
 
     #[inline]

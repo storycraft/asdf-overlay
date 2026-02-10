@@ -13,14 +13,15 @@ use windows::Win32::{
             D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC,
             D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
         },
-        Dxgi::{
-            Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
-            IDXGIKeyedMutex,
+        Dxgi::Common::{
+            DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R16G16B16A16_UNORM, DXGI_SAMPLE_DESC,
         },
     },
 };
 
-use crate::util::with_keyed_mutex;
+use crate::{surface::OverlaySurface, util::with_keyed_mutex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -86,15 +87,17 @@ impl Dx9Renderer {
     pub fn update_texture(
         &mut self,
         device: &IDirect3DDevice9,
-        size: (u32, u32),
+        surface: &OverlaySurface,
         d3d11_device: &ID3D11Device,
         d3d11_cx: &ID3D11DeviceContext,
-        src_texture: &ID3D11Texture2D,
-        mutex: Option<&IDXGIKeyedMutex>,
     ) -> anyhow::Result<()> {
-        if self.size != size {
+        if self.size != surface.size() {
             self.reset_texture();
         }
+
+        let size = surface.size();
+        let src_texture = surface.texture();
+        let mutex = surface.mutex();
 
         let texture = match self.texture {
             Some(ref mut texture) => texture,
@@ -112,7 +115,7 @@ impl Dx9Renderer {
                         Dx9Texture::SharedTexture(texture, shared_texture.unwrap())
                     } else {
                         let (texture, staging) =
-                            create_fallback_texture(device, d3d11_device, size)?;
+                            create_fallback_texture(device, d3d11_device, surface.format(), size)?;
                         Dx9Texture::Fallback(texture, staging)
                     },
                 )
@@ -301,6 +304,7 @@ fn create_shared_texture(
 fn create_fallback_texture(
     device: &IDirect3DDevice9,
     d3d11_device: &ID3D11Device,
+    format: DXGI_FORMAT,
     size: (u32, u32),
 ) -> anyhow::Result<(IDirect3DTexture9, ID3D11Texture2D)> {
     let mut texture = None;
@@ -311,7 +315,7 @@ fn create_fallback_texture(
                 size.1,
                 1,
                 D3DUSAGE_DYNAMIC as _,
-                D3DFMT_A8R8G8B8,
+                map_dxgi_to_dx9(format).context("unsupported format for fallback dx9 texture")?,
                 D3DPOOL_DEFAULT,
                 &mut texture,
                 0 as _,
@@ -328,7 +332,7 @@ fn create_fallback_texture(
                     Height: size.1,
                     MipLevels: 1,
                     ArraySize: 1,
-                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                    Format: format,
                     SampleDesc: DXGI_SAMPLE_DESC {
                         Count: 1,
                         Quality: 0,
@@ -345,4 +349,16 @@ fn create_fallback_texture(
     };
 
     Ok((texture.unwrap(), staging.unwrap()))
+}
+
+fn map_dxgi_to_dx9(format: DXGI_FORMAT) -> Option<D3DFORMAT> {
+    match format {
+        DXGI_FORMAT_R8G8B8A8_UNORM => Some(D3DFMT_A8B8G8R8),
+        // TODO: correct srgb conversion.
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(D3DFMT_A8B8G8R8),
+        DXGI_FORMAT_B8G8R8A8_UNORM => Some(D3DFMT_A8R8G8B8),
+        DXGI_FORMAT_R16G16B16A16_UNORM => Some(D3DFMT_A16B16G16R16),
+        DXGI_FORMAT_R16G16B16A16_FLOAT => Some(D3DFMT_A16B16G16R16F),
+        _ => None,
+    }
 }
