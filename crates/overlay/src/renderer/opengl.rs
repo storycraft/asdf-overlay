@@ -16,7 +16,7 @@ use windows::{
         Dxgi::{
             Common::{
                 DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
-                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_UNORM,
             },
             IDXGIResource,
         },
@@ -370,6 +370,7 @@ fn map_dxgi_to_gl(format: DXGI_FORMAT) -> Option<GLuint> {
         DXGI_FORMAT_R8G8B8A8_UNORM => Some(gl::RGBA8),
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(gl::SRGB8_ALPHA8),
         DXGI_FORMAT_B8G8R8A8_UNORM => Some(gl::BGRA),
+        DXGI_FORMAT_R16G16B16A16_UNORM => Some(gl::RGBA16),
         _ => None,
     }
 }
