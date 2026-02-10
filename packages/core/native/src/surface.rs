@@ -26,7 +26,7 @@ impl Surface {
     }
 
     pub fn with_mut<R>(&self, f: impl FnOnce(&mut OverlaySurface) -> R) -> R {
-        f(&mut *self.0.borrow_mut())
+        f(&mut self.0.borrow_mut())
     }
 }
 
