@@ -305,7 +305,7 @@ fn copy_to_surface(
     Ok(())
 }
 
-/// Perform
+/// Perform an operation with an external texture, acquiring and releasing its keyed mutex if available.
 fn with_external_texture<R>(texture: &ID3D11Texture2D, f: impl FnOnce(&ID3D11Texture2D) -> R) -> R {
     if let Ok(mutex) = texture.cast::<IDXGIKeyedMutex>() {
         unsafe {
