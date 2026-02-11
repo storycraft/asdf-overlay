@@ -208,7 +208,6 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
                 return;
             };
 
-            let surface_size = surface.size();
             let position = render.position;
             let screen = render.window_size;
             let interop = &mut render.interop;
@@ -216,14 +215,7 @@ fn draw_overlay(hwnd: HWND, device: &IDirect3DDevice9) {
                 trace!("using dx9 renderer");
 
                 renderer
-                    .update_texture(
-                        device,
-                        surface_size,
-                        &interop.device,
-                        interop.cx.get_mut(),
-                        surface.texture(),
-                        surface.mutex(),
-                    )
+                    .update_texture(device, surface, &interop.device, interop.cx.get_mut())
                     .context("failed to update dx9 texture")?;
 
                 unsafe { device.BeginScene() }.context("BeginScene failed")?;
