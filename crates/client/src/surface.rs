@@ -94,7 +94,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         let device1 = self.device.cast::<ID3D11Device1>()?;
         let src_texture =
             unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _))? };
-        self.update_surface_from(width, height, &src_texture, rect)
+        with_external_texture(&src_texture, |src_texture| {
+            self.update_surface_from(width, height, src_texture, rect)
+        })
     }
 
     /// Update the surface from a KMT handle of a Direct3D texture.
@@ -113,9 +115,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             self.device
                 .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut src_texture)?
         };
-        let src_texture = src_texture.unwrap();
-
-        self.update_surface_from(width, height, &src_texture, rect)
+        with_external_texture(&src_texture.unwrap(), |src_texture| {
+            self.update_surface_from(width, height, src_texture, rect)
+        })
     }
 
     fn update_surface_from(
@@ -301,6 +303,23 @@ fn copy_to_surface(
     }
 
     Ok(())
+}
+
+/// Perform
+fn with_external_texture<R>(texture: &ID3D11Texture2D, f: impl FnOnce(&ID3D11Texture2D) -> R) -> R {
+    if let Ok(mutex) = texture.cast::<IDXGIKeyedMutex>() {
+        unsafe {
+            mutex.AcquireSync(0, u32::MAX).unwrap();
+        }
+        defer!({
+            unsafe {
+                _ = mutex.ReleaseSync(0);
+            }
+        });
+        f(texture)
+    } else {
+        f(texture)
+    }
 }
 
 /// Create a Direct3D texture and returns texture with its keyed mutex.
