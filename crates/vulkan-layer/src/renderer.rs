@@ -25,7 +25,7 @@ use windows::{
     core::Interface,
 };
 
-use crate::{map, renderer::frame::FrameData};
+use crate::renderer::frame::FrameData;
 
 /// A vulkan renderer for rendering an overlay.
 pub struct VulkanRenderer {
