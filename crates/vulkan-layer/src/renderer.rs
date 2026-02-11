@@ -13,12 +13,19 @@ use shaders::{FRAGMENT_SHADER, VERTEX_SHADER};
 use windows::{
     Win32::Graphics::{
         Direct3D11::{self, D3D11_TEXTURE2D_DESC},
-        Dxgi::IDXGIResource,
+        Dxgi::{
+            Common::{
+                DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
+                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                DXGI_FORMAT_R16G16B16A16_UNORM,
+            },
+            IDXGIResource,
+        },
     },
     core::Interface,
 };
 
-use crate::renderer::frame::FrameData;
+use crate::{map, renderer::frame::FrameData};
 
 /// A vulkan renderer for rendering an overlay.
 pub struct VulkanRenderer {
@@ -91,7 +98,6 @@ impl VulkanRenderer {
     pub fn update_texture(
         &mut self,
         texture: Option<&Direct3D11::ID3D11Texture2D>,
-        surface_format: vk::Format,
         props: &vk::PhysicalDeviceMemoryProperties,
     ) -> anyhow::Result<()> {
         unsafe {
@@ -114,13 +120,15 @@ impl VulkanRenderer {
                 .unwrap()
                 .GetSharedHandle()
                 .unwrap();
+            let format = map_dxgi_format_to_vk(desc.Format)
+                .context("unsupported DXGI format for overlay texture")?;
 
             let mut external_memory_image_info = vk::ExternalMemoryImageCreateInfo::default()
                 .handle_types(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT);
             let image = self.device.create_image(
                 &vk::ImageCreateInfo::default()
                     .image_type(vk::ImageType::TYPE_2D)
-                    .format(surface_format)
+                    .format(format)
                     .extent(vk::Extent3D {
                         width: desc.Width,
                         height: desc.Height,
@@ -195,7 +203,7 @@ impl VulkanRenderer {
             let view = self.device.create_image_view(
                 &vk::ImageViewCreateInfo::default()
                     .image(image)
-                    .format(surface_format)
+                    .format(format)
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .subresource_range(vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -326,6 +334,17 @@ impl VulkanRenderer {
         }
 
         Ok(Some(frame_data.submit_semaphore))
+    }
+}
+
+fn map_dxgi_format_to_vk(format: DXGI_FORMAT) -> Option<vk::Format> {
+    match format {
+        DXGI_FORMAT_R8G8B8A8_UNORM => Some(vk::Format::R8G8B8A8_UNORM),
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(vk::Format::R8G8B8A8_SRGB),
+        DXGI_FORMAT_B8G8R8A8_UNORM => Some(vk::Format::B8G8R8A8_UNORM),
+        DXGI_FORMAT_R16G16B16A16_UNORM => Some(vk::Format::R16G16B16A16_UNORM),
+        DXGI_FORMAT_R16G16B16A16_FLOAT => Some(vk::Format::R16G16B16A16_SFLOAT),
+        _ => None,
     }
 }
 
