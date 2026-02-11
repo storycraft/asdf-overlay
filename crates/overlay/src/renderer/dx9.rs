@@ -147,7 +147,7 @@ impl Dx9Renderer {
                     });
 
                     for y in 0..size.1 as isize {
-                        let line_size = size.0 as usize * 4;
+                        let line_size = size.0 as usize * dxgi_pixel_size(format);
                         let src_offset = y * mapped.RowPitch as isize;
                         let dest_offset = y * rect.Pitch as isize;
 
@@ -362,5 +362,15 @@ fn map_dxgi_to_dx9(format: DXGI_FORMAT) -> Option<D3DFORMAT> {
         DXGI_FORMAT_R16G16B16A16_UNORM => Some(D3DFMT_A16B16G16R16),
         DXGI_FORMAT_R16G16B16A16_FLOAT => Some(D3DFMT_A16B16G16R16F),
         _ => None,
+    }
+}
+
+fn dxgi_pixel_size(format: DXGI_FORMAT) -> usize {
+    match format {
+        DXGI_FORMAT_R8G8B8A8_UNORM
+        | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+        | DXGI_FORMAT_B8G8R8A8_UNORM => 4,
+        DXGI_FORMAT_R16G16B16A16_UNORM | DXGI_FORMAT_R16G16B16A16_FLOAT => 8,
+        _ => 0,
     }
 }
