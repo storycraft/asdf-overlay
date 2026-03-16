@@ -20,8 +20,8 @@
   "dependencies": {
     "@asdf-overlay/core": "workspace:*",
     "@asdf-overlay/electron": "workspace:*",
-    "electron": "^40.1.0",
-    "find-process": "^2.0.0"
+    "electron": "^40.8.2",
+    "find-process": "^2.1.0"
   },
   "devDependencies": {
     "electron-vite": "^5.0.0"
