@@ -279,28 +279,36 @@ extern "system" fn hooked_get_raw_input_data(
             _ => 0,
         };
 
-        if pdata.is_null() {
-            // Size query: write the required buffer size and return 0 (success).
-            if !pcbsize.is_null() {
-                unsafe { pcbsize.write(data_size) };
-            }
-            return 0;
-        }
-
-        // Data query: write a zeroed struct and return the number of bytes
-        // written, exactly as the real API would on success.
         if !pcbsize.is_null() {
             unsafe { pcbsize.write(data_size) };
         }
 
+        // Size query: return 0 (success) after writing the required buffer size.
+        if pdata.is_null() {
+            return 0;
+        }
+
+        // Data query: write a dummy HID struct and return the number of bytes
+        // written, exactly as the real API would on success.
+        // Use RIM_TYPEHID so games treat this as an unknown HID device and
+        // ignore the empty payload instead of interpreting zeroed fields as
+        // mouse/keyboard input.
+
+        let hid_header = RAWINPUTHEADER {
+            dwType: 2, // RIM_TYPEHID
+            dwSize: data_size,
+            ..Default::default()
+        };
+
         match uicommand {
             RID_HEADER => unsafe {
-                pdata
-                    .cast::<RAWINPUTHEADER>()
-                    .write(RAWINPUTHEADER::default());
+                pdata.cast::<RAWINPUTHEADER>().write(hid_header);
             },
             RID_INPUT => unsafe {
-                pdata.cast::<RAWINPUT>().write(RAWINPUT::default());
+                pdata.cast::<RAWINPUT>().write(RAWINPUT {
+                    header: hid_header,
+                    ..Default::default()
+                });
             },
             _ => {}
         }

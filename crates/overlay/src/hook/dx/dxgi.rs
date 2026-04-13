@@ -41,35 +41,36 @@ use crate::{
 /// Used as a fallback when the swapchain has no associated HWND
 /// (e.g. created via `CreateSwapChainForComposition`).
 fn find_process_window() -> Option<HWND> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     struct EnumData {
         pid: u32,
-        hwnd: AtomicUsize,
+        hwnd: usize,
     }
 
     unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let data = unsafe { &*(lparam.0 as *const EnumData) };
+        let data = unsafe { &mut *(lparam.0 as *mut EnumData) };
         let mut wnd_pid = 0u32;
         unsafe { GetWindowThreadProcessId(hwnd, Some(&mut wnd_pid)) };
         if wnd_pid == data.pid && unsafe { IsWindowVisible(hwnd) }.as_bool() {
-            data.hwnd.store(hwnd.0 as usize, Ordering::Relaxed);
+            data.hwnd = hwnd.0 as usize;
             return BOOL(0); // stop enumeration
         }
         BOOL(1) // continue
     }
 
-    let data = EnumData {
+    let mut data = EnumData {
         pid: unsafe { GetCurrentProcessId() },
-        hwnd: AtomicUsize::new(0),
+        hwnd: 0,
     };
 
     unsafe {
-        let _ = EnumWindows(Some(enum_callback), LPARAM(&data as *const _ as isize));
+        let _ = EnumWindows(Some(enum_callback), LPARAM(&mut data as *mut _ as isize));
     }
 
-    let h = data.hwnd.load(std::sync::atomic::Ordering::Relaxed);
-    if h != 0 { Some(HWND(h as _)) } else { None }
+    if data.hwnd != 0 {
+        Some(HWND(data.hwnd as _))
+    } else {
+        None
+    }
 }
 
 #[tracing::instrument]
