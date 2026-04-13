@@ -95,6 +95,7 @@ export type OverlayEventEmitter = EventEmitter<{
 export class Overlay {
   readonly event: OverlayEventEmitter = new EventEmitter();
   readonly [idSym]: unknown;
+  private destroyed = false;
 
   private constructor(id: unknown) {
     this[idSym] = id;
@@ -216,6 +217,8 @@ export class Overlay {
    * Destroy overlay
    */
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     addon.overlayDestroy(this[idSym]);
     this.event.emit('disconnected');
   }
