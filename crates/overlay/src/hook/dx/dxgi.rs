@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 use tracing::{debug, error, trace};
 use windows::{
     Win32::{
-        Foundation::{HMODULE, HWND},
+        Foundation::{HMODULE, HWND, LPARAM},
         Graphics::{
             Direct3D10::{
                 D3D10_DRIVER_TYPE_HARDWARE, D3D10_SDK_VERSION, D3D10CreateDeviceAndSwapChain,
@@ -21,9 +21,13 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIFactory4, IDXGISwapChain1,
-                IDXGISwapChain3,
+                IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIFactory4, IDXGISwapChain,
+                IDXGISwapChain1, IDXGISwapChain3,
             },
+        },
+        System::Threading::GetCurrentProcessId,
+        UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
         },
     },
     core::{BOOL, HRESULT, Interface},
@@ -35,10 +39,67 @@ use crate::{
     hook::dx::{dx11, dx12},
 };
 
+/// Find the main visible window belonging to the current process.
+/// Used as a fallback when the swapchain has no associated HWND
+/// (e.g. created via `CreateSwapChainForComposition`).
+fn find_process_window() -> Option<HWND> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct EnumData {
+        pid: u32,
+        hwnd: AtomicUsize,
+    }
+
+    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = unsafe { &*(lparam.0 as *const EnumData) };
+        let mut wnd_pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut wnd_pid)) };
+        if wnd_pid == data.pid && unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            data.hwnd.store(hwnd.0 as usize, Ordering::Relaxed);
+            return BOOL(0); // stop enumeration
+        }
+        BOOL(1) // continue
+    }
+
+    let data = EnumData {
+        pid: unsafe { GetCurrentProcessId() },
+        hwnd: AtomicUsize::new(0),
+    };
+
+    unsafe {
+        let _ = EnumWindows(Some(enum_callback), LPARAM(&data as *const _ as isize));
+    }
+
+    let h = data.hwnd.load(std::sync::atomic::Ordering::Relaxed);
+    if h != 0 {
+        Some(HWND(h as _))
+    } else {
+        None
+    }
+}
+
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
-    let Ok(hwnd) = (unsafe { swapchain.GetHwnd() }) else {
-        return;
+    let hwnd = match unsafe { swapchain.GetHwnd() } {
+        Ok(hwnd) => hwnd,
+        Err(_) => {
+            // GetHwnd() fails for swapchains created via CreateSwapChainForComposition.
+            // Fall back to GetDesc().OutputWindow, then process window enumeration.
+            let from_desc = swapchain
+                .cast::<IDXGISwapChain>()
+                .ok()
+                .and_then(|sc| unsafe { sc.GetDesc() }.ok())
+                .filter(|desc| !desc.OutputWindow.is_invalid() && desc.OutputWindow.0 as usize != 0)
+                .map(|desc| desc.OutputWindow);
+
+            if let Some(hwnd) = from_desc {
+                hwnd
+            } else if let Some(hwnd) = find_process_window() {
+                hwnd
+            } else {
+                return;
+            }
+        }
     };
 
     if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {

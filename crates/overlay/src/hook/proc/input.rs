@@ -270,25 +270,42 @@ extern "system" fn hooked_get_raw_input_data(
     cbsizeheader: u32,
 ) -> u32 {
     if foreground_hwnd_input_blocked() {
-        if !pdata.is_null() {
-            match uicommand {
-                RID_HEADER => {
-                    unsafe {
-                        pdata
-                            .cast::<RAWINPUTHEADER>()
-                            .write(RAWINPUTHEADER::default());
-                    };
-                }
+        // Determine the expected data size based on the command, matching the
+        // real Win32 API behaviour so callers (e.g. Godot 4) that validate the
+        // returned size against the queried size do not crash.
+        let data_size: u32 = match uicommand {
+            RID_HEADER => core::mem::size_of::<RAWINPUTHEADER>() as u32,
+            RID_INPUT => core::mem::size_of::<RAWINPUT>() as u32,
+            _ => 0,
+        };
 
-                RID_INPUT => unsafe {
-                    pdata.cast::<RAWINPUT>().write(RAWINPUT::default());
-                },
-
-                _ => {}
+        if pdata.is_null() {
+            // Size query: write the required buffer size and return 0 (success).
+            if !pcbsize.is_null() {
+                unsafe { pcbsize.write(data_size) };
             }
+            return 0;
         }
 
-        return 0;
+        // Data query: write a zeroed struct and return the number of bytes
+        // written, exactly as the real API would on success.
+        if !pcbsize.is_null() {
+            unsafe { pcbsize.write(data_size) };
+        }
+
+        match uicommand {
+            RID_HEADER => unsafe {
+                pdata
+                    .cast::<RAWINPUTHEADER>()
+                    .write(RAWINPUTHEADER::default());
+            },
+            RID_INPUT => unsafe {
+                pdata.cast::<RAWINPUT>().write(RAWINPUT::default());
+            },
+            _ => {}
+        }
+
+        return data_size;
     }
 
     unsafe {
