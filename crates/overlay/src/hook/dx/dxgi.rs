@@ -26,9 +26,7 @@ use windows::{
             },
         },
         System::Threading::GetCurrentProcessId,
-        UI::WindowsAndMessaging::{
-            EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
-        },
+        UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible},
     },
     core::{BOOL, HRESULT, Interface},
 };
@@ -71,11 +69,7 @@ fn find_process_window() -> Option<HWND> {
     }
 
     let h = data.hwnd.load(std::sync::atomic::Ordering::Relaxed);
-    if h != 0 {
-        Some(HWND(h as _))
-    } else {
-        None
-    }
+    if h != 0 { Some(HWND(h as _)) } else { None }
 }
 
 #[tracing::instrument]
