@@ -486,7 +486,9 @@ fn is_keyboard_message(message: u32) -> bool {
 /// Filter input messages when blocking is enabled
 #[inline]
 fn should_filter_message(msg: &MSG) -> bool {
-    let dominated = is_cursor_message(msg.message) || is_keyboard_message(msg.message) || msg.message == msg::WM_INPUT;
+    let dominated = is_cursor_message(msg.message)
+        || is_keyboard_message(msg.message)
+        || msg.message == msg::WM_INPUT;
     if !dominated {
         return false;
     }
