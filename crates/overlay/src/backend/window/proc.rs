@@ -52,16 +52,6 @@ fn process_wnd_proc(
     lparam: LPARAM,
 ) -> Option<LRESULT> {
     match msg {
-        // Some games receive mouse/keyboard input through WM_INPUT,
-        // bypassing the standard WM_LBUTTONDOWN etc. message filtering.
-        // We must call DefWindowProc so Windows can clean up the HRAWINPUT handle.
-        msg::WM_INPUT => {
-            let proc = backend.proc.lock();
-            if proc.input_blocking() {
-                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
-            }
-        }
-
         msg::WM_WINDOWPOSCHANGED => {
             let new_size = get_client_size(HWND(backend.id as _)).unwrap();
             let mut render = backend.render.lock();
