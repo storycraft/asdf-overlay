@@ -27,8 +27,6 @@ use windows::{
 
 use crate::ty::CopyRect;
 
-const DEFAULT_FEATURE_LEVELS: [D3D_FEATURE_LEVEL; 1] = [D3D_FEATURE_LEVEL_11_0];
-
 /// Represents an overlay surface.
 ///
 /// This buffers multiple textures to prevent flickering when updating the surface.
@@ -57,7 +55,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                 },
                 HMODULE(ptr::null_mut()),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                Some(&DEFAULT_FEATURE_LEVELS),
+                None,
                 D3D11_SDK_VERSION,
                 Some(&mut device),
                 None,
