@@ -289,13 +289,31 @@ fn process_wnd_proc(
             }
         }
 
+        // Block WM_POINTER* by forwarding to DefWindowProc, which converts them
+        // to legacy WM_LBUTTON*/WM_MOUSEMOVE/WM_MOUSEWHEEL messages.
+        // Those legacy messages then re-enter this WndProc where they are
+        // emitted to the overlay UI and blocked from the game.
+        msg::WM_POINTERUPDATE
+        | msg::WM_POINTERDOWN
+        | msg::WM_POINTERUP
+        | msg::WM_POINTERENTER
+        | msg::WM_POINTERLEAVE
+        | msg::WM_POINTERACTIVATE
+        | msg::WM_POINTERCAPTURECHANGED
+        | msg::WM_POINTERWHEEL
+        | msg::WM_POINTERHWHEEL => {
+            let proc = backend.proc.lock();
+            if proc.input_blocking() {
+                return Some(unsafe { DefWindowProcA(HWND(backend.id as _), msg, wparam, lparam) });
+            }
+        }
+
         // block other keyboard, mouse event
         msg::WM_CAPTURECHANGED
         | msg::WM_ACTIVATE
         | msg::WM_ACTIVATEAPP
         | msg::WM_SETFOCUS
         | msg::WM_KILLFOCUS
-        | msg::WM_POINTERUPDATE
         | msg::WM_DEADCHAR
         | msg::WM_HOTKEY
         | msg::WM_SYSDEADCHAR
