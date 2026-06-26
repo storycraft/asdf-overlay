@@ -1,4 +1,4 @@
-import type { NativeImage, TextureInfo, WebContents, WebContentsPaintEventParams } from 'electron';
+import type { NativeImage, OffscreenSharedTexture, WebContents, WebContentsPaintEventParams } from 'electron';
 import type { OverlayWindow } from './index.js';
 import EventEmitter from 'node:events';
 import { OverlaySurface, type GpuLuid } from '@asdf-overlay/core';
@@ -35,20 +35,11 @@ export class ElectronOverlaySurface {
     this.surface = OverlaySurface.create(luid);
 
     this.handler = (e, rect, image) => {
-      const offscreenTexture = e.texture;
-
-      if (offscreenTexture) {
-        void this.paintAccelerated(offscreenTexture.textureInfo).finally(() => {
-          offscreenTexture.release();
+      const update = e.texture ? this.paintAccelerated(e.texture) : this.paintSoftware(rect, image);
+      if (update) {
+        this.window.overlay.updateHandle(this.window.id, update).catch((e: unknown) => {
+          this.emitError(e);
         });
-      } else {
-        const size = image.getSize();
-        // offscreenTexture undefined if image is empty, handle the case
-        if (size.width === 0 || size.height === 0) {
-          return;
-        }
-
-        void this.paintSoftware(rect, image);
       }
     };
 
@@ -78,54 +69,60 @@ export class ElectronOverlaySurface {
   /**
    * Copy overlay texture in gpu accelerated shared texture mode.
    */
-  private async paintAccelerated(texture: TextureInfo) {
-    // TODO:: cross platform handle
-    if (texture.widgetType !== 'frame' || !texture.handle.ntHandle) {
-      return;
-    }
-    const rect = texture.metadata.captureUpdateRect ?? texture.contentRect;
+  private paintAccelerated(texture: OffscreenSharedTexture) {
+    const info = texture.textureInfo;
 
-    // update only changed part
     try {
-      const update = this.surface.updateShtex(
-        texture.codedSize.width,
-        texture.codedSize.height,
-        texture.handle.ntHandle,
+      // TODO:: cross platform handle
+      if (info.widgetType !== 'frame' || !info.handle.ntHandle) {
+        return null;
+      }
+      const rect = info.metadata.captureUpdateRect ?? info.contentRect;
+
+      // update only changed part
+      return this.surface.updateShtex(
+        info.codedSize.width,
+        info.codedSize.height,
+        info.handle.ntHandle,
         {
           dstX: rect.x,
           dstY: rect.y,
           src: rect,
         },
       );
-
-      if (update) {
-        await this.window.overlay.updateHandle(this.window.id, update);
-      }
     } catch (e) {
       this.emitError(e);
+    } finally {
+      texture.release();
     }
+
+    return null;
   }
 
   /**
    * Copy overlay texture from bitmap surface.
    */
-  private async paintSoftware(
+  private paintSoftware(
     _dirtyRect: Electron.Rectangle,
     image: NativeImage,
   ) {
+    const size = image.getSize();
+    // offscreenTexture undefined if image is empty, handle the case
+    if (size.width === 0 || size.height === 0) {
+      return null;
+    }
+
     // TODO:: update only changed part
     try {
-      const update = this.surface.updateBitmap(
+      return this.surface.updateBitmap(
         image.getSize().width,
         image.toBitmap(),
       );
-
-      if (update) {
-        await this.window.overlay.updateHandle(this.window.id, update);
-      }
     } catch (e) {
       this.emitError(e);
     }
+
+    return null;
   }
 
   private emitError(e: unknown) {
