@@ -35,11 +35,15 @@ export class ElectronOverlaySurface {
     this.surface = OverlaySurface.create(luid);
 
     this.handler = (e, rect, image) => {
-      const update = e.texture ? this.paintAccelerated(e.texture) : this.paintSoftware(rect, image);
-      if (update) {
-        this.window.overlay.updateHandle(this.window.id, update).catch((e: unknown) => {
-          this.emitError(e);
-        });
+      try {
+        const update = e.texture ? this.paintAccelerated(e.texture) : this.paintSoftware(rect, image);
+
+        if (update) {
+          this.window.overlay.updateHandle(this.window.id, update)
+            .catch((e: unknown) => this.events.emit('error', e));
+        }
+      } catch (err) {
+        this.events.emit('error', err);
       }
     };
 
@@ -90,13 +94,9 @@ export class ElectronOverlaySurface {
           src: rect,
         },
       );
-    } catch (e) {
-      this.emitError(e);
     } finally {
       texture.release();
     }
-
-    return null;
   }
 
   /**
@@ -113,24 +113,9 @@ export class ElectronOverlaySurface {
     }
 
     // TODO:: update only changed part
-    try {
-      return this.surface.updateBitmap(
-        image.getSize().width,
-        image.toBitmap(),
-      );
-    } catch (e) {
-      this.emitError(e);
-    }
-
-    return null;
-  }
-
-  private emitError(e: unknown) {
-    if (this.events.listenerCount('error') !== 0) {
-      this.events.emit('error', e);
-      return;
-    }
-
-    throw e;
+    return this.surface.updateBitmap(
+      image.getSize().width,
+      image.toBitmap(),
+    );
   }
 }
