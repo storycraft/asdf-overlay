@@ -197,6 +197,7 @@ dependencies = [
  "napi-derive",
  "num",
  "once_cell",
+ "parking_lot",
  "static_vcruntime",
  "tokio",
  "windows",
