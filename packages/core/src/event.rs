@@ -3,7 +3,7 @@ pub mod input;
 
 use anyhow::Context;
 use napi::{
-    Env, JsValue,
+    Env,
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction, UnknownReturnValue},
 };
@@ -30,8 +30,6 @@ impl JsValuesTupleIntoVec for VarArgs {
 pub type EmitTsFn = ThreadsafeFunction<OverlayEvent, UnknownReturnValue, VarArgs>;
 
 pub fn create_emit_tsfn<'env>(emitter: &Object<'env>) -> anyhow::Result<EmitTsFn> {
-    emitter.value();
-
     let emit_fn = emitter
         .get_named_property::<Function<VarArgs, UnknownReturnValue>>("emit")
         .context("cannot find emit function of EventEmitter")?;

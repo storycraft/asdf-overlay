@@ -17,7 +17,7 @@ use asdf_overlay_client::{
     inject,
 };
 use napi::bindgen_prelude::{Function, JsObjectValue, Object, ObjectRef, PromiseRaw, This};
-use napi::threadsafe_function::ThreadsafeFunctionCallMode::NonBlocking;
+use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
@@ -69,10 +69,16 @@ impl Overlay {
 
     async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: EmitTsFn) {
         while let Some(event) = stream.recv().await {
-            emit_tsfn.call(Ok(OverlayEvent::from(event)), NonBlocking);
+            emit_tsfn.call(
+                Ok(OverlayEvent::from(event)),
+                ThreadsafeFunctionCallMode::NonBlocking,
+            );
         }
 
-        emit_tsfn.call(Ok(OverlayEvent::Disconnected), NonBlocking);
+        emit_tsfn.call(
+            Ok(OverlayEvent::Disconnected),
+            ThreadsafeFunctionCallMode::Blocking,
+        );
     }
 
     async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
