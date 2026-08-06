@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::PercentLength;
 use crate::event::input::Cursor;
-use crate::event::{EmitTsFn, OverlayEvent, create_emit_tsfn, create_event_emitter};
+use crate::event::{EmitTsFn, OverlayEvent, create_emit_tsfn};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::client::IpcClientEventStream;
@@ -16,9 +16,9 @@ use asdf_overlay_client::{
     },
     inject,
 };
-use napi::Env;
-use napi::bindgen_prelude::{Object, ObjectRef, PromiseRaw};
+use napi::bindgen_prelude::{Function, JsObjectValue, Object, ObjectRef, PromiseRaw, This};
 use napi::threadsafe_function::ThreadsafeFunctionCallMode::NonBlocking;
+use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
 use parking_lot::Mutex;
@@ -35,12 +35,13 @@ impl Overlay {
     #[napi]
     pub fn attach<'env>(
         env: &'env Env,
+        this: This,
         dll_dir: PathBuf,
         pid: u32,
         timeout: Option<u32>,
         // Self is not used due to bug in napi-rs generated typing
     ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
-        let emitter = create_event_emitter(env).context("cannot create event emitter")?;
+        let emitter = create_event_emitter(this)?;
         let emitter_ref = emitter.create_ref()?;
         let emit_tsfn = create_emit_tsfn(&emitter)?;
 
@@ -214,4 +215,10 @@ impl Overlay {
 
         Ok(())
     }
+}
+
+fn create_event_emitter<'env>(overlay: This) -> anyhow::Result<Object<'env>> {
+    // See index.js
+    let event_emitter_ctor = overlay.get_named_property::<Function<(), Object>>("EventEmitter")?;
+    Ok(event_emitter_ctor.new_instance(())?.coerce_to_object()?)
 }

@@ -3,30 +3,12 @@ pub mod input;
 
 use anyhow::Context;
 use napi::{
-    Env, JsString, JsValue,
+    Env, JsValue,
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction, UnknownReturnValue},
 };
 
 use crate::{GpuLuid, event::input::InputEvent};
-
-pub fn create_event_emitter<'env>(env: &'env Env) -> anyhow::Result<Object<'env>> {
-    let global = env.get_global()?;
-    let require = global
-        .get_named_property::<Function<JsString, Object>>("require")
-        .context("cannot find require in global")?;
-    let events = require
-        .call(env.create_string("node:events")?)
-        .context("cannot find node:events module")?;
-    let event_emitter_ctor = events
-        .get_named_property::<Function<(), Object>>("EventEmitter")
-        .context("cannot find EventEmitter ctor")?;
-
-    Ok(event_emitter_ctor
-        .new_instance(())
-        .context("cannot create EventEmitter instance")?
-        .coerce_to_object()?)
-}
 
 pub struct VarArgs(Vec<napi::sys::napi_value>);
 
