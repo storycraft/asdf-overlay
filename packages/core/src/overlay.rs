@@ -3,10 +3,9 @@ use std::path::PathBuf;
 
 use crate::PercentLength;
 use crate::event::input::Cursor;
-use crate::event::{EmitTsFn, OverlayEvent, create_emit_tsfn};
+use crate::event::{create_emit_tsfn, event_task};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
-use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common::{self, request};
 use asdf_overlay_client::{
     OverlayDll,
@@ -17,7 +16,6 @@ use asdf_overlay_client::{
     inject,
 };
 use napi::bindgen_prelude::{Function, JsObjectValue, Object, ObjectRef, PromiseRaw, This};
-use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
@@ -59,26 +57,12 @@ impl Overlay {
             .await
             .context("cannot inject to the process")?;
 
-            tokio::spawn(Self::event_task(event, emit_tsfn));
+            tokio::spawn(event_task(event, emit_tsfn));
             Ok(Self {
                 ipc: Some(ipc.into()),
                 emitter_ref: Some(Mutex::new(emitter_ref)),
             })
         })?)
-    }
-
-    async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: EmitTsFn) {
-        while let Some(event) = stream.recv().await {
-            emit_tsfn.call(
-                Ok(OverlayEvent::from(event)),
-                ThreadsafeFunctionCallMode::NonBlocking,
-            );
-        }
-
-        emit_tsfn.call(
-            Ok(OverlayEvent::Disconnected),
-            ThreadsafeFunctionCallMode::Blocking,
-        );
     }
 
     async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
