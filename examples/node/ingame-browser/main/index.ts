@@ -1,6 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay, percent, type GpuLuid } from '@asdf-overlay/core';
-import { InputState } from '@asdf-overlay/core/input';
+import { defaultDllDir, Overlay, percent, type GpuLuid, type KeyInputState } from '@asdf-overlay/core';
 import find from 'find-process';
 import { type OverlayWindow } from '@asdf-overlay/electron';
 import { ElectronOverlaySurface } from '@asdf-overlay/electron/surface';
@@ -40,10 +39,10 @@ async function createOverlayWindow(pid: number) {
 
   let overlayInput: ElectronOverlayInput | null = null;
   let block = false;
-  let shiftState: InputState = 'Released';
-  let aState: InputState = 'Released';
+  let shiftState: KeyInputState = 'Released';
+  let aState: KeyInputState = 'Released';
   overlay.event.on('keyboard_input', (_, input) => {
-    keybind: if (input.kind === 'Key') {
+    keybind: if (input.type === 'Key') {
       const key = input.key;
       if (key.code === 0x10 && !key.extended) {
         shiftState = input.state;
