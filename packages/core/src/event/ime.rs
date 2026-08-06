@@ -1,7 +1,6 @@
 use asdf_overlay_event::input;
 use napi_derive::napi;
 
-
 /// Describe a IME event.
 #[napi]
 pub enum Ime {

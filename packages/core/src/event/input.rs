@@ -84,7 +84,7 @@ impl From<input::CursorEvent> for CursorInputKind {
             },
             input::CursorEvent::Scroll { axis, delta } => CursorInputKind::Scroll {
                 axis: axis.into(),
-                delta: delta,
+                delta,
             },
         }
     }

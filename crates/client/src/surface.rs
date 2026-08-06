@@ -146,13 +146,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             }
 
             ref mut slot @ None => {
-                let (surface, mutex) = create_surface_texture(
-                    &self.device,
-                    width,
-                    height,
-                    format,
-                    None,
-                )?;
+                let (surface, mutex) =
+                    create_surface_texture(&self.device, width, height, format, None)?;
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
                     defer!({

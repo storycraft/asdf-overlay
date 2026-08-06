@@ -16,9 +16,9 @@ use asdf_overlay_client::{
     },
     inject,
 };
-use napi::bindgen_prelude::{ Object, ObjectRef, PromiseRaw};
+use napi::Env;
+use napi::bindgen_prelude::{Object, ObjectRef, PromiseRaw};
 use napi::threadsafe_function::ThreadsafeFunctionCallMode::NonBlocking;
-use napi::{Env};
 use napi_derive::napi;
 use num::FromPrimitive;
 use parking_lot::Mutex;
@@ -39,7 +39,7 @@ impl Overlay {
         pid: u32,
         timeout: Option<u32>,
     ) -> anyhow::Result<PromiseRaw<'env, Self>> {
-        let emitter = create_event_emitter(&env).context("cannot create event emitter")?;
+        let emitter = create_event_emitter(env).context("cannot create event emitter")?;
         let emitter_ref = emitter.create_ref()?;
         let emit_tsfn = create_emit_tsfn(&emitter)?;
 
