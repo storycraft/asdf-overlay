@@ -38,7 +38,8 @@ impl Overlay {
         dll_dir: PathBuf,
         pid: u32,
         timeout: Option<u32>,
-    ) -> anyhow::Result<PromiseRaw<'env, Self>> {
+        // Self is not used due to bug in napi-rs generated typing
+    ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
         let emitter = create_event_emitter(env).context("cannot create event emitter")?;
         let emitter_ref = emitter.create_ref()?;
         let emit_tsfn = create_emit_tsfn(&emitter)?;
