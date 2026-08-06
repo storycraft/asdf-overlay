@@ -122,9 +122,15 @@ impl From<input::KeyboardInput> for KeyboardInput {
     }
 }
 
+/// Describe a virtual key code.
 #[napi(object)]
 pub struct Key {
+    /// A Windows Virtual-Key code.
     pub code: u8,
+
+    /// Whether if this key is an extended key.
+    ///
+    /// This is usually true for right-side modifier keys, numpad keys, and arrow keys.
     pub extended: bool,
 }
 
