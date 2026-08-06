@@ -146,27 +146,29 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
             }
 
             ref mut slot @ None => {
-                let (surface, mutex) = slot.insert(create_surface_texture(
+                let (surface, mutex) = create_surface_texture(
                     &self.device,
                     width,
                     height,
                     format,
                     None,
-                )?);
+                )?;
                 unsafe {
                     mutex.AcquireSync(0, u32::MAX)?;
                     defer!({
                         _ = mutex.ReleaseSync(0);
                     });
 
-                    copy_to_surface(&self.cx, width, height, surface, src_texture, rect)?;
+                    copy_to_surface(&self.cx, width, height, &surface, src_texture, rect)?;
                 }
 
-                Ok(Some(UpdateSharedHandle {
+                let update = UpdateSharedHandle {
                     handle: NonZeroU32::new(
                         unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as u32,
                     ),
-                }))
+                };
+                *slot = Some((surface, mutex));
+                Ok(Some(update))
             }
         }
     }
