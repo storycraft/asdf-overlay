@@ -1,7 +1,7 @@
 use core::num::NonZeroU32;
 
 use anyhow::Context;
-use asdf_overlay_client::{common::request, event, surface, ty};
+use asdf_overlay_client::{common::request, surface, ty};
 use bytemuck::try_pod_read_unaligned;
 use napi::bindgen_prelude::BufferSlice;
 use napi_derive::napi;
@@ -9,6 +9,8 @@ use windows::Win32::{
     Foundation::LUID,
     Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
 };
+
+use crate::GpuLuid;
 
 /// Represent a surface for overlay
 #[napi]
@@ -72,21 +74,6 @@ impl OverlaySurface {
         data: BufferSlice,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         Ok(self.0.update_bitmap(width, &data)?.map(From::from))
-    }
-}
-
-#[napi(object)]
-pub struct GpuLuid {
-    pub low: u32,
-    pub high: i32,
-}
-
-impl From<GpuLuid> for event::GpuLuid {
-    fn from(val: GpuLuid) -> Self {
-        event::GpuLuid {
-            low: val.low,
-            high: val.high,
-        }
     }
 }
 

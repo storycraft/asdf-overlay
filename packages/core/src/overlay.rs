@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::PercentLength;
-use crate::input::Cursor;
+use crate::event::OverlayEvent;
+use crate::event::input::Cursor;
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
 use asdf_overlay_client::common::{self, request};
@@ -15,8 +16,7 @@ use asdf_overlay_client::{
     },
     inject,
 };
-use napi::Env;
-use napi::bindgen_prelude::{AsyncGenerator, Buffer, Reference};
+use napi::bindgen_prelude::AsyncGenerator;
 use napi_derive::napi;
 use num::FromPrimitive;
 use tokio::sync::{Mutex, MutexGuard};
@@ -178,7 +178,7 @@ impl Overlay {
 
     /// Detach and destroy overlay
     #[napi]
-    pub fn detach(&mut self, env: Env) -> anyhow::Result<()> {
+    pub fn detach(&mut self) -> anyhow::Result<()> {
         self.ipc.take().context("overlay is already detached")?;
         Ok(())
     }
@@ -192,7 +192,7 @@ pub struct OverlayEventStream {
 
 #[napi]
 impl AsyncGenerator for OverlayEventStream {
-    type Yield = Buffer;
+    type Yield = OverlayEvent;
     type Next = ();
     type Return = ();
 
@@ -207,8 +207,7 @@ impl AsyncGenerator for OverlayEventStream {
                 return Ok(None);
             };
 
-            // TODO
-            Ok(Some(Buffer::default()))
+            Ok(Some(OverlayEvent::from(event)))
         }
     }
 }
