@@ -1,10 +1,3 @@
 /target
 node_modules
-/packages/*/lib
-/examples/node/ingame-browser/out
 doc/book
-packages/core/addon-aarch64.node
-packages/core/addon-x64.node
-packages/core/asdf_overlay-aarch64.dll
-packages/core/asdf_overlay-x64.dll
-packages/core/asdf_overlay-x86.dll

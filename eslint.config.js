@@ -9,6 +9,8 @@ export default defineConfig(
   globalIgnores([
     './target/**/*',
     './doc/book/**/*',
+    './packages/core/index.js',
+    './packages/core/index.d.ts',
     './packages/*/lib',
     './examples/node/ingame-browser/out/**/*',
   ]),
