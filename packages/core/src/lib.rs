@@ -1,6 +1,6 @@
+pub mod input;
 pub mod overlay;
 pub mod surface;
-pub mod input;
 
 use asdf_overlay_client::common::size;
 use mimalloc::MiMalloc;
