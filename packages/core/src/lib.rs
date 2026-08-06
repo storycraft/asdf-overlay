@@ -47,3 +47,15 @@ impl From<PercentLength> for size::PercentLength {
         }
     }
 }
+
+/// Utility function to create `PercentLength` using percent relative value.
+#[napi]
+pub fn percent(value: f64) -> PercentLength {
+    PercentLength::Percent { value }
+}
+
+/// Utility function to create `PercentLength` using absolute length value.
+#[napi]
+pub fn length(value: f64) -> PercentLength {
+    PercentLength::Length { value }
+}

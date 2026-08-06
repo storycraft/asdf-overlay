@@ -30,6 +30,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "native.js",
+    "native.d.ts",
     "addon.win32-arm64-msvc.node",
     "addon.win32-ia32-msvc.node",
     "addon.win32-x64-msvc.node",

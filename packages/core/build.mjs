@@ -36,11 +36,11 @@ const { dts, exports } = await generateTypeDef({
   dtsHeaderFile: './types.d.ts',
   cwd: import.meta.dirname,
 });
-await writeFile(join(import.meta.dirname, 'index.d.ts'), dts);
+await writeFile(join(import.meta.dirname, 'native.d.ts'), dts);
 
 // 5. Write JS binding
 await writeJsBinding({
-  jsBinding: 'index.js',
+  jsBinding: 'native.js',
   platform: true,
   binaryName: pkg.napi.binaryName,
   packageName: pkg.name,

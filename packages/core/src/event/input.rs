@@ -142,6 +142,15 @@ impl From<input::Key> for Key {
     }
 }
 
+/// Utility function to create `Key` using key code and optional extended flag.
+#[napi]
+pub fn key(code: u8, extended: Option<bool>) -> Key {
+    Key {
+        code,
+        extended: extended.unwrap_or(false),
+    }
+}
+
 /// Cursor scroll axis.
 #[napi(string_enum)]
 pub enum ScrollAxis {
