@@ -33,7 +33,8 @@ await exec(
 const { dts, exports } = await generateTypeDef({
   typeDefDir,
   constEnum: false,
-  cwd: process.cwd(),
+  dtsHeaderFile: './types.d.ts',
+  cwd: import.meta.dirname,
 });
 await writeFile(join(import.meta.dirname, 'index.d.ts'), dts);
 

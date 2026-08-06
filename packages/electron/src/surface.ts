@@ -32,7 +32,7 @@ export class ElectronOverlaySurface {
     luid: GpuLuid,
     private readonly contents: WebContents,
   ) {
-    this.surface = OverlaySurface.create(luid);
+    this.surface = new OverlaySurface(luid);
 
     this.handler = (e, rect, image) => {
       const offscreenTexture = e.texture;
@@ -87,7 +87,7 @@ export class ElectronOverlaySurface {
 
     // update only changed part
     try {
-      const update = this.surface.updateShtex(
+      const update = this.surface.updateNtShtex(
         texture.codedSize.width,
         texture.codedSize.height,
         texture.handle.ntHandle,

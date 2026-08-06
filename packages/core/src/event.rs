@@ -1,11 +1,95 @@
-pub mod input;
 pub mod ime;
+pub mod input;
 
-use napi_derive::napi;
+use anyhow::Context;
+use napi::{
+    Env, JsString, JsValue,
+    bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
+    threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction, UnknownReturnValue},
+};
 
 use crate::{GpuLuid, event::input::InputEvent};
 
-#[napi]
+pub fn create_event_emitter<'env>(env: &'env Env) -> anyhow::Result<Object<'env>> {
+    let global = env.get_global()?;
+    let require = global
+        .get_named_property::<Function<JsString, Object>>("require")
+        .context("cannot find require in global")?;
+    let events = require
+        .call(env.create_string("node:events")?)
+        .context("cannot find node:events module")?;
+    let event_emitter_ctor = events
+        .get_named_property::<Function<(), Object>>("EventEmitter")
+        .context("cannot find EventEmitter ctor")?;
+
+    Ok(event_emitter_ctor
+        .new_instance(())
+        .context("cannot create EventEmitter instance")?
+        .coerce_to_object()?)
+}
+
+pub struct VarArgs(Vec<napi::sys::napi_value>);
+
+impl VarArgs {
+    fn of<T>(env: &Env, args: T) -> napi::Result<Self>
+    where
+        FnArgs<T>: JsValuesTupleIntoVec,
+    {
+        Ok(Self(FnArgs::from(args).into_vec(env.raw())?))
+    }
+}
+
+impl JsValuesTupleIntoVec for VarArgs {
+    fn into_vec(self, _: napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>> {
+        Ok(self.0)
+    }
+}
+
+pub type EmitTsFn = ThreadsafeFunction<OverlayEvent, UnknownReturnValue, VarArgs>;
+
+pub fn create_emit_tsfn<'env>(emitter: &Object<'env>) -> anyhow::Result<EmitTsFn> {
+    emitter.value();
+
+    let emit_fn = emitter
+        .get_named_property::<Function<VarArgs, UnknownReturnValue>>("emit")
+        .context("cannot find emit function of EventEmitter")?;
+    let emit_fn = emit_fn.bind(emitter)?;
+
+    emit_fn
+        .build_threadsafe_function::<OverlayEvent>()
+        .callee_handled()
+        .build_callback(emit_callback)
+        .context("failed to build threadsafe function")
+}
+
+fn emit_callback(ctx: ThreadsafeCallContext<OverlayEvent>) -> napi::Result<VarArgs> {
+    let env = ctx.env;
+
+    Ok(match ctx.value {
+        OverlayEvent::Window { id, event } => match event {
+            WindowEvent::Added {
+                width,
+                height,
+                gpu_id,
+            } => VarArgs::of(&env, ("added", id, width, height, gpu_id))?,
+
+            WindowEvent::Resized { width, height } => {
+                VarArgs::of(&env, ("resized", id, width, height))?
+            }
+            WindowEvent::Input(event) => match event {
+                InputEvent::Cursor { event } => VarArgs::of(&env, ("cursor_input", id, event))?,
+                InputEvent::Keyboard { event } => VarArgs::of(&env, ("keyboard_input", id, event))?,
+            },
+
+            WindowEvent::InputBlockingEnded => VarArgs::of(&env, ("input_blocking_ended", id))?,
+
+            WindowEvent::Destroyed => VarArgs::of(&env, ("destroyed", id))?,
+        },
+
+        OverlayEvent::Disconnected => VarArgs::of(&env, ("disconnected",))?,
+    })
+}
+
 pub enum OverlayEvent {
     /// Events related to a specific window.
     Window {
@@ -13,6 +97,8 @@ pub enum OverlayEvent {
         id: u32,
         event: WindowEvent,
     },
+
+    Disconnected,
 }
 
 impl From<asdf_overlay_event::OverlayEvent> for OverlayEvent {
@@ -27,7 +113,6 @@ impl From<asdf_overlay_event::OverlayEvent> for OverlayEvent {
 }
 
 /// Describe a window event.
-#[napi]
 pub enum WindowEvent {
     /// A new window capable for overlay rendering is identified.
     Added {

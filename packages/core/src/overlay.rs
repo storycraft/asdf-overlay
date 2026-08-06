@@ -1,57 +1,79 @@
 use core::time::Duration;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::PercentLength;
-use crate::event::OverlayEvent;
 use crate::event::input::Cursor;
+use crate::event::{EmitTsFn, OverlayEvent, create_emit_tsfn, create_event_emitter};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
+use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common::{self, request};
 use asdf_overlay_client::{
     OverlayDll,
-    client::{IpcClientConn, IpcClientEventStream},
+    client::IpcClientConn,
     common::request::{
         BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
     },
     inject,
 };
-use napi::bindgen_prelude::AsyncGenerator;
+use napi::bindgen_prelude::{ Object, ObjectRef, PromiseRaw};
+use napi::threadsafe_function::ThreadsafeFunctionCallMode::NonBlocking;
+use napi::{Env};
 use napi_derive::napi;
 use num::FromPrimitive;
-use tokio::sync::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 
 #[napi]
 pub struct Overlay {
-    ipc: Option<Mutex<IpcClientConn>>,
-    events: OverlayEventStream,
+    ipc: Option<tokio::sync::Mutex<IpcClientConn>>,
+    emitter_ref: Option<Mutex<ObjectRef>>,
 }
 
 #[napi]
 impl Overlay {
     /// Attach overlay to target process
-    #[napi(factory)]
-    pub async fn attach(dll_dir: PathBuf, pid: u32, timeout: Option<u32>) -> anyhow::Result<Self> {
-        let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
-        let (ipc, event) = inject(
-            pid,
-            OverlayDll {
-                x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
-                x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
-                arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
-            },
-            timeout,
-        )
-        .await
-        .context("cannot inject to the process")?;
+    #[napi]
+    pub fn attach<'env>(
+        env: &'env Env,
+        dll_dir: PathBuf,
+        pid: u32,
+        timeout: Option<u32>,
+    ) -> anyhow::Result<PromiseRaw<'env, Self>> {
+        let emitter = create_event_emitter(&env).context("cannot create event emitter")?;
+        let emitter_ref = emitter.create_ref()?;
+        let emit_tsfn = create_emit_tsfn(&emitter)?;
 
-        Ok(Self {
-            ipc: Some(ipc.into()),
-            events: OverlayEventStream::new(event),
-        })
+        Ok(env.spawn_future(async move {
+            let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
+            let (ipc, event) = inject(
+                pid,
+                OverlayDll {
+                    x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
+                    x86: Some(&dll_dir.join("asdf_overlay-x86.dll")),
+                    arm64: Some(&dll_dir.join("asdf_overlay-aarch64.dll")),
+                },
+                timeout,
+            )
+            .await
+            .context("cannot inject to the process")?;
+
+            tokio::spawn(Self::event_task(event, emit_tsfn));
+            Ok(Self {
+                ipc: Some(ipc.into()),
+                emitter_ref: Some(Mutex::new(emitter_ref)),
+            })
+        })?)
     }
 
-    async fn ipc(&self) -> anyhow::Result<MutexGuard<'_, IpcClientConn>> {
+    async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: EmitTsFn) {
+        while let Some(event) = stream.recv().await {
+            emit_tsfn.call(Ok(OverlayEvent::from(event)), NonBlocking);
+        }
+
+        emit_tsfn.call(Ok(OverlayEvent::Disconnected), NonBlocking);
+    }
+
+    async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
         Ok(self
             .ipc
             .as_ref()
@@ -60,9 +82,14 @@ impl Overlay {
             .await)
     }
 
-    #[napi(getter)]
-    pub fn events(&self) -> OverlayEventStream {
-        self.events.clone()
+    #[napi(getter, ts_return_type = "OverlayEventEmitter")]
+    pub fn event<'env>(&self, env: &'env Env) -> anyhow::Result<Object<'env>> {
+        Ok(self
+            .emitter_ref
+            .as_ref()
+            .context("Overlay is detached")?
+            .lock()
+            .get_value(env)?)
     }
 
     /// Update overlay surface.
@@ -178,44 +205,12 @@ impl Overlay {
 
     /// Detach and destroy overlay
     #[napi]
-    pub fn detach(&mut self) -> anyhow::Result<()> {
+    pub fn detach(&mut self, env: Env) -> anyhow::Result<()> {
         self.ipc.take().context("overlay is already detached")?;
+        if let Some(r) = self.emitter_ref.take() {
+            r.into_inner().unref(&env)?;
+        }
+
         Ok(())
-    }
-}
-
-#[napi(async_iterator)]
-#[derive(Clone)]
-pub struct OverlayEventStream {
-    stream: Arc<Mutex<IpcClientEventStream>>,
-}
-
-#[napi]
-impl AsyncGenerator for OverlayEventStream {
-    type Yield = OverlayEvent;
-    type Next = ();
-    type Return = ();
-
-    fn next(
-        &mut self,
-        _: Option<()>,
-    ) -> impl Future<Output = napi::Result<Option<Self::Yield>>> + Send + 'static {
-        let stream = self.stream.clone();
-
-        async move {
-            let Some(event) = stream.lock().await.recv().await else {
-                return Ok(None);
-            };
-
-            Ok(Some(OverlayEvent::from(event)))
-        }
-    }
-}
-
-impl OverlayEventStream {
-    pub fn new(stream: IpcClientEventStream) -> Self {
-        Self {
-            stream: Arc::new(Mutex::new(stream)),
-        }
     }
 }

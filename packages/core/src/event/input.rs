@@ -3,7 +3,6 @@ use napi_derive::napi;
 
 use crate::event::ime::Ime;
 
-#[napi]
 pub enum InputEvent {
     Cursor { event: CursorInput },
     Keyboard { event: KeyboardInput },
@@ -64,7 +63,7 @@ pub enum CursorInputKind {
     Move,
 
     /// Cursor button has been pressed or released
-    Button {
+    Action {
         action: CursorAction,
         state: CursorInputState,
     },
@@ -79,7 +78,7 @@ impl From<input::CursorEvent> for CursorInputKind {
             input::CursorEvent::Enter => CursorInputKind::Enter,
             input::CursorEvent::Leave => CursorInputKind::Leave,
             input::CursorEvent::Move => CursorInputKind::Move,
-            input::CursorEvent::Action { state, action } => CursorInputKind::Button {
+            input::CursorEvent::Action { state, action } => CursorInputKind::Action {
                 action: action.into(),
                 state: state.into(),
             },
