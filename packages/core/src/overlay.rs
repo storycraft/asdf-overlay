@@ -15,13 +15,15 @@ use asdf_overlay_client::{
     },
     inject,
 };
-use napi::bindgen_prelude::{Function, JsObjectValue, Object, ObjectRef, PromiseRaw, This};
+use napi::bindgen_prelude::{
+    Function, JsObjectValue, Object, ObjectFinalize, ObjectRef, PromiseRaw, This,
+};
 use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
 use parking_lot::Mutex;
 
-#[napi]
+#[napi(custom_finalize)]
 pub struct Overlay {
     ipc: Option<tokio::sync::Mutex<IpcClientConn>>,
     emitter_ref: Option<Mutex<ObjectRef>>,
@@ -200,6 +202,16 @@ impl Overlay {
     pub fn detach(&mut self, env: Env) -> anyhow::Result<()> {
         self.ipc.take().context("overlay is already detached")?;
         if let Some(r) = self.emitter_ref.take() {
+            r.into_inner().unref(&env)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl ObjectFinalize for Overlay {
+    fn finalize(self, env: Env) -> napi::Result<()> {
+        if let Some(r) = self.emitter_ref {
             r.into_inner().unref(&env)?;
         }
 
