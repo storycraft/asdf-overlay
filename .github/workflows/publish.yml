@@ -71,11 +71,19 @@ jobs:
       - name: Bump node package version
         id: bump
         run: |
-          npm config set git-tag-version=false
           $ver = pnpm --filter "@asdf-overlay/*" exec npm version ${{ github.event.inputs.level }}
           $ver=$ver[0]
           git commit -a -m "chore: Bump node package version"
           "version=" + $ver.substring(1) >> $env:GITHUB_OUTPUT
+        env:
+          NPM_CONFIG_GIT_TAG_VERSION: false
+
+      - name: Download js bindings artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.release-deploy.outputs.js-bindings-artifact-id }}
+          path: 'packages/core'
+          merge-multiple: true
 
       - name: Download signed artifacts
         uses: actions/download-artifact@v4
@@ -85,10 +93,10 @@ jobs:
           merge-multiple: true
 
       - name: Publish node package
-        run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}
+        run: pnpm ci:publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_DRY_RUN: ${{ !inputs.execute && 'true' || 'false' }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Bump cargo package versions, publish
@@ -99,7 +107,7 @@ jobs:
 
       - name: Release
         if: ${{ inputs.execute }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: 'Asdf Overlay v${{ steps.bump.outputs.version }}'
           draft: false

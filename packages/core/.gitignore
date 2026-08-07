@@ -1,0 +1,8 @@
+/native.js
+/native.d.ts
+/addon.win32-arm64-msvc.node
+/addon.win32-ia32-msvc.node
+/addon.win32-x64-msvc.node
+/asdf_overlay-aarch64.dll
+/asdf_overlay-x64.dll
+/asdf_overlay-x86.dll

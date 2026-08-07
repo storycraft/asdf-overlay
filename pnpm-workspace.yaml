@@ -3,6 +3,10 @@ packages:
   - examples/node/*
   - packages/*
 
-onlyBuiltDependencies:
-  - electron
-  - esbuild
+catalog:
+  typescript: ^7.0.2
+  '@types/node': ^22.13.14
+
+allowBuilds:
+  electron: true
+  esbuild: false

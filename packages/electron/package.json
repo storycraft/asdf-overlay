@@ -16,8 +16,8 @@
     "url": "https://github.com/storycraft/asdf-overlay"
   },
   "scripts": {
-    "build:dist": "tsc",
-    "build": "npm run build:dist"
+    "build:publish": "tsc",
+    "build": "npm run build:publish"
   },
   "exports": {
     ".": {
@@ -33,12 +33,12 @@
     "lib/**/*"
   ],
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "typescript": "^6.0.3"
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   },
   "peerDependencies": {
     "@asdf-overlay/core": "workspace:*",
-    "electron": "^40.1.0"
+    "electron": "^43.3.0"
   },
-  "packageManager": "pnpm@10.13.1"
+  "packageManager": "pnpm@11.17.0"
 }

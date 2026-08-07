@@ -3,7 +3,7 @@ members = [
     "./crates/*",
     "./xtask",
     "./examples/rust/*",
-    "./packages/core/native",
+    "./packages/core",
 ]
 resolver = "2"
 
@@ -30,7 +30,7 @@ asdf-overlay-common = { version = "1.2.2", path = "./crates/common" }
 asdf-overlay-event = { version = "1.2.2", path = "./crates/event" }
 asdf-overlay-vulkan-layer = { version = "1.2.2", path = "./crates/vulkan-layer" }
 
-tokio = "1.47.1"
+tokio = "1.53.1"
 
 [workspace.dependencies.windows]
 version = "0.62.2"
