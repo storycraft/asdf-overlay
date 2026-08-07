@@ -47,6 +47,19 @@ pub(crate) fn create_emit_tsfn<'env>(emitter: &Object<'env>) -> anyhow::Result<E
 }
 
 pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: EmitTsFn) {
+    struct Emitter(EmitTsFn);
+    impl Emitter {
+        fn emit<Args>(&self, args: Args)
+        where
+            FnArgs<Args>: JsValuesTupleIntoVec,
+            Args: 'static,
+        {
+            self.0
+                .call(VarArgs::of(args), ThreadsafeFunctionCallMode::Blocking);
+        }
+    }
+
+    let emitter = Emitter(emit_tsfn);
     while let Some(event) = stream.recv().await {
         match event {
             OverlayEvent::Window { id, event } => match event {
@@ -55,52 +68,31 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                     height,
                     gpu_id,
                 } => {
-                    emit_tsfn.call(
-                        VarArgs::of(("added", id, width, height, GpuLuid::from(gpu_id))),
-                        ThreadsafeFunctionCallMode::NonBlocking,
-                    );
+                    emitter.emit(("added", id, width, height, GpuLuid::from(gpu_id)));
                 }
 
                 WindowEvent::Resized { width, height } => {
-                    emit_tsfn.call(
-                        VarArgs::of(("resized", id, width, height)),
-                        ThreadsafeFunctionCallMode::NonBlocking,
-                    );
+                    emitter.emit(("resized", id, width, height));
                 }
                 WindowEvent::Input(input) => match InputEvent::from(input) {
                     InputEvent::Cursor { event } => {
-                        emit_tsfn.call(
-                            VarArgs::of(("cursor_input", id, event)),
-                            ThreadsafeFunctionCallMode::NonBlocking,
-                        );
+                        emitter.emit(("cursor_input", id, event));
                     }
                     InputEvent::Keyboard { event } => {
-                        emit_tsfn.call(
-                            VarArgs::of(("keyboard_input", id, event)),
-                            ThreadsafeFunctionCallMode::NonBlocking,
-                        );
+                        emitter.emit(("keyboard_input", id, event));
                     }
                 },
 
                 WindowEvent::InputBlockingEnded => {
-                    emit_tsfn.call(
-                        VarArgs::of(("input_blocking_ended", id)),
-                        ThreadsafeFunctionCallMode::NonBlocking,
-                    );
+                    emitter.emit(("input_blocking_ended", id));
                 }
 
                 WindowEvent::Destroyed => {
-                    emit_tsfn.call(
-                        VarArgs::of(("destroyed", id)),
-                        ThreadsafeFunctionCallMode::NonBlocking,
-                    );
+                    emitter.emit(("destroyed", id));
                 }
             },
         }
     }
 
-    emit_tsfn.call(
-        VarArgs::of(("disconnected",)),
-        ThreadsafeFunctionCallMode::Blocking,
-    );
+    emitter.emit(("disconnected",));
 }
