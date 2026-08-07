@@ -179,10 +179,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "asdf-overlay-input"
-version = "1.2.2"
-
-[[package]]
 name = "asdf-overlay-node"
 version = "1.2.2"
 dependencies = [
@@ -216,6 +212,19 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "scopeguard",
+ "tracing",
+ "windows",
+]
+
+[[package]]
+name = "asdf-overlay-window"
+version = "1.2.2"
+dependencies = [
+ "anyhow",
+ "asdf-overlay-common",
+ "asdf-overlay-hook",
+ "once_cell",
+ "parking_lot",
  "tracing",
  "windows",
 ]
