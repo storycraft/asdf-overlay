@@ -12,22 +12,13 @@ export class ElectronOverlayInput {
   private readonly keyboardInputHandler: (id: number, input: KeyboardInput) => void;
 
   private readonly cursorChangedHandler: (e: Electron.Event, type: string) => void;
-  private readonly displayMetricsChangedHandler: () => void;
-
-  private screenScaleFactor: number;
 
   private constructor(
     private readonly window: OverlayWindow,
     private readonly contents: WebContents,
+    private readonly scaleFactor: number,
   ) {
     this.window = { ...window };
-    this.screenScaleFactor = screen.getPrimaryDisplay().scaleFactor;
-    screen.addListener(
-      'display-metrics-changed',
-      this.displayMetricsChangedHandler = () => {
-        this.screenScaleFactor = screen.getPrimaryDisplay().scaleFactor;
-      },
-    );
 
     this.window.overlay.event.on(
       'cursor_input',
@@ -61,15 +52,13 @@ export class ElectronOverlayInput {
    * Connect overlay inputs to a Electron `WebContents`.
    */
   static connect(window: OverlayWindow, contents: WebContents): ElectronOverlayInput {
-    return new ElectronOverlayInput({ ...window }, contents);
+    return new ElectronOverlayInput({ ...window }, contents, 1.0 /* todo */);
   }
 
   /**
    * Disconnect overlay inputs.
    */
   async disconnect() {
-    screen.removeListener('display-metrics-changed', this.displayMetricsChangedHandler);
-
     this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
     this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);
     this.contents.off('cursor-changed', this.cursorChangedHandler);
@@ -153,10 +142,10 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX / this.screenScaleFactor;
-    const y = input.clientY / this.screenScaleFactor;
-    const globalX = input.windowX / this.screenScaleFactor;
-    const globalY = input.windowY / this.screenScaleFactor;
+    const x = input.clientX / this.scaleFactor;
+    const y = input.clientY / this.scaleFactor;
+    const globalX = input.windowX / this.scaleFactor;
+    const globalY = input.windowY / this.scaleFactor;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;
