@@ -86,12 +86,14 @@ jobs:
 
       - name: Publish node package
         run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Bump cargo package versions, publish
         run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute && '--execute' || '' }}
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
