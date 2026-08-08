@@ -33,12 +33,12 @@ use windows::Win32::{
                 ImmGetConversionStatus, ImmReleaseContext,
             },
             KeyboardAndMouse::{
-                GetDoubleClickTime, GetKeyboardLayout, ReleaseCapture, SetCapture, TME_LEAVE,
+                GetDoubleClickTime, GetKeyboardLayout, TME_LEAVE,
                 TRACKMOUSEEVENT, TrackMouseEvent,
             },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, SetCursor, WM_NCDESTROY,
+            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, WM_NCDESTROY,
             XBUTTON1,
         },
     },
@@ -567,14 +567,6 @@ fn cursor_event<const BLOCK_RESULT: isize>(
     if proc.input_blocking() {
         // prevent deadlock
         drop(proc);
-        match state {
-            CursorInputState::Pressed { .. } => unsafe {
-                SetCapture(HWND(hwnd as _));
-            },
-            CursorInputState::Released => unsafe {
-                _ = ReleaseCapture();
-            },
-        }
 
         Some(LRESULT(BLOCK_RESULT))
     } else {
@@ -602,6 +594,8 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
     OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: 0,
+            primary: true,
             event,
             client: surface,
             window,
