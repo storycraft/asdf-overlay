@@ -446,41 +446,39 @@ fn emit_cursor_scroll_event(
     });
 }
 
-const CURSOR_MESSAGES: &[u32] = &[
-    msg::WM_MOUSEMOVE,
-    msg::WM_LBUTTONDOWN,
-    msg::WM_LBUTTONUP,
-    msg::WM_LBUTTONDBLCLK,
-    msg::WM_RBUTTONDOWN,
-    msg::WM_RBUTTONUP,
-    msg::WM_RBUTTONDBLCLK,
-    msg::WM_MBUTTONDOWN,
-    msg::WM_MBUTTONUP,
-    msg::WM_MBUTTONDBLCLK,
-    msg::WM_XBUTTONDOWN,
-    msg::WM_XBUTTONUP,
-    msg::WM_XBUTTONDBLCLK,
-    msg::WM_MOUSEWHEEL,
-    msg::WM_MOUSEHWHEEL,
-];
-
-const KEYBOARD_MESSAGES: &[u32] = &[
-    msg::WM_KEYDOWN,
-    msg::WM_KEYUP,
-    msg::WM_CHAR,
-    msg::WM_SYSKEYDOWN,
-    msg::WM_SYSKEYUP,
-    msg::WM_SYSCHAR,
-];
-
 #[inline]
 fn is_cursor_message(message: u32) -> bool {
-    CURSOR_MESSAGES.contains(&message)
+    matches!(
+        message,
+        msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
+    )
 }
 
 #[inline]
 fn is_keyboard_message(message: u32) -> bool {
-    KEYBOARD_MESSAGES.contains(&message)
+    matches!(
+        message,
+        msg::WM_KEYDOWN
+            | msg::WM_KEYUP
+            | msg::WM_CHAR
+            | msg::WM_SYSKEYDOWN
+            | msg::WM_SYSKEYUP
+            | msg::WM_SYSCHAR
+    )
 }
 
 /// Filter input messages when blocking is enabled
