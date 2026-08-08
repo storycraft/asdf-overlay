@@ -1,43 +1,45 @@
+use core::sync::atomic::{AtomicU32, Ordering};
+
+use parking_lot::RwLock;
+use windows::Win32::UI::WindowsAndMessaging::WNDPROC;
+
 mod proc;
 
 pub(crate) struct WindowProcState {
-    pub(crate) position: (i32, i32),
+    size: (AtomicU32, AtomicU32),
+    original_proc: WNDPROC,
 
-    pub(crate) listen_input: ListenInputFlags,
+    pub(crate) input_flags: ListenInputFlags,
     blocking_state: Option<InputBlockData>,
-    blocking_ime_cx: usize,
 
-    ime: ImeState,
+    ime: RwLock<ImeState>,
     last_click_time: i32,
 }
 
 impl WindowProcState {
-    pub fn new(blocking_ime_cx: usize) -> Self {
+    pub(crate) fn new(size: (u32, u32), original_proc: WNDPROC) -> Self {
         Self {
-            position: (0, 0),
+            size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
+            original_proc,
 
-            listen_input: ListenInputFlags::empty(),
+            input_flags: ListenInputFlags::empty(),
             blocking_state: None,
-            blocking_ime_cx,
 
-            ime: ImeState::Disabled,
+            ime: RwLock::new(ImeState::Disabled),
             last_click_time: 0,
         }
     }
 
-    #[inline]
-    pub fn listening_cursor(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::CURSOR) || self.blocking_state.is_some()
+    pub(crate) fn size(&self) -> (u32, u32) {
+        (
+            self.size.0.load(Ordering::Relaxed),
+            self.size.1.load(Ordering::Relaxed),
+        )
     }
 
-    #[inline]
-    pub fn listening_keyboard(&self) -> bool {
-        self.listen_input.contains(ListenInputFlags::KEYBOARD) || self.blocking_state.is_some()
-    }
-
-    #[inline]
-    pub fn input_blocking(&self) -> bool {
-        self.blocking_state.is_some()
+    pub(crate) fn set_size(&self, width: u32, height: u32) {
+        self.size.0.store(width, Ordering::Relaxed);
+        self.size.1.store(height, Ordering::Relaxed);
     }
 
     pub fn update_click_time(&mut self, new_time: i32) -> u32 {

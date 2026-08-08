@@ -1,23 +1,31 @@
 use asdf_overlay_event::{
     OverlayEvent, WindowEvent,
-    input::{CursorAction, CursorInput, InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis},
+    input::{
+        CursorAction, CursorInput, InputEvent, InputPosition, Key, KeyInputState, KeyboardInput,
+        ScrollAxis,
+    },
 };
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM}, System::Threading::GetCurrentThreadId, UI::{
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        System::Threading::GetCurrentThreadId,
+        UI::{
             Input::KeyboardAndMouse::{
-                GetDoubleClickTime, MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
-            }, WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, GetMessageTime, MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+                MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
+            },
+            WindowsAndMessaging::{
+                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
+                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
             },
         },
-    }, core::BOOL,
+    },
+    core::BOOL,
 };
 
-use crate::{Backends, window::WindowProcState};
+use crate::{Backends, window::ListenInputFlags};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
@@ -159,7 +167,7 @@ extern "system" fn hooked_get_message_a(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageA called");
-    get_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax).into()
+    get_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
 #[tracing::instrument]
@@ -170,7 +178,7 @@ extern "system" fn hooked_get_message_w(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageW called");
-    get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax).into()
+    get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
 #[tracing::instrument]
@@ -211,15 +219,18 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
     Backends::get().message_loop_state(id, |msg_loop_state| {
         let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
         if !root_hwnd.is_invalid() {
-            let wnd_state = (); // TODO::
+            let window_id = root_hwnd.0 as _;
 
-            // if proc.listening_cursor() {
-            //     emit_cursor_event_from_message(backend.id, &proc, msg);
-            // }
+            let input_flags =
+                Backends::get().window_state(window_id, |wnd_state| wnd_state.input_flags);
 
-            // if proc.listening_keyboard() {
-            //     emit_keyboard_event_from_message(backend.id, msg);
-            // }
+            if input_flags.contains(ListenInputFlags::CURSOR) {
+                emit_cursor_event_from_message(window_id, msg);
+            }
+
+            if input_flags.contains(ListenInputFlags::KEYBOARD) {
+                emit_keyboard_event_from_message(window_id, msg);
+            }
         };
 
         for f in msg_loop_state.proc_queue.lock().drain(..) {
@@ -259,22 +270,22 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
 }
 
 #[inline]
-fn emit_cursor_event_from_message(id: u32, proc: &WindowProcState, msg: &MSG) {
+fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
         msg::WM_POINTERUPDATE => {
-            emit_cursor_move_event(id, proc, msg.lParam, msg.wParam);
+            emit_cursor_move_event(id, msg.lParam, msg.wParam);
         }
         msg::WM_POINTERDOWN => {
-            emit_cursor_action_event(id, proc, true, msg.wParam, msg.lParam);
+            emit_cursor_action_event(id, true, msg.wParam, msg.lParam);
         }
         msg::WM_POINTERUP => {
-            emit_cursor_action_event(id, proc, false, msg.wParam, msg.lParam);
+            emit_cursor_action_event(id, false, msg.wParam, msg.lParam);
         }
         msg::WM_POINTERWHEEL => {
-            emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, false);
+            emit_cursor_scroll_event(id, msg.wParam, msg.lParam, false);
         }
         msg::WM_POINTERHWHEEL => {
-            emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, true);
+            emit_cursor_scroll_event(id, msg.wParam, msg.lParam, true);
         }
         _ => {}
     }
@@ -325,46 +336,26 @@ fn parse_cursor(wparam: WPARAM) -> (u16, bool, PointerKeys) {
     )
 }
 
-fn parse_cursor_position(
-    proc: &WindowProcState,
-    lparam: LPARAM,
-) -> (
-    asdf_overlay_event::input::InputPosition,
-    asdf_overlay_event::input::InputPosition,
-) {
-    use asdf_overlay_event::input::InputPosition;
-
+fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
-    let window = InputPosition {
+    InputPosition {
         x: x as _,
         y: y as _,
-    };
-    let surface = InputPosition {
-        x: window.x - proc.position.0,
-        y: window.y - proc.position.1,
-    };
-
-    (surface, window)
+    }
 }
 
 #[inline]
-fn emit_cursor_action_event(
-    hwnd: u32,
-    proc: &WindowProcState,
-    pressed: bool,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) {
+fn emit_cursor_action_event(hwnd: u32, pressed: bool, wparam: WPARAM, lparam: LPARAM) {
     use asdf_overlay_event::input::{CursorEvent, CursorInputState};
 
     let (id, primary, keys) = parse_cursor(wparam);
-    let (surface, window) = parse_cursor_position(proc, lparam);
+    let pos = parse_cursor_position(lparam);
 
     let state = if pressed {
         unsafe { SetCapture(HWND(hwnd as _)) };
 
         CursorInputState::Pressed {
-            double_click: check_double_click(proc),
+            double_click: check_double_click(hwnd),
         }
     } else {
         _ = unsafe { ReleaseCapture() };
@@ -388,19 +379,21 @@ fn emit_cursor_action_event(
                 id,
                 primary,
                 event: CursorEvent::Action { action, state },
-                client: surface,
-                window,
+                client: pos,
+
+                // TODO:: REMOVE
+                window: pos,
             })),
         });
     }
 }
 
 #[inline]
-fn emit_cursor_move_event(hwnd: u32, proc: &WindowProcState, lparam: LPARAM, wparam: WPARAM) {
+fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM, wparam: WPARAM) {
     use asdf_overlay_event::input::CursorEvent;
 
     let (id, primary, _) = parse_cursor(wparam);
-    let (surface, window) = parse_cursor_position(proc, lparam);
+    let pos = parse_cursor_position(lparam);
 
     Backends::get().emit(OverlayEvent::Window {
         id: hwnd,
@@ -408,24 +401,20 @@ fn emit_cursor_move_event(hwnd: u32, proc: &WindowProcState, lparam: LPARAM, wpa
             id,
             primary,
             event: CursorEvent::Move,
-            client: surface,
-            window,
+            client: pos,
+
+            // TODO:: REMOVE
+            window: pos,
         })),
     });
 }
 
 #[inline]
-fn emit_cursor_scroll_event(
-    hwnd: u32,
-    proc: &WindowProcState,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    horizontal: bool,
-) {
+fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     use asdf_overlay_event::input::CursorEvent;
 
     let [id, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
-    let (surface, window) = parse_cursor_position(proc, lparam);
+    let pos = parse_cursor_position(lparam);
 
     Backends::get().emit(OverlayEvent::Window {
         id: hwnd,
@@ -440,8 +429,10 @@ fn emit_cursor_scroll_event(
                 },
                 delta,
             },
-            client: surface,
-            window,
+            client: pos,
+
+            // TODO:: REMOVE
+            window: pos,
         })),
     });
 }
@@ -503,8 +494,8 @@ fn to_key(lparam: LPARAM) -> Option<Key> {
 }
 
 #[inline]
-fn check_double_click(_proc: &WindowProcState) -> bool {
-    // TODO:: proc.click_time <= unsafe { GetDoubleClickTime() }
+fn check_double_click(_hwnd: u32) -> bool {
+    // TODO: Check double click time against the window's last click time
     false
 }
 

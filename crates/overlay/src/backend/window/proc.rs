@@ -33,13 +33,11 @@ use windows::Win32::{
                 ImmGetConversionStatus, ImmReleaseContext,
             },
             KeyboardAndMouse::{
-                GetDoubleClickTime, GetKeyboardLayout, TME_LEAVE,
-                TRACKMOUSEEVENT, TrackMouseEvent,
+                GetDoubleClickTime, GetKeyboardLayout, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
             },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, WM_NCDESTROY,
-            XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, WM_NCDESTROY, XBUTTON1,
         },
     },
 };

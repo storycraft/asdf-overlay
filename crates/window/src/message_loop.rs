@@ -36,8 +36,7 @@ impl MessageLoopState {
             SetCursor(
                 Backends::get()
                     .blocking_cursor()
-                    .map(cursors::load)
-                    .flatten(),
+                    .and_then(cursors::load),
             );
 
             *this.blocking_state.write() = Some(InputBlockingState {});

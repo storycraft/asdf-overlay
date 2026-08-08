@@ -230,7 +230,9 @@ dependencies = [
  "nohash-hasher",
  "once_cell",
  "parking_lot",
+ "scopeguard",
  "tracing",
+ "utf16string",
  "windows",
  "winres",
 ]

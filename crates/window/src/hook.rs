@@ -151,7 +151,7 @@ extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
 #[tracing::instrument]
 extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
     let lock = Backends::get().blocking_state.read();
-    let Some(clip_cursor) = lock.as_ref().map(|state| state.clip_cursor).flatten() else {
+    let Some(clip_cursor) = lock.as_ref().and_then(|state| state.clip_cursor) else {
         drop(lock);
         return unsafe { HOOK.wait().get_clip_cursor.original_fn()(lprect) };
     };
