@@ -10,7 +10,7 @@ use windows::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, LUID, RECT, WPARAM},
         Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
         UI::{
-            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
+            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
             WindowsAndMessaging::{
                 CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect,
                 HWND_MESSAGE, RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA,
@@ -30,7 +30,7 @@ pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Opti
 /// Get DPI aware client area size of the window.
 pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     unsafe {
-        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
         defer!({
             SetThreadDpiAwarenessContext(old_context);
         });
