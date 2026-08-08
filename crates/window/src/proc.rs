@@ -1,40 +1,28 @@
-pub(crate) mod proc;
+pub(crate) struct WindowProcState {
+    pub(crate) position: (i32, i32),
 
-use super::WindowBackend;
-use asdf_overlay_common::cursor::Cursor;
-use windows::Win32::Foundation::RECT;
-
-pub(crate) struct WindowProcData {
-    pub position: (i32, i32),
-
-    pub listen_input: ListenInputFlags,
-    pub blocking_state: Option<InputBlockData>,
-    pub blocking_cursor: Option<Cursor>,
+    pub(crate) listen_input: ListenInputFlags,
+    blocking_state: Option<InputBlockData>,
+    blocking_ime_cx: usize,
 
     cursor_state: CursorState,
     ime: ImeState,
     last_click_time: i32,
 }
 
-impl WindowProcData {
-    pub fn new() -> Self {
+impl WindowProcState {
+    pub fn new(blocking_ime_cx: usize) -> Self {
         Self {
             position: (0, 0),
 
             listen_input: ListenInputFlags::empty(),
             blocking_state: None,
-            blocking_cursor: Some(Cursor::Default),
+            blocking_ime_cx,
 
             cursor_state: CursorState::Outside,
             ime: ImeState::Disabled,
             last_click_time: 0,
         }
-    }
-
-    pub fn reset(&mut self) {
-        self.position = (0, 0);
-        self.listen_input = ListenInputFlags::empty();
-        self.blocking_cursor = Some(Cursor::Default);
     }
 
     #[inline]
@@ -60,8 +48,7 @@ impl WindowProcData {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct InputBlockData {
-    pub clip_cursor: Option<RECT>,
+struct InputBlockData {
     pub old_ime_cx: usize,
 }
 

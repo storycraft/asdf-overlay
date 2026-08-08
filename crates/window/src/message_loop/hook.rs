@@ -1,17 +1,14 @@
-mod input;
-
 use asdf_overlay_event::{
     OverlayEvent, WindowEvent,
     input::{CursorAction, CursorInput, InputEvent, Key, KeyInputState, KeyboardInput, ScrollAxis},
 };
 use asdf_overlay_hook::DetourHook;
-use core::cell::Cell;
 use once_cell::sync::OnceCell;
-use scopeguard::defer;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        System::Threading::GetCurrentThreadId,
         UI::{
             Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
             WindowsAndMessaging::{
@@ -23,10 +20,7 @@ use windows::{
     core::BOOL,
 };
 
-use crate::{
-    backend::{Backends, WindowBackend, window::WindowProcData},
-    event_sink::OverlayEventSink,
-};
+use crate::{Backends, proc::WindowProcState};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
@@ -48,12 +42,12 @@ windows::core::link!("user32.dll" "system" fn PeekMessageW(
 windows::core::link!("user32.dll" "system" fn DefWindowProcA(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 windows::core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 
-struct Hook {
-    get_message_a: DetourHook<GetMessageFn>,
-    get_message_w: DetourHook<GetMessageFn>,
+pub(crate) struct Hook {
+    pub(crate) get_message_a: DetourHook<GetMessageFn>,
+    pub(crate) get_message_w: DetourHook<GetMessageFn>,
 
-    peek_message_a: DetourHook<PeekMessageFn>,
-    peek_message_w: DetourHook<PeekMessageFn>,
+    pub(crate) peek_message_a: DetourHook<PeekMessageFn>,
+    pub(crate) peek_message_w: DetourHook<PeekMessageFn>,
 }
 
 static HOOK: OnceCell<Hook> = OnceCell::new();
@@ -62,9 +56,7 @@ type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
 type PeekMessageFn =
     unsafe extern "system" fn(*mut MSG, HWND, u32, u32, PEEK_MESSAGE_REMOVE_TYPE) -> BOOL;
 
-pub fn hook() -> anyhow::Result<()> {
-    input::hook()?;
-
+pub(crate) fn install() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking GetMessageA");
         let get_message_a = DetourHook::attach(GetMessageA as _, hooked_get_message_a as _)?;
@@ -90,92 +82,76 @@ pub fn hook() -> anyhow::Result<()> {
     Ok(())
 }
 
-thread_local! {
-    static MESSAGE_READING: Cell<bool> = const { Cell::new(false) };
-}
+fn get_message<const UNICODE: bool>(
+    msg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
+) -> BOOL {
+    let original_read = unsafe {
+        if UNICODE {
+            HOOK.wait().get_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
+        } else {
+            HOOK.wait().get_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax)
+        }
+    };
 
-#[inline]
-fn message_reading() -> bool {
-    MESSAGE_READING.get()
-}
-
-#[inline]
-fn set_message_read<R>(f: impl FnOnce() -> R) -> R {
-    let last = MESSAGE_READING.replace(true);
-    defer!(MESSAGE_READING.set(last));
-    f()
-}
-
-fn process_read_message<const UNICODE: bool>(
-    msg: &mut MSG,
-    reader: impl Fn(&mut MSG) -> bool,
-) -> bool {
-    if !reader(msg) {
-        on_message_read(msg);
-        return false;
+    // If there were error on GetMessageA/W.
+    if original_read.0 == -1 {
+        return original_read;
     }
 
-    // For SDL games: Emit events BEFORE filtering so overlay gets them
-    // even if we filter the message to block SDL
-    on_message_read(msg);
-    if should_filter_message(msg) {
-        unsafe {
-            // Call TranslateMessage for char messages
-            _ = TranslateMessage(msg);
-
-            // Call Default WndProc so non client area works.
-            if UNICODE {
-                CallWindowProcW(
-                    Some(DefWindowProcA),
-                    msg.hwnd,
-                    msg.message,
-                    msg.wParam,
-                    msg.lParam,
-                );
-            } else {
-                CallWindowProcA(
-                    Some(DefWindowProcW),
-                    msg.hwnd,
-                    msg.message,
-                    msg.wParam,
-                    msg.lParam,
-                );
-            }
-        }
-
+    let msg = unsafe { &mut *msg };
+    if read_message::<UNICODE>(msg) {
         msg.message = msg::WM_NULL;
     }
-    true
+    original_read
 }
 
-fn process_peek_message(
-    msg: &mut MSG,
+fn peek_message<const UNICODE: bool>(
+    msg: *mut MSG,
+    hwnd: HWND,
+    wmsgfiltermin: u32,
+    wmsgfiltermax: u32,
     remove: PEEK_MESSAGE_REMOVE_TYPE,
-    reader: impl Fn(&mut MSG, PEEK_MESSAGE_REMOVE_TYPE) -> bool,
-) -> bool {
-    if !reader(msg, remove) {
-        return false;
-    }
-
-    let should_filter = should_filter_message(msg);
-    if remove.contains(PM_REMOVE) {
-        // For SDL games: Emit events BEFORE filtering so overlay gets them
-        // even if we filter the message to block SDL
-        on_message_read(msg);
-
-        if should_filter {
-            // Call TranslateMessage for char messages.
-            unsafe {
-                _ = TranslateMessage(msg);
-            }
+) -> BOOL {
+    let original_read = unsafe {
+        if UNICODE {
+            HOOK.wait().peek_message_a.original_fn()(
+                msg,
+                hwnd,
+                wmsgfiltermin,
+                wmsgfiltermax,
+                remove,
+            )
+        } else {
+            HOOK.wait().peek_message_w.original_fn()(
+                msg,
+                hwnd,
+                wmsgfiltermin,
+                wmsgfiltermax,
+                remove,
+            )
         }
+    };
+
+    if !original_read.as_bool() {
+        return original_read;
     }
 
-    if should_filter {
+    let msg = unsafe { &mut *msg };
+    if !remove.contains(PM_REMOVE) {
+        // Only hide non removed messages without processing so apps cannot see them.
+        if should_filter(msg) {
+            msg.message = msg::WM_NULL;
+        }
+        return original_read;
+    }
+
+    if read_message::<UNICODE>(msg) {
         msg.message = msg::WM_NULL;
     }
-
-    true
+    original_read
 }
 
 #[tracing::instrument]
@@ -186,14 +162,7 @@ extern "system" fn hooked_get_message_a(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageA called");
-    if lpmsg.is_null() {
-        return BOOL(0);
-    }
-
-    process_read_message::<false>(unsafe { &mut *lpmsg }, |msg| unsafe {
-        HOOK.wait().get_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax).as_bool()
-    })
-    .into()
+    get_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax).into()
 }
 
 #[tracing::instrument]
@@ -204,14 +173,7 @@ extern "system" fn hooked_get_message_w(
     wmsgfiltermax: u32,
 ) -> BOOL {
     trace!("GetMessageW called");
-    if lpmsg.is_null() {
-        return BOOL(0);
-    }
-
-    process_read_message::<true>(unsafe { &mut *lpmsg }, |msg| unsafe {
-        HOOK.wait().get_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax).as_bool()
-    })
-    .into()
+    get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax).into()
 }
 
 #[tracing::instrument]
@@ -223,15 +185,7 @@ extern "system" fn hooked_peek_message_a(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageA called");
-    if lpmsg.is_null() {
-        return BOOL(0);
-    }
-
-    process_peek_message(unsafe { &mut *lpmsg }, wremovemsg, |msg, remove| unsafe {
-        HOOK.wait().peek_message_a.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax, remove)
-            .as_bool()
-    })
-    .into()
+    peek_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax, wremovemsg)
 }
 
 #[tracing::instrument]
@@ -243,45 +197,72 @@ extern "system" fn hooked_peek_message_w(
     wremovemsg: PEEK_MESSAGE_REMOVE_TYPE,
 ) -> BOOL {
     trace!("PeekMessageW called");
-    if lpmsg.is_null() {
-        return BOOL(0);
-    }
-
-    process_peek_message(unsafe { &mut *lpmsg }, wremovemsg, |msg, remove| unsafe {
-        HOOK.wait().peek_message_w.original_fn()(msg, hwnd, wmsgfiltermin, wmsgfiltermax, remove)
-            .as_bool()
-    })
-    .into()
+    peek_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax, wremovemsg)
 }
 
-fn on_message_read(msg: &MSG) {
-    _ = with_root_backend(msg, |backend| {
-        set_message_read(|| {
-            let proc = backend.proc.lock();
-            if proc.listening_cursor() {
-                emit_cursor_event_from_message(backend.id, &proc, msg);
-            }
+/// Process the message.
+///
+/// Returns true if the message should be filtered (not processed by the application).
+fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
+    let id = unsafe { GetCurrentThreadId() };
 
-            if proc.listening_keyboard() {
-                emit_keyboard_event_from_message(backend.id, msg);
-            }
-        });
+    if msg.message == msg::WM_QUIT {
+        Backends::get().cleanup_message_loop(id);
+        return false;
+    }
 
-        {
-            let mut proc_queue = backend.proc_queue.lock();
-            if proc_queue.is_empty() {
-                return;
-            }
+    Backends::get().message_loop_state(id, |msg_loop_state| {
+        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
+        if !root_hwnd.is_invalid() {
+            let wnd_state = (); // TODO::
 
-            for f in proc_queue.drain(..) {
-                f(backend);
-            }
+            // if proc.listening_cursor() {
+            //     emit_cursor_event_from_message(backend.id, &proc, msg);
+            // }
+
+            // if proc.listening_keyboard() {
+            //     emit_keyboard_event_from_message(backend.id, msg);
+            // }
+        };
+
+        for f in msg_loop_state.proc_queue.lock().drain(..) {
+            f(msg_loop_state);
         }
     });
+
+    if !should_filter(msg) {
+        return false;
+    }
+
+    unsafe {
+        // Call TranslateMessage for char messages
+        _ = TranslateMessage(msg);
+
+        // Call Default WndProc so non client area works.
+        if UNICODE {
+            CallWindowProcW(
+                Some(DefWindowProcA),
+                msg.hwnd,
+                msg.message,
+                msg.wParam,
+                msg.lParam,
+            );
+        } else {
+            CallWindowProcA(
+                Some(DefWindowProcW),
+                msg.hwnd,
+                msg.message,
+                msg.wParam,
+                msg.lParam,
+            );
+        }
+    }
+
+    true
 }
 
 #[inline]
-fn emit_cursor_event_from_message(id: u32, proc: &WindowProcData, msg: &MSG) {
+fn emit_cursor_event_from_message(id: u32, proc: &WindowProcState, msg: &MSG) {
     match msg.message {
         msg::WM_MOUSEMOVE => {
             emit_cursor_move_event(id, proc, msg.lParam);
@@ -319,7 +300,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             if let Some(key) = to_key(msg.lParam) {
-                OverlayEventSink::emit(keyboard_input(
+                Backends::get().emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
                         key,
@@ -330,7 +311,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             if let Some(key) = to_key(msg.lParam) {
-                OverlayEventSink::emit(keyboard_input(
+                Backends::get().emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
                         key,
@@ -341,7 +322,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
         }
         msg::WM_CHAR | msg::WM_SYSCHAR => {
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                OverlayEventSink::emit(keyboard_input(id, KeyboardInput::Char(ch)));
+                Backends::get().emit(keyboard_input(id, KeyboardInput::Char(ch)));
             }
         }
         _ => {}
@@ -350,7 +331,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
 
 #[inline]
 fn parse_cursor_position(
-    proc: &WindowProcData,
+    proc: &WindowProcState,
     lparam: LPARAM,
 ) -> (
     asdf_overlay_event::input::InputPosition,
@@ -374,7 +355,7 @@ fn parse_cursor_position(
 #[inline]
 fn emit_cursor_event(
     id: u32,
-    proc: &WindowProcData,
+    proc: &WindowProcState,
     action: CursorAction,
     pressed: bool,
     lparam: LPARAM,
@@ -390,7 +371,7 @@ fn emit_cursor_event(
         CursorInputState::Released
     };
 
-    OverlayEventSink::emit(OverlayEvent::Window {
+    Backends::get().emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Action { action, state },
@@ -401,12 +382,12 @@ fn emit_cursor_event(
 }
 
 #[inline]
-fn emit_cursor_move_event(id: u32, proc: &WindowProcData, lparam: LPARAM) {
+fn emit_cursor_move_event(id: u32, proc: &WindowProcState, lparam: LPARAM) {
     use asdf_overlay_event::input::CursorEvent;
 
     let (surface, window) = parse_cursor_position(proc, lparam);
 
-    OverlayEventSink::emit(OverlayEvent::Window {
+    Backends::get().emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Move,
@@ -419,7 +400,7 @@ fn emit_cursor_move_event(id: u32, proc: &WindowProcData, lparam: LPARAM) {
 #[inline]
 fn emit_cursor_scroll_event(
     id: u32,
-    proc: &WindowProcData,
+    proc: &WindowProcState,
     wparam: WPARAM,
     lparam: LPARAM,
     horizontal: bool,
@@ -429,7 +410,7 @@ fn emit_cursor_scroll_event(
     let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let (surface, window) = parse_cursor_position(proc, lparam);
 
-    OverlayEventSink::emit(OverlayEvent::Window {
+    Backends::get().emit(OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Scroll {
@@ -446,61 +427,49 @@ fn emit_cursor_scroll_event(
     });
 }
 
-const CURSOR_MESSAGES: &[u32] = &[
-    msg::WM_MOUSEMOVE,
-    msg::WM_LBUTTONDOWN,
-    msg::WM_LBUTTONUP,
-    msg::WM_LBUTTONDBLCLK,
-    msg::WM_RBUTTONDOWN,
-    msg::WM_RBUTTONUP,
-    msg::WM_RBUTTONDBLCLK,
-    msg::WM_MBUTTONDOWN,
-    msg::WM_MBUTTONUP,
-    msg::WM_MBUTTONDBLCLK,
-    msg::WM_XBUTTONDOWN,
-    msg::WM_XBUTTONUP,
-    msg::WM_XBUTTONDBLCLK,
-    msg::WM_MOUSEWHEEL,
-    msg::WM_MOUSEHWHEEL,
-];
-
-const KEYBOARD_MESSAGES: &[u32] = &[
-    msg::WM_KEYDOWN,
-    msg::WM_KEYUP,
-    msg::WM_CHAR,
-    msg::WM_SYSKEYDOWN,
-    msg::WM_SYSKEYUP,
-    msg::WM_SYSCHAR,
-];
-
 #[inline]
 fn is_cursor_message(message: u32) -> bool {
-    CURSOR_MESSAGES.contains(&message)
+    matches!(
+        message,
+        msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
+    )
 }
 
 #[inline]
 fn is_keyboard_message(message: u32) -> bool {
-    KEYBOARD_MESSAGES.contains(&message)
+    matches!(
+        message,
+        msg::WM_KEYDOWN
+            | msg::WM_KEYUP
+            | msg::WM_CHAR
+            | msg::WM_SYSKEYDOWN
+            | msg::WM_SYSKEYUP
+            | msg::WM_SYSCHAR
+    )
 }
 
 /// Filter input messages when blocking is enabled
 #[inline]
-fn should_filter_message(msg: &MSG) -> bool {
+fn should_filter(msg: &MSG) -> bool {
     if !is_cursor_message(msg.message) && !is_keyboard_message(msg.message) {
         return false;
     }
 
-    with_root_backend(msg, |backend| backend.proc.lock().input_blocking()).unwrap_or(false)
-}
-
-#[inline]
-fn with_root_backend<R>(msg: &MSG, f: impl FnOnce(&WindowBackend) -> R) -> Option<R> {
-    let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-    if root_hwnd.is_invalid() {
-        return None;
-    }
-
-    Backends::with_backend(root_hwnd.0 as _, f)
+    Backends::get().input_blocked()
 }
 
 #[inline(always)]

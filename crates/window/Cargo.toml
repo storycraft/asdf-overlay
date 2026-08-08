@@ -11,12 +11,18 @@ readme = "../../README.md"
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
+asdf-overlay-event = { workspace = true }
 asdf-overlay-hook = { workspace = true }
 
 tracing = "0.1"
 anyhow = "1.0.97"
 parking_lot = { version = "0.12.3", features = ["hardware-lock-elision"] }
 once_cell = "1.21.3"
+dashmap = "6.1.0"
+nohash-hasher = "0.2.0"
+bytemuck = "1.22.0"
+bitflags = "2.9.1"
+flume = "0.12.0"
 
 [dependencies.windows]
 workspace = true
@@ -26,5 +32,8 @@ features = [
     "Win32_Security",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Input_Ime",
-    "Win32_Globalization"
+    "Win32_Globalization",
 ]
+
+[build-dependencies]
+winres = "0.1.12"

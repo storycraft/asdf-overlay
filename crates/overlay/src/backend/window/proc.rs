@@ -2,7 +2,7 @@ use super::WindowBackend;
 use crate::{
     backend::{
         BACKENDS, Backends,
-        window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
+        window::{CursorState, ImeState, WindowProcData},
     },
     event_sink::OverlayEventSink,
     util::get_client_size,
@@ -80,7 +80,7 @@ fn process_wnd_proc(
         {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
-                unsafe { SetCursor(proc.blocking_cursor.and_then(load_cursor)) };
+                // unsafe { SetCursor(proc.blocking_cursor.and_then(load_cursor)) };
                 return Some(LRESULT(1));
             }
         }

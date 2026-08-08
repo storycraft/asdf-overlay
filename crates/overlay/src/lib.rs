@@ -49,7 +49,6 @@ pub mod surface;
 mod hook;
 mod interop;
 mod renderer;
-mod resources;
 mod texture;
 mod types;
 mod util;

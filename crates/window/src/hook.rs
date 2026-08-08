@@ -14,7 +14,7 @@ use windows::{
     core::BOOL,
 };
 
-use crate::global::GlobalInputManager;
+use crate::Backends;
 
 windows::core::link!("user32.dll" "system" fn ClipCursor(lprect: *const RECT) -> BOOL);
 windows::core::link!("user32.dll" "system" fn SetCursorPos(x: i32, y: i32) -> BOOL);
@@ -37,20 +37,20 @@ windows::core::link!(
 );
 windows::core::link!("user32.dll" "system" fn GetRawInputBuffer(pdata: *mut RAWINPUT, pcbsize: *mut u32, cbsizeheader: u32) -> u32);
 
-struct Hook {
-    clip_cursor: DetourHook<ClipCursorFn>,
-    set_cursor_pos: DetourHook<SetCursorFn>,
+pub(crate) struct Hook {
+    pub(crate) clip_cursor: DetourHook<ClipCursorFn>,
+    pub(crate) set_cursor_pos: DetourHook<SetCursorFn>,
 
-    get_clip_cursor: DetourHook<GetClipCursorFn>,
-    get_cursor_pos: DetourHook<GetCursorPos>,
-    get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
-    get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
-    get_key_state: DetourHook<GetKeyStateFn>,
-    get_keyboard_state: DetourHook<GetKeyboardStateFn>,
-    get_raw_input_data: DetourHook<GetRawInputDataFn>,
-    get_raw_input_buffer: DetourHook<GetRawInputBufferFn>,
+    pub(crate) get_clip_cursor: DetourHook<GetClipCursorFn>,
+    pub(crate) get_cursor_pos: DetourHook<GetCursorPos>,
+    pub(crate) get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
+    pub(crate) get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
+    pub(crate) get_key_state: DetourHook<GetKeyStateFn>,
+    pub(crate) get_keyboard_state: DetourHook<GetKeyboardStateFn>,
+    pub(crate) get_raw_input_data: DetourHook<GetRawInputDataFn>,
+    pub(crate) get_raw_input_buffer: DetourHook<GetRawInputBufferFn>,
 }
-static HOOK: OnceCell<Hook> = OnceCell::new();
+pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
 type SetCursorFn = unsafe extern "system" fn(i32, i32) -> BOOL;
@@ -70,7 +70,7 @@ type GetRawInputDataFn = unsafe extern "system" fn(
 ) -> u32;
 type GetRawInputBufferFn = unsafe extern "system" fn(*mut RAWINPUT, *mut u32, u32) -> u32;
 
-pub fn hook() -> anyhow::Result<()> {
+pub(crate) fn install() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking ClipCursor");
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;
@@ -129,7 +129,7 @@ pub fn hook() -> anyhow::Result<()> {
 
 #[tracing::instrument]
 extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
-    let mut lock = GlobalInputManager::get().blocking_state.write();
+    let mut lock = Backends::get().blocking_state.write();
     let Some(state) = lock.as_mut() else {
         drop(lock);
         return unsafe { HOOK.wait().clip_cursor.original_fn()(lprect) };
@@ -141,7 +141,7 @@ extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().set_cursor_pos.original_fn()(x, y) };
     }
 
@@ -150,7 +150,7 @@ extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
-    let lock = GlobalInputManager::get().blocking_state.read();
+    let lock = Backends::get().blocking_state.read();
     let Some(clip_cursor) = lock.as_ref().map(|state| state.clip_cursor).flatten() else {
         drop(lock);
         return unsafe { HOOK.wait().get_clip_cursor.original_fn()(lprect) };
@@ -162,7 +162,7 @@ extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_cursor_pos.original_fn()(lppoint) };
     }
 
@@ -175,7 +175,7 @@ extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_physical_cursor_pos.original_fn()(lppoint) };
     }
 
@@ -188,7 +188,7 @@ extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_async_key_state(vkey: i32) -> i16 {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_async_key_state.original_fn()(vkey) };
     }
 
@@ -197,7 +197,7 @@ extern "system" fn hooked_get_async_key_state(vkey: i32) -> i16 {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_key_state.original_fn()(vkey) };
     }
 
@@ -206,7 +206,7 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
 
 #[tracing::instrument]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_keyboard_state.original_fn()(buf) };
     }
 
@@ -225,7 +225,7 @@ extern "system" fn hooked_get_raw_input_data(
     pcbsize: *mut u32,
     cbsizeheader: u32,
 ) -> u32 {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe {
             HOOK.wait().get_raw_input_data.original_fn()(
                 hrawinput,
@@ -289,7 +289,7 @@ extern "system" fn hooked_get_raw_input_buffer(
     pcbsize: *mut u32,
     cbsizeheader: u32,
 ) -> u32 {
-    if !GlobalInputManager::get().input_blocked() {
+    if !Backends::get().input_blocked() {
         return unsafe {
             HOOK.wait().get_raw_input_buffer.original_fn()(pdata, pcbsize, cbsizeheader)
         };
