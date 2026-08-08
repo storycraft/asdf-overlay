@@ -1,7 +1,7 @@
 mod cursors;
 mod hook;
 mod message_loop;
-mod proc;
+mod window;
 mod types;
 
 use core::{
@@ -22,7 +22,7 @@ use windows::Win32::{
     },
 };
 
-use crate::{message_loop::MessageLoopState, proc::WindowProcState, types::IntDashMap};
+use crate::{message_loop::MessageLoopState, window::WindowProcState, types::IntDashMap};
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
 

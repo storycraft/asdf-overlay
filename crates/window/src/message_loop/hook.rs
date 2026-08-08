@@ -7,20 +7,17 @@ use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-        System::Threading::GetCurrentThreadId,
-        UI::{
-            Input::KeyboardAndMouse::{MAPVK_VSC_TO_VK, MapVirtualKeyA},
-            WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
-                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM}, System::Threading::GetCurrentThreadId, UI::{
+            Input::KeyboardAndMouse::{
+                GetDoubleClickTime, MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
+            }, WindowsAndMessaging::{
+                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, GetMessageTime, MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
             },
         },
-    },
-    core::BOOL,
+    }, core::BOOL,
 };
 
-use crate::{Backends, proc::WindowProcState};
+use crate::{Backends, window::WindowProcState};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
@@ -264,31 +261,19 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
 #[inline]
 fn emit_cursor_event_from_message(id: u32, proc: &WindowProcState, msg: &MSG) {
     match msg.message {
-        msg::WM_MOUSEMOVE => {
-            emit_cursor_move_event(id, proc, msg.lParam);
+        msg::WM_POINTERUPDATE => {
+            emit_cursor_move_event(id, proc, msg.lParam, msg.wParam);
         }
-        msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
-            emit_cursor_event(id, proc, CursorAction::Left, true, msg.lParam);
+        msg::WM_POINTERDOWN => {
+            emit_cursor_action_event(id, proc, true, msg.wParam, msg.lParam);
         }
-        msg::WM_LBUTTONUP => {
-            emit_cursor_event(id, proc, CursorAction::Left, false, msg.lParam);
+        msg::WM_POINTERUP => {
+            emit_cursor_action_event(id, proc, false, msg.wParam, msg.lParam);
         }
-        msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
-            emit_cursor_event(id, proc, CursorAction::Right, true, msg.lParam);
-        }
-        msg::WM_RBUTTONUP => {
-            emit_cursor_event(id, proc, CursorAction::Right, false, msg.lParam);
-        }
-        msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
-            emit_cursor_event(id, proc, CursorAction::Middle, true, msg.lParam);
-        }
-        msg::WM_MBUTTONUP => {
-            emit_cursor_event(id, proc, CursorAction::Middle, false, msg.lParam);
-        }
-        msg::WM_MOUSEWHEEL => {
+        msg::WM_POINTERWHEEL => {
             emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, false);
         }
-        msg::WM_MOUSEHWHEEL => {
+        msg::WM_POINTERHWHEEL => {
             emit_cursor_scroll_event(id, proc, msg.wParam, msg.lParam, true);
         }
         _ => {}
@@ -329,7 +314,17 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     }
 }
 
-#[inline]
+fn parse_cursor(wparam: WPARAM) -> (u16, bool, PointerKeys) {
+    const POINTER_FLAG_PRIMARY: u16 = 0x2000;
+
+    let [id, keys] = bytemuck::cast::<_, [u16; 2]>(wparam.0 as u32);
+    (
+        id,
+        keys & POINTER_FLAG_PRIMARY != 0,
+        PointerKeys::from_bits_truncate(keys),
+    )
+}
+
 fn parse_cursor_position(
     proc: &WindowProcState,
     lparam: LPARAM,
@@ -353,43 +348,65 @@ fn parse_cursor_position(
 }
 
 #[inline]
-fn emit_cursor_event(
-    id: u32,
+fn emit_cursor_action_event(
+    hwnd: u32,
     proc: &WindowProcState,
-    action: CursorAction,
     pressed: bool,
+    wparam: WPARAM,
     lparam: LPARAM,
 ) {
     use asdf_overlay_event::input::{CursorEvent, CursorInputState};
 
+    let (id, primary, keys) = parse_cursor(wparam);
     let (surface, window) = parse_cursor_position(proc, lparam);
+
     let state = if pressed {
+        unsafe { SetCapture(HWND(hwnd as _)) };
+
         CursorInputState::Pressed {
-            double_click: false,
+            double_click: check_double_click(proc),
         }
     } else {
+        _ = unsafe { ReleaseCapture() };
+
         CursorInputState::Released
     };
 
-    Backends::get().emit(OverlayEvent::Window {
-        id,
-        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            event: CursorEvent::Action { action, state },
-            client: surface,
-            window,
-        })),
-    });
+    for key in keys.iter() {
+        let action = match key {
+            PointerKeys::FIRST_BUTTON => CursorAction::Left,
+            PointerKeys::SECOND_BUTTON => CursorAction::Right,
+            PointerKeys::THIRD_BUTTON => CursorAction::Middle,
+            PointerKeys::FOURTH_BUTTON => CursorAction::Back,
+            PointerKeys::FIFTH_BUTTON => CursorAction::Forward,
+            _ => continue,
+        };
+
+        Backends::get().emit(OverlayEvent::Window {
+            id: hwnd,
+            event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                id,
+                primary,
+                event: CursorEvent::Action { action, state },
+                client: surface,
+                window,
+            })),
+        });
+    }
 }
 
 #[inline]
-fn emit_cursor_move_event(id: u32, proc: &WindowProcState, lparam: LPARAM) {
+fn emit_cursor_move_event(hwnd: u32, proc: &WindowProcState, lparam: LPARAM, wparam: WPARAM) {
     use asdf_overlay_event::input::CursorEvent;
 
+    let (id, primary, _) = parse_cursor(wparam);
     let (surface, window) = parse_cursor_position(proc, lparam);
 
     Backends::get().emit(OverlayEvent::Window {
-        id,
+        id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id,
+            primary,
             event: CursorEvent::Move,
             client: surface,
             window,
@@ -399,7 +416,7 @@ fn emit_cursor_move_event(id: u32, proc: &WindowProcState, lparam: LPARAM) {
 
 #[inline]
 fn emit_cursor_scroll_event(
-    id: u32,
+    hwnd: u32,
     proc: &WindowProcState,
     wparam: WPARAM,
     lparam: LPARAM,
@@ -407,12 +424,14 @@ fn emit_cursor_scroll_event(
 ) {
     use asdf_overlay_event::input::CursorEvent;
 
-    let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+    let [id, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let (surface, window) = parse_cursor_position(proc, lparam);
 
     Backends::get().emit(OverlayEvent::Window {
-        id,
+        id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: id as _,
+            primary: true,
             event: CursorEvent::Scroll {
                 axis: if horizontal {
                     ScrollAxis::X
@@ -431,21 +450,15 @@ fn emit_cursor_scroll_event(
 fn is_cursor_message(message: u32) -> bool {
     matches!(
         message,
-        msg::WM_MOUSEMOVE
-            | msg::WM_LBUTTONDOWN
-            | msg::WM_LBUTTONUP
-            | msg::WM_LBUTTONDBLCLK
-            | msg::WM_RBUTTONDOWN
-            | msg::WM_RBUTTONUP
-            | msg::WM_RBUTTONDBLCLK
-            | msg::WM_MBUTTONDOWN
-            | msg::WM_MBUTTONUP
-            | msg::WM_MBUTTONDBLCLK
-            | msg::WM_XBUTTONDOWN
-            | msg::WM_XBUTTONUP
-            | msg::WM_XBUTTONDBLCLK
-            | msg::WM_MOUSEWHEEL
-            | msg::WM_MOUSEHWHEEL
+        msg::WM_POINTERUPDATE
+            | msg::WM_POINTERDOWN
+            | msg::WM_POINTERUP
+            | msg::WM_POINTERENTER
+            | msg::WM_POINTERLEAVE
+            | msg::WM_POINTERACTIVATE
+            | msg::WM_POINTERCAPTURECHANGED
+            | msg::WM_POINTERWHEEL
+            | msg::WM_POINTERHWHEEL
     )
 }
 
@@ -487,4 +500,21 @@ fn to_key(lparam: LPARAM) -> Option<Key> {
         unsafe { MapVirtualKeyA(code as u32, MAPVK_VSC_TO_VK) as u8 },
         flags & 0x01 == 0x01,
     )
+}
+
+#[inline]
+fn check_double_click(_proc: &WindowProcState) -> bool {
+    // TODO:: proc.click_time <= unsafe { GetDoubleClickTime() }
+    false
+}
+
+bitflags::bitflags! {
+    #[derive(PartialEq)]
+    struct PointerKeys: u16 {
+        const FIRST_BUTTON = 0x0010;
+        const SECOND_BUTTON = 0x0020;
+        const THIRD_BUTTON = 0x0040;
+        const FOURTH_BUTTON = 0x0080;
+        const FIFTH_BUTTON = 0x0100;
+    }
 }

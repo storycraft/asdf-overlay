@@ -20,10 +20,10 @@ pub enum InputEvent {
 pub struct CursorInput {
     /// The ID of the cursor.
     pub id: u16,
-    /// The type of cursor input.
-    pub event: CursorEvent,
     /// Whether if the cursor has been designated as primary.
     pub primary: bool,
+    /// The type of cursor input.
+    pub event: CursorEvent,
     /// Cursor position relative to overlay surface position.
     pub client: InputPosition,
     /// Cursor position relative to the left-top corner client area of the window.
