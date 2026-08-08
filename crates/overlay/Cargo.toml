@@ -37,6 +37,7 @@ features = [
     "Win32_Security_Authorization",
     "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
     "Win32_UI_Controls",
     "Win32_System_Console",
     "Win32_System_LibraryLoader",
