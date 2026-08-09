@@ -112,6 +112,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         | msg::WM_HOTKEY
         | msg::WM_SYSDEADCHAR
         | msg::WM_UNICHAR
+        | msg::WM_IME_CHAR
         | msg::WM_IME_REQUEST
             if Backends::get().input_blocked() =>
         {
