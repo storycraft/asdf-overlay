@@ -2,7 +2,7 @@ mod proc;
 
 use core::{
     mem,
-    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering},
     time::Duration,
 };
 use std::time::Instant;
@@ -32,7 +32,7 @@ pub struct WindowProcState {
     pub(crate) cursor_hovering: AtomicBool,
     size: (AtomicU32, AtomicU32),
 
-    pub input_flags: ListenInputFlags,
+    input_flags: AtomicU8,
     blocking_state: Mutex<Option<InputBlockData>>,
 
     ime: RwLock<ImeState>,
@@ -66,7 +66,7 @@ impl WindowProcState {
             cursor_hovering: AtomicBool::new(false),
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
 
-            input_flags: ListenInputFlags::empty(),
+            input_flags: AtomicU8::new(0),
             blocking_state: Mutex::new(None),
 
             ime: RwLock::new(ImeState::Disabled),
@@ -79,6 +79,14 @@ impl WindowProcState {
             self.size.0.load(Ordering::Relaxed),
             self.size.1.load(Ordering::Relaxed),
         )
+    }
+
+    pub fn input_flags(&self) -> ListenInputFlags {
+        ListenInputFlags::from_bits_retain(self.input_flags.load(Ordering::Relaxed))
+    }
+
+    pub fn set_input_flags(&self, flags: ListenInputFlags) {
+        self.input_flags.store(flags.bits(), Ordering::Relaxed);
     }
 
     pub(crate) fn set_size(&self, width: u32, height: u32) {

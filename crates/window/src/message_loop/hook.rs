@@ -247,7 +247,7 @@ fn read_message<const UNICODE: bool>(msg: &MSG) {
             let window_id = root_hwnd.0 as _;
 
             let input_blocked = backends.input_blocked();
-            let input_flags = backends.window_state(window_id, |wnd_state| wnd_state.input_flags);
+            let input_flags = backends.window_state(window_id, |state| state.input_flags());
 
             if input_blocked || input_flags.contains(ListenInputFlags::CURSOR) {
                 emit_cursor_event_from_message(window_id, msg);

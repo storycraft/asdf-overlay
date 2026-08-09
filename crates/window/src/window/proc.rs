@@ -124,7 +124,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
 
         msg::WM_IME_NOTIFY => {
             let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags.contains(ListenInputFlags::KEYBOARD)
+                state.input_flags().contains(ListenInputFlags::KEYBOARD)
             });
             if !listening_keyboard {
                 return None;
@@ -138,7 +138,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
 
         msg::WM_INPUTLANGCHANGE => {
             let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags.contains(ListenInputFlags::KEYBOARD)
+                state.input_flags().contains(ListenInputFlags::KEYBOARD)
             });
             if !listening_keyboard {
                 return None;
@@ -155,7 +155,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
 
         msg::WM_IME_SETCONTEXT => {
             let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags.contains(ListenInputFlags::KEYBOARD)
+                state.input_flags().contains(ListenInputFlags::KEYBOARD)
             });
             if !listening_keyboard {
                 return None;
@@ -200,7 +200,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         msg::WM_IME_COMPOSITION => {
             let (listening_keyboard, ime) = Backends::get().window_state(hwnd, |state| {
                 (
-                    state.input_flags.contains(ListenInputFlags::KEYBOARD),
+                    state.input_flags().contains(ListenInputFlags::KEYBOARD),
                     *state.ime.read(),
                 )
             });
