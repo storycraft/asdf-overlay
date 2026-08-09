@@ -32,7 +32,7 @@ pub struct WindowProcState {
     pub(crate) cursor_hovering: AtomicBool,
     size: (AtomicU32, AtomicU32),
 
-    pub(crate) input_flags: ListenInputFlags,
+    pub input_flags: ListenInputFlags,
     blocking_state: Mutex<Option<InputBlockData>>,
 
     ime: RwLock<ImeState>,
