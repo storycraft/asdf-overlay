@@ -113,7 +113,9 @@ fn get_message<const UNICODE: bool>(
     }
 
     let msg = unsafe { &mut *msg };
-    if read_message::<UNICODE>(msg) {
+    read_message::<UNICODE>(msg);
+
+    if should_filter(msg) {
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -151,15 +153,11 @@ fn peek_message<const UNICODE: bool>(
     }
 
     let msg = unsafe { &mut *msg };
-    if !remove.contains(PM_REMOVE) {
-        // Only hide non removed messages without processing so apps cannot see them.
-        if should_filter(msg) {
-            msg.message = msg::WM_NULL;
-        }
-        return original_read;
+    if remove.contains(PM_REMOVE) {
+        read_message::<UNICODE>(msg);
     }
 
-    if read_message::<UNICODE>(msg) {
+    if should_filter(msg) {
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -212,29 +210,28 @@ extern "system" fn hooked_peek_message_w(
 }
 
 /// Process the message.
-///
-/// Returns true if the message should be filtered (not processed by the application).
-fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
+fn read_message<const UNICODE: bool>(msg: &MSG) {
     let id = unsafe { GetCurrentThreadId() };
 
+    let backends = Backends::get();
+
     if msg.message == msg::WM_QUIT {
-        Backends::get().cleanup_message_loop(id);
-        return false;
+        backends.cleanup_message_loop(id);
     }
 
-    Backends::get().message_loop_state(id, |msg_loop_state| {
+    backends.message_loop_state(id, move |msg_loop_state| {
         let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
         if !root_hwnd.is_invalid() {
             let window_id = root_hwnd.0 as _;
 
-            let input_flags =
-                Backends::get().window_state(window_id, |wnd_state| wnd_state.input_flags);
+            let input_blocked = backends.input_blocked();
+            let input_flags = backends.window_state(window_id, |wnd_state| wnd_state.input_flags);
 
-            if input_flags.contains(ListenInputFlags::CURSOR) {
+            if input_blocked || input_flags.contains(ListenInputFlags::CURSOR) {
                 emit_cursor_event_from_message(window_id, msg);
             }
 
-            if input_flags.contains(ListenInputFlags::KEYBOARD) {
+            if input_blocked || input_flags.contains(ListenInputFlags::KEYBOARD) {
                 emit_keyboard_event_from_message(window_id, msg);
             }
         };
@@ -243,10 +240,6 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
             f(msg_loop_state);
         }
     });
-
-    if !should_filter(msg) {
-        return false;
-    }
 
     unsafe {
         // Call TranslateMessage for char messages
@@ -271,8 +264,6 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
             );
         }
     }
-
-    true
 }
 
 #[inline]
