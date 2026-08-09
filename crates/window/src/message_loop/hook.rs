@@ -1,4 +1,4 @@
-use core::{mem, sync::atomic::Ordering, time::Duration};
+use core::{mem, sync::atomic::Ordering};
 use std::time::Instant;
 
 use asdf_overlay_hook::DetourHook;
@@ -12,8 +12,8 @@ use windows::{
         UI::{
             Controls::{self, HOVER_DEFAULT},
             Input::KeyboardAndMouse::{
-                GetDoubleClickTime, MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
-                TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+                MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture, TME_LEAVE,
+                TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
@@ -406,10 +406,9 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
     };
 
     let state = if pressed {
-        let click_delta = Backends::get()
-            .window_state(hwnd, |state| state.update_click_time(index, Instant::now()));
-        let double_click =
-            click_delta < Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
+        let double_click = Backends::get().window_state(hwnd, |state| {
+            state.check_double_click(index, Instant::now())
+        });
 
         CursorInputState::Pressed { double_click }
     } else {

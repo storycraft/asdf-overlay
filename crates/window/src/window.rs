@@ -13,7 +13,10 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
     UI::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
-        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
+        Input::{
+            Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
+            KeyboardAndMouse::GetDoubleClickTime,
+        },
         WindowsAndMessaging::{
             DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
             SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
@@ -94,13 +97,19 @@ impl WindowProcState {
         self.size.1.store(height, Ordering::Relaxed);
     }
 
-    pub(crate) fn update_click_time(&self, index: usize, new_time: Instant) -> Duration {
-        let last_click_time = self.last_click_time[index].lock().replace(new_time);
-        let Some(last_click_time) = last_click_time else {
-            return Duration::from_millis(0);
+    pub(crate) fn check_double_click(&self, index: usize, new_time: Instant) -> bool {
+        let mut slot = self.last_click_time[index].lock();
+        let Some(last_click_time) = slot.replace(new_time) else {
+            return false;
         };
 
-        new_time.duration_since(last_click_time)
+        let delta = new_time.duration_since(last_click_time);
+        if delta > Duration::from_millis(unsafe { GetDoubleClickTime() } as _) {
+            return false;
+        }
+
+        *slot = None;
+        true
     }
 
     pub(crate) fn block_input(&self) {
