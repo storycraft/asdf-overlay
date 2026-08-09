@@ -41,6 +41,13 @@ features = [
 
 [dev-dependencies]
 winit = "0.30.13"
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+
+[dev-dependencies.windows]
+workspace = true
+features = [
+    "Win32_System_LibraryLoader",
+]
 
 [build-dependencies]
 winres = "0.1.12"
