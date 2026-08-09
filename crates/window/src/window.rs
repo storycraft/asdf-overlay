@@ -9,13 +9,12 @@ use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
-    System::Threading::GetCurrentThreadId,
     UI::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
         Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext},
         WindowsAndMessaging::{
-            DefWindowProcA, GWLP_WNDPROC, GetClientRect, SetWindowLongPtrA, WM_IME_SETCONTEXT,
-            WNDPROC,
+            DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
+            SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
         },
     },
 };
@@ -134,7 +133,7 @@ impl WindowProcState {
     }
 
     pub(crate) fn call_on_window_thread(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
-        let thread_id = unsafe { GetCurrentThreadId() };
+        let thread_id = unsafe { GetWindowThreadProcessId(HWND(self.id as _), None) };
 
         Backends::get().message_loop_state(thread_id, |message_loop| {
             message_loop.call_on_message_loop(f);
