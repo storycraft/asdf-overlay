@@ -1,18 +1,12 @@
-//! The [`OverlayEvent`] enum and assorted types.
-//!
-//! These events are emitted from overlay system and usually sent from server to client via IPC connection.
-//! For the actual usage inside the library, see the documentation of
-//! * Overlay system: `asdf-overlay`
-//! * IPC client: `asdf-overlay-client`
-//! * IPC server: `asdf-overlay-dll`
+//! The [`Event`] enum and assorted types.
 
 pub mod input;
 
 use input::InputEvent;
 
-/// Describe a backend event.
+/// Describe a event.
 #[derive(Debug, Clone)]
-pub enum BackendEvent {
+pub enum Event {
     /// Events related to a specific window.
     Window {
         /// Unique identifier for the window.

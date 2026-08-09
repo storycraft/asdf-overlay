@@ -27,7 +27,7 @@ use windows::{
 use crate::{
     Backends,
     event::{
-        BackendEvent, WindowEvent,
+        Event, WindowEvent,
         input::{
             CursorAction, CursorEvent, CursorInput, CursorInputState, InputEvent, InputPosition,
             Key, KeyInputState, KeyboardInput, ScrollAxis,
@@ -420,7 +420,7 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
         CursorInputState::Released
     };
 
-    Backends::get().emit(BackendEvent::Window {
+    Backends::get().emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Action { action, state },
@@ -450,7 +450,7 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
             });
         };
 
-        backends.emit(BackendEvent::Window {
+        backends.emit(Event::Window {
             id: hwnd,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                 event: CursorEvent::Enter,
@@ -459,7 +459,7 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
         });
     });
 
-    backends.emit(BackendEvent::Window {
+    backends.emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Move,
@@ -494,7 +494,7 @@ fn cursor_leave(id: u32) {
         }
         state.cursor_hovering.store(false, Ordering::Relaxed);
 
-        backends.emit(BackendEvent::Window {
+        backends.emit(Event::Window {
             id,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                 event: CursorEvent::Leave,
@@ -509,7 +509,7 @@ fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let pos = parse_cursor_position(lparam);
 
-    Backends::get().emit(BackendEvent::Window {
+    Backends::get().emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Scroll {
@@ -581,8 +581,8 @@ fn should_filter(msg: &MSG) -> bool {
 }
 
 #[inline(always)]
-fn keyboard_input(id: u32, input: KeyboardInput) -> BackendEvent {
-    BackendEvent::Window {
+fn keyboard_input(id: u32, input: KeyboardInput) -> Event {
+    Event::Window {
         id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }

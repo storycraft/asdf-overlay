@@ -16,14 +16,14 @@ use asdf_overlay_common::cursor::Cursor;
 use once_cell::sync::OnceCell;
 
 use crate::{
-    event::BackendEvent, global::GlobalState, message_loop::MessageLoopState,
+    event::Event, global::GlobalState, message_loop::MessageLoopState,
     window::WindowProcState,
 };
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
 
 pub struct Backends {
-    event_rx: flume::Receiver<BackendEvent>,
+    event_rx: flume::Receiver<Event>,
 }
 
 impl Backends {
@@ -50,17 +50,17 @@ impl Backends {
     }
 
     /// Receives a [`BackendEvent`] from the backend.
-    pub fn recv(&self) -> Option<BackendEvent> {
+    pub fn recv(&self) -> Option<Event> {
         self.event_rx.recv().ok()
     }
 
     /// Receives a [`BackendEvent`] from the backend.
-    pub async fn recv_async(&self) -> Option<BackendEvent> {
+    pub async fn recv_async(&self) -> Option<Event> {
         self.event_rx.recv_async().await.ok()
     }
 
     /// Tries to receive a [`BackendEvent`] from the backend.
-    pub fn try_recv(&self) -> Result<BackendEvent, TryRecvError> {
+    pub fn try_recv(&self) -> Result<Event, TryRecvError> {
         Ok(self.event_rx.try_recv()?)
     }
 

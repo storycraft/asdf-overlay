@@ -10,7 +10,7 @@ use windows::Win32::{
 };
 
 use crate::{
-    event::{BackendEvent, WindowEvent},
+    event::{Event, WindowEvent},
     message_loop::MessageLoopState,
     types::IntDashMap,
     window::WindowProcState,
@@ -19,7 +19,7 @@ use crate::{
 pub(crate) struct GlobalState {
     pub(crate) hinstance: usize,
 
-    event_tx: flume::Sender<BackendEvent>,
+    event_tx: flume::Sender<Event>,
 
     pub(crate) message_loops: IntDashMap<u32, MessageLoopState>,
     pub(crate) windows: IntDashMap<u32, WindowProcState>,
@@ -29,7 +29,7 @@ pub(crate) struct GlobalState {
 }
 
 impl GlobalState {
-    pub(crate) fn new(hinstance: usize, event_tx: flume::Sender<BackendEvent>) -> Self {
+    pub(crate) fn new(hinstance: usize, event_tx: flume::Sender<Event>) -> Self {
         Self {
             hinstance,
             event_tx,
@@ -88,7 +88,7 @@ impl GlobalState {
         }
 
         *self.blocking_state.write() = None;
-        self.emit(BackendEvent::InputBlockingEnded);
+        self.emit(Event::InputBlockingEnded);
     }
 
     /// Get or initialize the message loop state for the given thread ID.
@@ -138,7 +138,7 @@ impl GlobalState {
                 let state = WindowProcState::init(window_id)?;
 
                 let (width, height) = state.size();
-                self.emit(BackendEvent::Window {
+                self.emit(Event::Window {
                     id: window_id,
                     event: WindowEvent::Added { width, height },
                 });
@@ -159,7 +159,7 @@ impl GlobalState {
             return;
         }
 
-        self.emit(BackendEvent::Window {
+        self.emit(Event::Window {
             id: window_id,
             event: WindowEvent::Destroyed,
         });
@@ -167,7 +167,7 @@ impl GlobalState {
 
     /// Emit [`BackendEvent`] to event sink. If one exists.
     #[inline]
-    pub(crate) fn emit(&self, event: BackendEvent) {
+    pub(crate) fn emit(&self, event: Event) {
         _ = self.event_tx.send(event);
     }
 }
