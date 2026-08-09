@@ -123,23 +123,27 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         }
 
         msg::WM_IME_NOTIFY => {
-            let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags().contains(ListenInputFlags::KEYBOARD)
-            });
+            let input_blocked = Backends::get().input_blocked();
+            let listening_keyboard = input_blocked
+                || Backends::get().window_state(hwnd, |state| {
+                    state.input_flags().contains(ListenInputFlags::KEYBOARD)
+                });
             if !listening_keyboard {
                 return None;
             }
 
             handle_ime_notify(hwnd, wparam.0 as _);
-            if Backends::get().input_blocked() {
+            if input_blocked {
                 return Some(LRESULT(0));
             }
         }
 
         msg::WM_INPUTLANGCHANGE => {
-            let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags().contains(ListenInputFlags::KEYBOARD)
-            });
+            let input_blocked = Backends::get().input_blocked();
+            let listening_keyboard = input_blocked
+                || Backends::get().window_state(hwnd, |state| {
+                    state.input_flags().contains(ListenInputFlags::KEYBOARD)
+                });
             if !listening_keyboard {
                 return None;
             }
@@ -148,15 +152,17 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
                 emit_ime_event(hwnd, Ime::Changed(lang));
             }
 
-            if Backends::get().input_blocked() {
+            if input_blocked {
                 return Some(LRESULT(0));
             }
         }
 
         msg::WM_IME_SETCONTEXT => {
-            let listening_keyboard = Backends::get().window_state(hwnd, |state| {
-                state.input_flags().contains(ListenInputFlags::KEYBOARD)
-            });
+            let input_blocked = Backends::get().input_blocked();
+            let listening_keyboard = input_blocked
+                || Backends::get().window_state(hwnd, |state| {
+                    state.input_flags().contains(ListenInputFlags::KEYBOARD)
+                });
             if !listening_keyboard {
                 return None;
             }
@@ -174,7 +180,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
                 },
             );
 
-            if Backends::get().input_blocked() {
+            if input_blocked {
                 return Some(unsafe {
                     DefWindowProcA(
                         HWND(hwnd as _),
@@ -198,16 +204,17 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         }
 
         msg::WM_IME_COMPOSITION => {
-            let (listening_keyboard, ime) = Backends::get().window_state(hwnd, |state| {
-                (
-                    state.input_flags().contains(ListenInputFlags::KEYBOARD),
-                    *state.ime.read(),
-                )
-            });
+            let input_blocked = Backends::get().input_blocked();
+            let listening_keyboard = input_blocked
+                || Backends::get().window_state(hwnd, |state| {
+                    state.input_flags().contains(ListenInputFlags::KEYBOARD)
+                });
+
             if !listening_keyboard {
                 return None;
             }
 
+            let ime = Backends::get().window_state(hwnd, |state| *state.ime.read());
             if ime != ImeState::Disabled {
                 with_himc(hwnd, |himc| {
                     let comp = IME_COMPOSITION_STRING(lparam.0 as _);
@@ -252,7 +259,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
                 });
             }
 
-            if Backends::get().input_blocked() {
+            if input_blocked {
                 return Some(LRESULT(0));
             }
         }
