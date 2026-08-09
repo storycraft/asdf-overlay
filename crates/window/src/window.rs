@@ -106,7 +106,7 @@ impl WindowProcState {
     pub(crate) fn block_input(&self) {
         let id = self.id;
 
-        self.call_on_window_thread(move |_| {
+        self.spawn_fn(move |_| {
             let hwnd = HWND(id as _);
 
             Backends::get().window_state(id, |state| {
@@ -131,7 +131,7 @@ impl WindowProcState {
     pub(crate) fn unblock_input(&self) {
         let id = self.id;
 
-        self.call_on_window_thread(move |_| {
+        self.spawn_fn(move |_| {
             let hwnd = HWND(id as _);
 
             Backends::get().window_state(id, |state| {
@@ -149,9 +149,9 @@ impl WindowProcState {
 
     /// Execute a closure on the window thread.
     /// Calling `call_on_window_thread` inside the closure deadlock.
-    pub fn call_on_window_thread(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
+    pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         Backends::get().message_loop_state(self.thread_id, |message_loop| {
-            message_loop.call_on_message_loop(f);
+            message_loop.spawn_fn(f);
         });
     }
 }

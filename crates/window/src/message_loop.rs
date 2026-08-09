@@ -5,7 +5,6 @@ use std::collections::vec_deque::VecDeque;
 use parking_lot::{Mutex, RwLock};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
-    System::Threading::GetCurrentThreadId,
     UI::WindowsAndMessaging::{HCURSOR, PostThreadMessageA, SetCursor, ShowCursor, WM_NULL},
 };
 
@@ -31,7 +30,7 @@ impl MessageLoopState {
     }
 
     pub(crate) fn block_input(&self) {
-        self.call_on_message_loop(|this| unsafe {
+        self.spawn_fn(|this| unsafe {
             let mut blocking_state = this.blocking_state.write();
             if blocking_state.is_some() {
                 return;
@@ -51,7 +50,7 @@ impl MessageLoopState {
     }
 
     pub(crate) fn unblock_input(&self) {
-        self.call_on_message_loop(|this| unsafe {
+        self.spawn_fn(|this| unsafe {
             let Some(blocking_state) = this.blocking_state.write().take() else {
                 return;
             };
@@ -63,15 +62,8 @@ impl MessageLoopState {
 
     /// Execute a closure on the message loop thread.
     /// Calling `call_on_message_loop` inside the closure deadlock.
-    pub fn call_on_message_loop(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
-        let mut proc_queue = self.proc_queue.lock();
-        if unsafe { GetCurrentThreadId() } == self.id {
-            f(self);
-            return;
-        }
-
-        proc_queue.push_back(Box::new(f));
-        drop(proc_queue);
+    pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
+        self.proc_queue.lock().push_back(Box::new(f));
 
         // Wakeup the message loop thread.
         unsafe {

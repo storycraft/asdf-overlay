@@ -144,8 +144,7 @@ impl GlobalState {
                 });
 
                 if self.input_blocked() {
-                    // TODO:: resolve deadlock
-                    // state.block_input();
+                    state.block_input();
                 }
 
                 Ok(state)
