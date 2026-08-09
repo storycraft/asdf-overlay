@@ -592,8 +592,6 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
     OverlayEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id: 0,
-            primary: true,
             event,
             client: surface,
             window,

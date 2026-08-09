@@ -18,10 +18,6 @@ pub enum InputEvent {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub struct CursorInput {
-    /// The ID of the cursor.
-    pub id: u16,
-    /// Whether if the cursor has been designated as primary.
-    pub primary: bool,
     /// The type of cursor input.
     pub event: CursorEvent,
     /// Cursor position relative to overlay surface position.
