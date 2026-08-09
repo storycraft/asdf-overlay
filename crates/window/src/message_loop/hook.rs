@@ -6,7 +6,8 @@ use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
+        Graphics::Gdi::ScreenToClient,
         System::Threading::GetCurrentThreadId,
         UI::{
             Controls::{self, HOVER_DEFAULT},
@@ -465,9 +466,23 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
 
 fn cursor_leave(id: u32) {
     let backends = Backends::get();
-    let pos = parse_cursor_position(LPARAM(
-        unsafe { HOOK.wait().get_message_pos.original_fn()() } as _,
-    ));
+    let pos = {
+        let screen_pos = unsafe { HOOK.wait().get_message_pos.original_fn()() };
+        let [x, y] = bytemuck::cast::<_, [i16; 2]>(screen_pos);
+        let mut point = POINT {
+            x: x as _,
+            y: y as _,
+        };
+
+        unsafe {
+            _ = ScreenToClient(HWND(id as _), &mut point);
+        }
+
+        InputPosition {
+            x: point.x,
+            y: point.y,
+        }
+    };
 
     backends.window_state(id, |state| {
         if !state.cursor_hovering.load(Ordering::Relaxed) {
