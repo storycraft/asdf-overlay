@@ -8,11 +8,9 @@ use core::{
 use std::time::Instant;
 
 use parking_lot::{Mutex, RwLock};
-use scopeguard::defer;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
     UI::{
-        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
         Input::{
             Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
             KeyboardAndMouse::GetDoubleClickTime,
@@ -192,11 +190,6 @@ bitflags::bitflags! {
 /// Get DPI aware client area size of the window.
 fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     unsafe {
-        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-        defer!({
-            SetThreadDpiAwarenessContext(old_context);
-        });
-
         let mut rect = RECT::default();
         GetClientRect(win, &mut rect)?;
         Ok((rect.right as u32, rect.bottom as u32))
