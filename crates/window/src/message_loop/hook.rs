@@ -128,6 +128,7 @@ fn get_message<const UNICODE: bool>(
     read_message::<UNICODE>(msg);
 
     if should_filter(msg) {
+        filtered_proc::<UNICODE>(msg);
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -170,6 +171,7 @@ fn peek_message<const UNICODE: bool>(
     }
 
     if should_filter(msg) {
+        filtered_proc::<UNICODE>(msg);
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -262,7 +264,10 @@ fn read_message<const UNICODE: bool>(msg: &MSG) {
             f(msg_loop_state);
         }
     });
+}
 
+/// Process when the message is filtered.
+fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
     unsafe {
         // Call TranslateMessage for char messages
         _ = TranslateMessage(msg);
