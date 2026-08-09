@@ -44,6 +44,7 @@ features = [
 
 [dev-dependencies]
 winit = "0.30.13"
+eframe = "0.36.1"
 tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
 
 [dev-dependencies.windows]
