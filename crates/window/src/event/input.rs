@@ -16,10 +16,6 @@ pub enum InputEvent {
 /// Describe a cursor related input.
 #[derive(Debug, Clone)]
 pub struct CursorInput {
-    /// The ID of the cursor.
-    pub id: u16,
-    /// Whether if the cursor has been designated as primary.
-    pub primary: bool,
     /// The type of cursor input.
     pub event: CursorEvent,
     /// Cursor position relative to the left-top corner client area of the window.
