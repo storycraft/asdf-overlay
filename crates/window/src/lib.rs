@@ -1,9 +1,9 @@
 mod cursors;
 pub mod event;
 mod global;
-mod message_loop;
+pub mod message_loop;
 mod types;
-mod window;
+pub mod window;
 
 use core::{
     error::Error,
@@ -15,7 +15,10 @@ use anyhow::Context;
 use asdf_overlay_common::cursor::Cursor;
 use once_cell::sync::OnceCell;
 
-use crate::{event::BackendEvent, global::GlobalState};
+use crate::{
+    event::BackendEvent, global::GlobalState, message_loop::MessageLoopState,
+    window::WindowProcState,
+};
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
 
@@ -46,21 +49,39 @@ impl Backends {
         Ok(Self { event_rx })
     }
 
+    /// Receives a [`BackendEvent`] from the backend.
     pub fn recv(&self) -> Option<BackendEvent> {
         self.event_rx.recv().ok()
     }
 
+    /// Receives a [`BackendEvent`] from the backend.
     pub async fn recv_async(&self) -> Option<BackendEvent> {
         self.event_rx.recv_async().await.ok()
     }
 
+    /// Tries to receive a [`BackendEvent`] from the backend.
     pub fn try_recv(&self) -> Result<BackendEvent, TryRecvError> {
         Ok(self.event_rx.try_recv()?)
     }
 
-    #[inline]
-    fn get() -> &'static GlobalState {
-        GLOBAL.get().expect("Backends is not initialized")
+    /// Returns an iterator over the IDs of all windows.
+    pub fn windows(&self) -> impl Iterator<Item = u32> + '_ {
+        Self::get().windows.iter().map(|r| *r.key())
+    }
+
+    /// View the state of a window with the given ID.
+    pub fn window<R>(&self, id: u32, f: impl FnOnce(&WindowProcState) -> R) -> Option<R> {
+        Self::get().windows.view(&id, |_, state| f(state))
+    }
+
+    /// Returns an iterator over the IDs of all message loops.
+    pub fn message_loops(&self) -> impl Iterator<Item = u32> + '_ {
+        Self::get().message_loops.iter().map(|r| *r.key())
+    }
+
+    /// View the state of a message loop with the given ID.
+    pub fn message_loop<R>(&self, id: u32, f: impl FnOnce(&MessageLoopState) -> R) -> Option<R> {
+        Self::get().message_loops.view(&id, |_, state| f(state))
     }
 
     /// Returns true if input is currently blocked.
@@ -85,6 +106,11 @@ impl Backends {
     #[inline]
     pub fn set_blocking_cursor(&self, cursor: Option<Cursor>) {
         *Self::get().blocking_cursor.write() = cursor;
+    }
+
+    #[inline]
+    fn get() -> &'static GlobalState {
+        GLOBAL.get().expect("Backends is not initialized")
     }
 }
 

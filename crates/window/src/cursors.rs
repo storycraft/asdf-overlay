@@ -17,7 +17,7 @@ use windows::{
 use crate::Backends;
 
 /// Load [`HCURSOR`] resource from `cursor` if exists.
-pub fn load(cursor: Cursor) -> Option<HCURSOR> {
+pub(crate) fn load(cursor: Cursor) -> Option<HCURSOR> {
     #[inline]
     fn system_cursor(res: PCWSTR) -> Option<HCURSOR> {
         unsafe { LoadCursorW(None, res) }.ok()

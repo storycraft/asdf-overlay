@@ -21,8 +21,8 @@ pub(crate) struct GlobalState {
 
     event_tx: flume::Sender<BackendEvent>,
 
-    message_loops: IntDashMap<u32, MessageLoopState>,
-    windows: IntDashMap<u32, WindowProcState>,
+    pub(crate) message_loops: IntDashMap<u32, MessageLoopState>,
+    pub(crate) windows: IntDashMap<u32, WindowProcState>,
 
     pub(crate) blocking_cursor: RwLock<Option<Cursor>>,
     pub(crate) blocking_state: RwLock<Option<InputBlockingState>>,
@@ -40,7 +40,9 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn input_blocked(&self) -> bool {
+    /// Check if input is currently blocked.
+    #[inline]
+    pub fn input_blocked(&self) -> bool {
         self.blocking_state.read().is_some()
     }
 
@@ -142,7 +144,8 @@ impl GlobalState {
                 });
 
                 if self.input_blocked() {
-                    state.block_input();
+                    // TODO:: resolve deadlock
+                    // state.block_input();
                 }
 
                 Ok(state)

@@ -13,7 +13,7 @@ use crate::{Backends, cursors};
 
 pub type ProcDispatchFn = Box<dyn FnOnce(&MessageLoopState) + Send>;
 
-pub(crate) struct MessageLoopState {
+pub struct MessageLoopState {
     /// Thread id of message loop.
     id: u32,
 
@@ -63,7 +63,7 @@ impl MessageLoopState {
 
     /// Execute a closure on the message loop thread.
     /// Calling `call_on_message_loop` inside the closure deadlock.
-    pub(crate) fn call_on_message_loop(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
+    pub fn call_on_message_loop(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         let mut proc_queue = self.proc_queue.lock();
         if unsafe { GetCurrentThreadId() } == self.id {
             f(self);

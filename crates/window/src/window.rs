@@ -1,5 +1,9 @@
+mod proc;
+
 use core::{
-    mem, sync::atomic::{AtomicBool, AtomicU32, Ordering}, time::Duration,
+    mem,
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+    time::Duration,
 };
 use std::time::Instant;
 
@@ -19,11 +23,11 @@ use windows::Win32::{
 
 use crate::{Backends, message_loop::MessageLoopState, window::proc::hooked_wnd_proc};
 
-mod proc;
-
-pub(crate) struct WindowProcState {
+pub struct WindowProcState {
     original_proc: WNDPROC,
     id: u32,
+    /// Thread id of the window.
+    pub thread_id: u32,
 
     pub(crate) cursor_hovering: AtomicBool,
     size: (AtomicU32, AtomicU32),
@@ -51,12 +55,13 @@ impl WindowProcState {
             }
             res
         };
-
+        let thread_id = unsafe { GetWindowThreadProcessId(HWND(id as _), None) };
         let size = get_client_size(HWND(id as _))?;
 
         Ok(Self {
             original_proc,
             id,
+            thread_id,
 
             cursor_hovering: AtomicBool::new(false),
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
@@ -69,7 +74,7 @@ impl WindowProcState {
         })
     }
 
-    pub(crate) fn size(&self) -> (u32, u32) {
+    pub fn size(&self) -> (u32, u32) {
         (
             self.size.0.load(Ordering::Relaxed),
             self.size.1.load(Ordering::Relaxed),
@@ -81,7 +86,7 @@ impl WindowProcState {
         self.size.1.store(height, Ordering::Relaxed);
     }
 
-    pub fn update_click_time(&self, index: usize, new_time: Instant) -> Duration {
+    pub(crate) fn update_click_time(&self, index: usize, new_time: Instant) -> Duration {
         let last_click_time = self.last_click_time[index].lock().replace(new_time);
         let Some(last_click_time) = last_click_time else {
             return Duration::from_millis(0);
@@ -134,10 +139,10 @@ impl WindowProcState {
         });
     }
 
-    pub(crate) fn call_on_window_thread(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
-        let thread_id = unsafe { GetWindowThreadProcessId(HWND(self.id as _), None) };
-
-        Backends::get().message_loop_state(thread_id, |message_loop| {
+    /// Execute a closure on the window thread.
+    /// Calling `call_on_window_thread` inside the closure deadlock.
+    pub fn call_on_window_thread(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
+        Backends::get().message_loop_state(self.thread_id, |message_loop| {
             message_loop.call_on_message_loop(f);
         });
     }
