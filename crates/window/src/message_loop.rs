@@ -6,7 +6,7 @@ use parking_lot::{Mutex, RwLock};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     System::Threading::GetCurrentThreadId,
-    UI::WindowsAndMessaging::{PostThreadMessageA, SetCursor, ShowCursor, WM_NULL},
+    UI::WindowsAndMessaging::{HCURSOR, PostThreadMessageA, SetCursor, ShowCursor, WM_NULL},
 };
 
 use crate::{Backends, cursors};
@@ -32,20 +32,33 @@ impl MessageLoopState {
 
     pub(crate) fn block_input(&self) {
         self.call_on_message_loop(|this| unsafe {
+            let mut blocking_state = this.blocking_state.write();
+            if blocking_state.is_some() {
+                return;
+            }
+
             ShowCursor(true);
-            SetCursor(
+            let prev_cursor = SetCursor(
                 Backends::get()
                     .blocking_cursor
                     .read()
                     .and_then(cursors::load),
-            );
+            )
+            .0 as usize;
 
-            *this.blocking_state.write() = Some(InputBlockingState {});
+            *blocking_state = Some(InputBlockingState { prev_cursor });
         });
     }
 
     pub(crate) fn unblock_input(&self) {
-        *self.blocking_state.write() = None;
+        self.call_on_message_loop(|this| unsafe {
+            let Some(blocking_state) = this.blocking_state.write().take() else {
+                return;
+            };
+
+            ShowCursor(true);
+            SetCursor(Some(HCURSOR(blocking_state.prev_cursor as _)));
+        });
     }
 
     /// Execute a closure on the message loop thread.
@@ -67,4 +80,6 @@ impl MessageLoopState {
     }
 }
 
-struct InputBlockingState {}
+struct InputBlockingState {
+    prev_cursor: usize,
+}
