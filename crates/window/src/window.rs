@@ -13,7 +13,7 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
     UI::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
-        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext},
+        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
         WindowsAndMessaging::{
             DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
             SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
@@ -141,8 +141,9 @@ impl WindowProcState {
                 };
 
                 unsafe {
-                    ImmAssociateContext(hwnd, HIMC(blocking_state.old_ime_cx as _));
-                }
+                    let ime_cx = ImmAssociateContext(hwnd, HIMC(blocking_state.old_ime_cx as _));
+                    _ = ImmDestroyContext(ime_cx);
+                };
             });
         });
     }
