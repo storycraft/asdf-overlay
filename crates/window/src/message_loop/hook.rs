@@ -465,7 +465,9 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
 
 fn cursor_leave(id: u32) {
     let backends = Backends::get();
-    let pos = parse_cursor_position(LPARAM(HOOK.wait().get_message_pos.original_fn() as _));
+    let pos = parse_cursor_position(LPARAM(
+        unsafe { HOOK.wait().get_message_pos.original_fn()() } as _,
+    ));
 
     backends.window_state(id, |state| {
         if !state.cursor_hovering.load(Ordering::Relaxed) {
