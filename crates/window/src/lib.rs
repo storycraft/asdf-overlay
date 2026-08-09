@@ -1,7 +1,6 @@
 mod cursors;
 pub mod event;
 mod global;
-mod hook;
 mod message_loop;
 mod types;
 mod window;
@@ -30,7 +29,7 @@ impl Backends {
         let (event_tx, event_rx) = flume::unbounded();
 
         let init_inner = || -> anyhow::Result<GlobalState> {
-            hook::install()?;
+            global::hook::install()?;
             message_loop::hook::install()?;
 
             Ok(GlobalState::new(hinstance, event_tx))

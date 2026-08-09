@@ -39,7 +39,7 @@ windows::core::link!("user32.dll" "system" fn GetRawInputBuffer(pdata: *mut RAWI
 
 pub(crate) struct Hook {
     pub(crate) clip_cursor: DetourHook<ClipCursorFn>,
-    pub(crate) set_cursor_pos: DetourHook<SetCursorFn>,
+    pub(crate) set_cursor_pos: DetourHook<SetCursorPosFn>,
 
     pub(crate) get_clip_cursor: DetourHook<GetClipCursorFn>,
     pub(crate) get_cursor_pos: DetourHook<GetCursorPos>,
@@ -53,7 +53,7 @@ pub(crate) struct Hook {
 pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
-type SetCursorFn = unsafe extern "system" fn(i32, i32) -> BOOL;
+type SetCursorPosFn = unsafe extern "system" fn(i32, i32) -> BOOL;
 
 type GetClipCursorFn = unsafe extern "system" fn(*mut RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;

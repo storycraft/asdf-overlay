@@ -1,3 +1,5 @@
+pub(crate) mod hook;
+
 use core::ptr;
 
 use asdf_overlay_common::cursor::Cursor;
@@ -9,7 +11,6 @@ use windows::Win32::{
 
 use crate::{
     event::{BackendEvent, WindowEvent},
-    hook,
     message_loop::MessageLoopState,
     types::IntDashMap,
     window::WindowProcState,
