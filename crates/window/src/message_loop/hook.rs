@@ -278,21 +278,51 @@ fn read_message<const UNICODE: bool>(msg: &MSG) -> bool {
 #[inline]
 fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
-        msg::WM_POINTERUPDATE => {
-            emit_cursor_move_event(id, msg.lParam, msg.wParam);
+        // Block WM_POINTER* by forwarding to DefWindowProc, which converts them
+        // to legacy WM_LBUTTON*/WM_MOUSEMOVE/WM_MOUSEWHEEL messages.
+        // Those legacy messages then re-enter this WndProc where they are
+        // emitted to the message loop and blocked.
+        msg::WM_POINTERUPDATE
+        | msg::WM_POINTERDOWN
+        | msg::WM_POINTERUP
+        | msg::WM_POINTERENTER
+        | msg::WM_POINTERLEAVE
+        | msg::WM_POINTERACTIVATE
+        | msg::WM_POINTERCAPTURECHANGED
+        | msg::WM_POINTERWHEEL
+        | msg::WM_POINTERHWHEEL => {
+            unsafe { DefWindowProcA(HWND(id as _), msg.message, msg.wParam, msg.lParam) };
         }
-        msg::WM_POINTERDOWN => {
-            emit_cursor_action_event(id, true, msg.wParam, msg.lParam);
+
+        msg::WM_MOUSEMOVE => {
+            emit_cursor_move_event(id, msg.lParam);
         }
-        msg::WM_POINTERUP => {
-            emit_cursor_action_event(id, false, msg.wParam, msg.lParam);
+        msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
+            emit_cursor_action_event(id, CursorAction::Left, true, msg.lParam);
         }
-        msg::WM_POINTERWHEEL => {
+        msg::WM_LBUTTONUP => {
+            emit_cursor_action_event(id, CursorAction::Left, false, msg.lParam);
+        }
+        msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
+            emit_cursor_action_event(id, CursorAction::Right, true, msg.lParam);
+        }
+        msg::WM_RBUTTONUP => {
+            emit_cursor_action_event(id, CursorAction::Right, false, msg.lParam);
+        }
+        msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
+            emit_cursor_action_event(id, CursorAction::Middle, true, msg.lParam);
+        }
+        msg::WM_MBUTTONUP => {
+            emit_cursor_action_event(id, CursorAction::Middle, false, msg.lParam);
+        }
+
+        msg::WM_MOUSEWHEEL => {
             emit_cursor_scroll_event(id, msg.wParam, msg.lParam, false);
         }
-        msg::WM_POINTERHWHEEL => {
+        msg::WM_MOUSEHWHEEL => {
             emit_cursor_scroll_event(id, msg.wParam, msg.lParam, true);
         }
+
         _ => {}
     }
 }
@@ -331,17 +361,6 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     }
 }
 
-fn parse_cursor(wparam: WPARAM) -> (u16, bool, PointerKeys) {
-    const POINTER_FLAG_PRIMARY: u16 = 0x2000;
-
-    let [id, keys] = bytemuck::cast::<_, [u16; 2]>(wparam.0 as u32);
-    (
-        id,
-        keys & POINTER_FLAG_PRIMARY != 0,
-        PointerKeys::from_bits_truncate(keys),
-    )
-}
-
 fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
     let [x, y] = bytemuck::cast::<_, [i16; 2]>(lparam.0 as u32);
     InputPosition {
@@ -351,8 +370,7 @@ fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
 }
 
 #[inline]
-fn emit_cursor_action_event(hwnd: u32, pressed: bool, wparam: WPARAM, lparam: LPARAM) {
-    let (id, primary, keys) = parse_cursor(wparam);
+fn emit_cursor_action_event(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM) {
     let pos = parse_cursor_position(lparam);
 
     if pressed {
@@ -361,49 +379,41 @@ fn emit_cursor_action_event(hwnd: u32, pressed: bool, wparam: WPARAM, lparam: LP
         _ = unsafe { ReleaseCapture() };
     }
 
-    for key in keys.iter() {
-        let (index, action) = match key {
-            PointerKeys::FIRST_BUTTON => (0, CursorAction::Left),
-            PointerKeys::SECOND_BUTTON => (1, CursorAction::Right),
-            PointerKeys::THIRD_BUTTON => (2, CursorAction::Middle),
-            PointerKeys::FOURTH_BUTTON => (3, CursorAction::Back),
-            PointerKeys::FIFTH_BUTTON => (4, CursorAction::Forward),
-            _ => continue,
-        };
+    let index = match action {
+        CursorAction::Left => 0,
+        CursorAction::Right => 1,
+        CursorAction::Middle => 2,
+        CursorAction::Back => 3,
+        CursorAction::Forward => 4,
+    };
 
-        let state = if pressed {
-            let click_delta = Backends::get()
-                .window_state(hwnd, |state| state.update_click_time(index, Instant::now()));
-            let double_click =
-                click_delta < Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
+    let state = if pressed {
+        let click_delta = Backends::get()
+            .window_state(hwnd, |state| state.update_click_time(index, Instant::now()));
+        let double_click =
+            click_delta < Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
 
-            CursorInputState::Pressed { double_click }
-        } else {
-            CursorInputState::Released
-        };
+        CursorInputState::Pressed { double_click }
+    } else {
+        CursorInputState::Released
+    };
 
-        Backends::get().emit(BackendEvent::Window {
-            id: hwnd,
-            event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                id,
-                primary,
-                event: CursorEvent::Action { action, state },
-                pos,
-            })),
-        });
-    }
+    Backends::get().emit(BackendEvent::Window {
+        id: hwnd,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            event: CursorEvent::Action { action, state },
+            pos,
+        })),
+    });
 }
 
 #[inline]
-fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM, wparam: WPARAM) {
-    let (id, primary, _) = parse_cursor(wparam);
+fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM) {
     let pos = parse_cursor_position(lparam);
 
     Backends::get().emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id,
-            primary,
             event: CursorEvent::Move,
             pos,
         })),
@@ -412,14 +422,12 @@ fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM, wparam: WPARAM) {
 
 #[inline]
 fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
-    let [id, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
+    let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let pos = parse_cursor_position(lparam);
 
     Backends::get().emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id: id as _,
-            primary: true,
             event: CursorEvent::Scroll {
                 axis: if horizontal {
                     ScrollAxis::X
@@ -437,7 +445,22 @@ fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizonta
 fn is_cursor_message(message: u32) -> bool {
     matches!(
         message,
-        msg::WM_POINTERUPDATE
+        msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
+            | msg::WM_POINTERUPDATE
             | msg::WM_POINTERDOWN
             | msg::WM_POINTERUP
             | msg::WM_POINTERENTER
@@ -487,15 +510,4 @@ fn to_key(lparam: LPARAM) -> Option<Key> {
         unsafe { MapVirtualKeyA(code as u32, MAPVK_VSC_TO_VK) as u8 },
         flags & 0x01 == 0x01,
     )
-}
-
-bitflags::bitflags! {
-    #[derive(PartialEq)]
-    struct PointerKeys: u16 {
-        const FIRST_BUTTON = 0x0010;
-        const SECOND_BUTTON = 0x0020;
-        const THIRD_BUTTON = 0x0040;
-        const FOURTH_BUTTON = 0x0080;
-        const FIFTH_BUTTON = 0x0100;
-    }
 }
