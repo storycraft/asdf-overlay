@@ -14,17 +14,13 @@ use windows::Win32::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
         Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext},
         WindowsAndMessaging::{
-            CallWindowProcA, DefWindowProcA, GWLP_WNDPROC, GetClientRect, SetWindowLongPtrA,
-            WM_IME_SETCONTEXT, WNDPROC,
+            DefWindowProcA, GWLP_WNDPROC, GetClientRect, SetWindowLongPtrA, WM_IME_SETCONTEXT,
+            WNDPROC,
         },
     },
 };
 
-use crate::{
-    Backends,
-    message_loop::{self, MessageLoopState},
-    window::proc::hooked_wnd_proc,
-};
+use crate::{Backends, message_loop::MessageLoopState, window::proc::hooked_wnd_proc};
 
 mod proc;
 
