@@ -33,7 +33,12 @@ impl MessageLoopState {
     pub(crate) fn block_input(&self) {
         self.call_on_message_loop(|this| unsafe {
             ShowCursor(true);
-            SetCursor(Backends::get().blocking_cursor().and_then(cursors::load));
+            SetCursor(
+                Backends::get()
+                    .blocking_cursor
+                    .read()
+                    .and_then(cursors::load),
+            );
 
             *this.blocking_state.write() = Some(InputBlockingState {});
         });
