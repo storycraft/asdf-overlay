@@ -1,7 +1,5 @@
 use core::{
-    mem,
-    sync::atomic::{AtomicU32, Ordering},
-    time::Duration,
+    mem, sync::atomic::{AtomicBool, AtomicU32, Ordering}, time::Duration,
 };
 use std::time::Instant;
 
@@ -26,6 +24,8 @@ mod proc;
 pub(crate) struct WindowProcState {
     original_proc: WNDPROC,
     id: u32,
+
+    pub(crate) cursor_hovering: AtomicBool,
     size: (AtomicU32, AtomicU32),
 
     pub(crate) input_flags: ListenInputFlags,
@@ -57,6 +57,8 @@ impl WindowProcState {
         Ok(Self {
             original_proc,
             id,
+
+            cursor_hovering: AtomicBool::new(false),
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
 
             input_flags: ListenInputFlags::empty(),

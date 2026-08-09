@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{mem, sync::atomic::Ordering, time::Duration};
 use std::time::Instant;
 
 use asdf_overlay_hook::DetourHook;
@@ -9,12 +9,14 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         System::Threading::GetCurrentThreadId,
         UI::{
+            Controls::{self, HOVER_DEFAULT},
             Input::KeyboardAndMouse::{
                 GetDoubleClickTime, MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
+                TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
-                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, GetMessagePos,
+                MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
             },
         },
     },
@@ -286,32 +288,37 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
         }
 
         msg::WM_MOUSEMOVE => {
-            emit_cursor_move_event(id, msg.lParam);
+            cursor_move(id, msg.lParam);
         }
+
+        Controls::WM_MOUSELEAVE => {
+            cursor_leave(id);
+        }
+
         msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
-            emit_cursor_action_event(id, CursorAction::Left, true, msg.lParam);
+            cursor_action(id, CursorAction::Left, true, msg.lParam);
         }
         msg::WM_LBUTTONUP => {
-            emit_cursor_action_event(id, CursorAction::Left, false, msg.lParam);
+            cursor_action(id, CursorAction::Left, false, msg.lParam);
         }
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
-            emit_cursor_action_event(id, CursorAction::Right, true, msg.lParam);
+            cursor_action(id, CursorAction::Right, true, msg.lParam);
         }
         msg::WM_RBUTTONUP => {
-            emit_cursor_action_event(id, CursorAction::Right, false, msg.lParam);
+            cursor_action(id, CursorAction::Right, false, msg.lParam);
         }
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
-            emit_cursor_action_event(id, CursorAction::Middle, true, msg.lParam);
+            cursor_action(id, CursorAction::Middle, true, msg.lParam);
         }
         msg::WM_MBUTTONUP => {
-            emit_cursor_action_event(id, CursorAction::Middle, false, msg.lParam);
+            cursor_action(id, CursorAction::Middle, false, msg.lParam);
         }
 
         msg::WM_MOUSEWHEEL => {
-            emit_cursor_scroll_event(id, msg.wParam, msg.lParam, false);
+            cursor_scroll(id, msg.wParam, msg.lParam, false);
         }
         msg::WM_MOUSEHWHEEL => {
-            emit_cursor_scroll_event(id, msg.wParam, msg.lParam, true);
+            cursor_scroll(id, msg.wParam, msg.lParam, true);
         }
 
         _ => {}
@@ -361,7 +368,7 @@ fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
 }
 
 #[inline]
-fn emit_cursor_action_event(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM) {
+fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM) {
     let pos = parse_cursor_position(lparam);
 
     if pressed {
@@ -399,10 +406,36 @@ fn emit_cursor_action_event(hwnd: u32, action: CursorAction, pressed: bool, lpar
 }
 
 #[inline]
-fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM) {
+fn cursor_move(hwnd: u32, lparam: LPARAM) {
     let pos = parse_cursor_position(lparam);
 
-    Backends::get().emit(BackendEvent::Window {
+    let backends = Backends::get();
+    backends.window_state(hwnd, |state| {
+        if state.cursor_hovering.load(Ordering::Relaxed) {
+            return;
+        }
+        state.cursor_hovering.store(true, Ordering::Relaxed);
+
+        // track for leave event
+        unsafe {
+            _ = TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE,
+                hwndTrack: HWND(hwnd as _),
+                dwHoverTime: HOVER_DEFAULT,
+            });
+        };
+
+        backends.emit(BackendEvent::Window {
+            id: hwnd,
+            event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                event: CursorEvent::Enter,
+                pos,
+            })),
+        });
+    });
+
+    backends.emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Move,
@@ -411,8 +444,28 @@ fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM) {
     });
 }
 
+fn cursor_leave(id: u32) {
+    let backends = Backends::get();
+    let pos = parse_cursor_position(LPARAM(unsafe { GetMessagePos() } as _));
+
+    backends.window_state(id, |state| {
+        if !state.cursor_hovering.load(Ordering::Relaxed) {
+            return;
+        }
+        state.cursor_hovering.store(false, Ordering::Relaxed);
+
+        backends.emit(BackendEvent::Window {
+            id,
+            event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                event: CursorEvent::Leave,
+                pos,
+            })),
+        });
+    });
+}
+
 #[inline]
-fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
+fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let pos = parse_cursor_position(lparam);
 
@@ -447,6 +500,7 @@ fn is_cursor_message(message: u32) -> bool {
             | msg::WM_MBUTTONUP
             | msg::WM_MBUTTONDBLCLK
             | msg::WM_XBUTTONDOWN
+            | Controls::WM_MOUSELEAVE
             | msg::WM_XBUTTONUP
             | msg::WM_XBUTTONDBLCLK
             | msg::WM_MOUSEWHEEL
