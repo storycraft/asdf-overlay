@@ -8,23 +8,33 @@ use std::time::Instant;
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
 use windows::Win32::{
-    Foundation::{HWND, RECT},
+    Foundation::{HWND, LPARAM, RECT, WPARAM},
+    System::Threading::GetCurrentThreadId,
     UI::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
-        WindowsAndMessaging::{GWLP_WNDPROC, GetClientRect, SetWindowLongPtrA, WNDPROC},
+        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext},
+        WindowsAndMessaging::{
+            CallWindowProcA, DefWindowProcA, GWLP_WNDPROC, GetClientRect, SetWindowLongPtrA,
+            WM_IME_SETCONTEXT, WNDPROC,
+        },
     },
 };
 
-use crate::window::proc::hooked_wnd_proc;
+use crate::{
+    Backends,
+    message_loop::{self, MessageLoopState},
+    window::proc::hooked_wnd_proc,
+};
 
 mod proc;
 
 pub(crate) struct WindowProcState {
     original_proc: WNDPROC,
+    id: u32,
     size: (AtomicU32, AtomicU32),
 
     pub(crate) input_flags: ListenInputFlags,
-    blocking_state: Option<InputBlockData>,
+    blocking_state: Mutex<Option<InputBlockData>>,
 
     ime: RwLock<ImeState>,
     last_click_time: [Mutex<Option<Instant>>; 5],
@@ -51,10 +61,11 @@ impl WindowProcState {
 
         Ok(Self {
             original_proc,
+            id,
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
 
             input_flags: ListenInputFlags::empty(),
-            blocking_state: None,
+            blocking_state: Mutex::new(None),
 
             ime: RwLock::new(ImeState::Disabled),
             last_click_time: [const { Mutex::new(None) }; 5],
@@ -80,6 +91,58 @@ impl WindowProcState {
         };
 
         new_time.duration_since(last_click_time)
+    }
+
+    pub(crate) fn block_input(&self) {
+        let id = self.id;
+
+        self.call_on_window_thread(move |_| {
+            let hwnd = HWND(id as _);
+
+            Backends::get().window_state(id, |state| {
+                let mut blocking_state = state.blocking_state.lock();
+                if blocking_state.is_some() {
+                    return;
+                }
+
+                let old_ime_cx =
+                    unsafe { ImmAssociateContext(hwnd, ImmCreateContext()) }.0 as usize;
+
+                *blocking_state = Some(InputBlockData { old_ime_cx });
+            });
+
+            // In case of ime is already enabled, hide composition windows
+            unsafe {
+                DefWindowProcA(hwnd, WM_IME_SETCONTEXT, WPARAM(1), LPARAM(0));
+            }
+        });
+    }
+
+    pub(crate) fn unblock_input(&self) {
+        let id = self.id;
+
+        self.call_on_window_thread(move |_| {
+            let hwnd = HWND(id as _);
+
+            Backends::get().window_state(id, |state| {
+                let mut blocking_state = state.blocking_state.lock();
+                let Some(blocking_state) = blocking_state.take() else {
+                    return;
+                };
+
+                unsafe {
+                    ImmAssociateContext(hwnd, HIMC(blocking_state.old_ime_cx as _));
+                }
+            });
+        });
+    }
+
+    pub(crate) fn call_on_window_thread(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
+        let thread_id = unsafe { GetCurrentThreadId() };
+
+        Backends::get().message_loop_state(thread_id, |message_loop| {
+            message_loop.call_on_message_loop(f);
+        });
     }
 }
 

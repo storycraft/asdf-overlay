@@ -151,6 +151,10 @@ impl GlobalState {
             message_loop.block_input();
         }
 
+        for window in self.windows.iter() {
+            window.block_input();
+        }
+
         *self.blocking_state.write() = Some(InputBlockingState { clip_cursor });
     }
 
@@ -158,6 +162,10 @@ impl GlobalState {
     pub fn unblock_input(&self) {
         for message_loop in self.message_loops.iter() {
             message_loop.unblock_input();
+        }
+
+        for window in self.windows.iter() {
+            window.unblock_input();
         }
 
         *self.blocking_state.write() = None;
@@ -168,16 +176,23 @@ impl GlobalState {
     ///
     /// NOTE: The thread id is windows system thread id, not rust thread id.
     fn message_loop_state<R>(&self, thread_id: u32, f: impl FnOnce(&MessageLoopState) -> R) -> R {
-        match self.message_loops.get(&thread_id) {
-            Some(state) => f(state.value()),
-
-            None => f(self
-                .message_loops
-                .entry(thread_id)
-                .or_insert_with(|| MessageLoopState::new(thread_id))
-                .downgrade()
-                .value()),
+        if let Some(state) = self.message_loops.get(&thread_id) {
+            return f(state.value());
         }
+
+        let state = self
+            .message_loops
+            .entry(thread_id)
+            .or_insert_with(|| {
+                let state = MessageLoopState::new(thread_id);
+                if self.input_blocked() {
+                    state.block_input();
+                }
+
+                state
+            })
+            .downgrade();
+        f(state.value())
     }
 
     fn cleanup_message_loop(&self, thread_id: u32) {
@@ -200,6 +215,10 @@ impl GlobalState {
                     id: window_id,
                     event: WindowEvent::Added { width, height },
                 });
+
+                if self.input_blocked() {
+                    state.block_input();
+                }
 
                 Ok(state)
             })

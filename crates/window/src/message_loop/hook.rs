@@ -61,7 +61,7 @@ pub(crate) struct Hook {
     pub(crate) peek_message_w: DetourHook<PeekMessageFn>,
 }
 
-static HOOK: OnceCell<Hook> = OnceCell::new();
+pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
 type PeekMessageFn =
