@@ -128,7 +128,7 @@ fn peek_message<const UNICODE: bool>(
 ) -> BOOL {
     let original_read = unsafe {
         if UNICODE {
-            HOOK.wait().peek_message_a.original_fn()(
+            HOOK.wait().peek_message_w.original_fn()(
                 msg,
                 hwnd,
                 wmsgfiltermin,
@@ -136,7 +136,7 @@ fn peek_message<const UNICODE: bool>(
                 remove,
             )
         } else {
-            HOOK.wait().peek_message_w.original_fn()(
+            HOOK.wait().peek_message_a.original_fn()(
                 msg,
                 hwnd,
                 wmsgfiltermin,
