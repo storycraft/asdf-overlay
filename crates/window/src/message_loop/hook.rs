@@ -15,8 +15,8 @@ use windows::{
                 TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, GetMessagePos,
-                MSG, PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
+                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
             },
         },
     },
@@ -37,6 +37,8 @@ use crate::{
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
+
+windows::core::link!("user32.dll" "system" fn GetMessagePos() -> u32);
 
 windows::core::link!("user32.dll" "system" fn PeekMessageA(
     lpmsg: *mut MSG,
@@ -59,6 +61,8 @@ pub(crate) struct Hook {
     pub(crate) get_message_a: DetourHook<GetMessageFn>,
     pub(crate) get_message_w: DetourHook<GetMessageFn>,
 
+    pub(crate) get_message_pos: DetourHook<GetMessagePosFn>,
+
     pub(crate) peek_message_a: DetourHook<PeekMessageFn>,
     pub(crate) peek_message_w: DetourHook<PeekMessageFn>,
 }
@@ -69,6 +73,8 @@ type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
 type PeekMessageFn =
     unsafe extern "system" fn(*mut MSG, HWND, u32, u32, PEEK_MESSAGE_REMOVE_TYPE) -> BOOL;
 
+type GetMessagePosFn = unsafe extern "system" fn() -> u32;
+
 pub(crate) fn install() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking GetMessageA");
@@ -76,6 +82,9 @@ pub(crate) fn install() -> anyhow::Result<()> {
 
         debug!("hooking GetMessageW");
         let get_message_w = DetourHook::attach(GetMessageW as _, hooked_get_message_w as _)?;
+
+        debug!("hooking GetMessagePos");
+        let get_message_pos = DetourHook::attach(GetMessagePos as _, hooked_get_message_pos as _)?;
 
         debug!("hooking PeekMessageA");
         let peek_message_a = DetourHook::attach(PeekMessageA as _, hooked_peek_message_a as _)?;
@@ -86,7 +95,7 @@ pub(crate) fn install() -> anyhow::Result<()> {
         Ok::<_, anyhow::Error>(Hook {
             get_message_a,
             get_message_w,
-
+            get_message_pos,
             peek_message_a,
             peek_message_w,
         })
@@ -185,6 +194,16 @@ extern "system" fn hooked_get_message_w(
 ) -> BOOL {
     trace!("GetMessageW called");
     get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
+}
+
+#[tracing::instrument]
+extern "system" fn hooked_get_message_pos() -> u32 {
+    trace!("GetMessagePos called");
+    if !Backends::get().input_blocked() {
+        return unsafe { HOOK.wait().get_message_pos.original_fn()() };
+    }
+
+    0
 }
 
 #[tracing::instrument]
@@ -446,7 +465,7 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
 
 fn cursor_leave(id: u32) {
     let backends = Backends::get();
-    let pos = parse_cursor_position(LPARAM(unsafe { GetMessagePos() } as _));
+    let pos = parse_cursor_position(LPARAM(HOOK.wait().get_message_pos.original_fn() as _));
 
     backends.window_state(id, |state| {
         if !state.cursor_hovering.load(Ordering::Relaxed) {
