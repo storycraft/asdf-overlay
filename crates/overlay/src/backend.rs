@@ -28,8 +28,8 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{
             self as msg, ClipCursor, DefWindowProcA, GWLP_WNDPROC, GetClipCursor, GetSystemMetrics,
-            PostMessageA, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetWindowLongPtrA,
-            ShowCursor, WNDPROC,
+            PostMessageA, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetWindowLongPtrA, ShowCursor,
+            WNDPROC,
         },
     },
 };

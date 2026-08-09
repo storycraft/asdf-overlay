@@ -1,10 +1,6 @@
-use asdf_overlay_event::{
-    OverlayEvent, WindowEvent,
-    input::{
-        CursorAction, CursorInput, InputEvent, InputPosition, Key, KeyInputState, KeyboardInput,
-        ScrollAxis,
-    },
-};
+use core::time::Duration;
+use std::time::Instant;
+
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
@@ -14,7 +10,7 @@ use windows::{
         System::Threading::GetCurrentThreadId,
         UI::{
             Input::KeyboardAndMouse::{
-                MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
+                GetDoubleClickTime, MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture,
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
@@ -25,7 +21,17 @@ use windows::{
     core::BOOL,
 };
 
-use crate::{Backends, window::ListenInputFlags};
+use crate::{
+    Backends,
+    event::{
+        BackendEvent, WindowEvent,
+        input::{
+            CursorAction, CursorEvent, CursorInput, CursorInputState, InputEvent, InputPosition,
+            Key, KeyInputState, KeyboardInput, ScrollAxis,
+        },
+    },
+    window::ListenInputFlags,
+};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
@@ -346,43 +352,43 @@ fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
 
 #[inline]
 fn emit_cursor_action_event(hwnd: u32, pressed: bool, wparam: WPARAM, lparam: LPARAM) {
-    use asdf_overlay_event::input::{CursorEvent, CursorInputState};
-
     let (id, primary, keys) = parse_cursor(wparam);
     let pos = parse_cursor_position(lparam);
 
-    let state = if pressed {
+    if pressed {
         unsafe { SetCapture(HWND(hwnd as _)) };
-
-        CursorInputState::Pressed {
-            double_click: check_double_click(hwnd),
-        }
     } else {
         _ = unsafe { ReleaseCapture() };
-
-        CursorInputState::Released
-    };
+    }
 
     for key in keys.iter() {
-        let action = match key {
-            PointerKeys::FIRST_BUTTON => CursorAction::Left,
-            PointerKeys::SECOND_BUTTON => CursorAction::Right,
-            PointerKeys::THIRD_BUTTON => CursorAction::Middle,
-            PointerKeys::FOURTH_BUTTON => CursorAction::Back,
-            PointerKeys::FIFTH_BUTTON => CursorAction::Forward,
+        let (index, action) = match key {
+            PointerKeys::FIRST_BUTTON => (0, CursorAction::Left),
+            PointerKeys::SECOND_BUTTON => (1, CursorAction::Right),
+            PointerKeys::THIRD_BUTTON => (2, CursorAction::Middle),
+            PointerKeys::FOURTH_BUTTON => (3, CursorAction::Back),
+            PointerKeys::FIFTH_BUTTON => (4, CursorAction::Forward),
             _ => continue,
         };
 
-        Backends::get().emit(OverlayEvent::Window {
+        let state = if pressed {
+            let click_delta = Backends::get()
+                .window_state(hwnd, |state| state.update_click_time(index, Instant::now()));
+            let double_click =
+                click_delta < Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
+
+            CursorInputState::Pressed { double_click }
+        } else {
+            CursorInputState::Released
+        };
+
+        Backends::get().emit(BackendEvent::Window {
             id: hwnd,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                 id,
                 primary,
                 event: CursorEvent::Action { action, state },
-                client: pos,
-
-                // TODO:: REMOVE
-                window: pos,
+                pos,
             })),
         });
     }
@@ -390,33 +396,26 @@ fn emit_cursor_action_event(hwnd: u32, pressed: bool, wparam: WPARAM, lparam: LP
 
 #[inline]
 fn emit_cursor_move_event(hwnd: u32, lparam: LPARAM, wparam: WPARAM) {
-    use asdf_overlay_event::input::CursorEvent;
-
     let (id, primary, _) = parse_cursor(wparam);
     let pos = parse_cursor_position(lparam);
 
-    Backends::get().emit(OverlayEvent::Window {
+    Backends::get().emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             id,
             primary,
             event: CursorEvent::Move,
-            client: pos,
-
-            // TODO:: REMOVE
-            window: pos,
+            pos,
         })),
     });
 }
 
 #[inline]
 fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
-    use asdf_overlay_event::input::CursorEvent;
-
     let [id, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let pos = parse_cursor_position(lparam);
 
-    Backends::get().emit(OverlayEvent::Window {
+    Backends::get().emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             id: id as _,
@@ -429,10 +428,7 @@ fn emit_cursor_scroll_event(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizonta
                 },
                 delta,
             },
-            client: pos,
-
-            // TODO:: REMOVE
-            window: pos,
+            pos,
         })),
     });
 }
@@ -477,8 +473,8 @@ fn should_filter(msg: &MSG) -> bool {
 }
 
 #[inline(always)]
-fn keyboard_input(id: u32, input: KeyboardInput) -> OverlayEvent {
-    OverlayEvent::Window {
+fn keyboard_input(id: u32, input: KeyboardInput) -> BackendEvent {
+    BackendEvent::Window {
         id,
         event: WindowEvent::Input(InputEvent::Keyboard(input)),
     }
@@ -491,12 +487,6 @@ fn to_key(lparam: LPARAM) -> Option<Key> {
         unsafe { MapVirtualKeyA(code as u32, MAPVK_VSC_TO_VK) as u8 },
         flags & 0x01 == 0x01,
     )
-}
-
-#[inline]
-fn check_double_click(_hwnd: u32) -> bool {
-    // TODO: Check double click time against the window's last click time
-    false
 }
 
 bitflags::bitflags! {

@@ -1,4 +1,5 @@
 mod cursors;
+pub mod event;
 mod hook;
 mod message_loop;
 mod types;
@@ -11,7 +12,6 @@ use core::{
 
 use anyhow::Context;
 use asdf_overlay_common::cursor::Cursor;
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use windows::Win32::{
@@ -22,12 +22,17 @@ use windows::Win32::{
     },
 };
 
-use crate::{message_loop::MessageLoopState, types::IntDashMap, window::WindowProcState};
+use crate::{
+    event::{BackendEvent, WindowEvent},
+    message_loop::MessageLoopState,
+    types::IntDashMap,
+    window::WindowProcState,
+};
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
 
 pub struct Backends {
-    event_rx: flume::Receiver<OverlayEvent>,
+    event_rx: flume::Receiver<BackendEvent>,
 }
 
 impl Backends {
@@ -64,26 +69,31 @@ impl Backends {
         Ok(Self { event_rx })
     }
 
+    #[inline]
     fn get() -> &'static GlobalState {
         GLOBAL.get().expect("Backends is not initialized")
     }
 
     /// Returns true if input is currently blocked.
+    #[inline]
     pub fn input_blocked() -> bool {
         Self::get().input_blocked()
     }
 
     /// Blocks or unblocks input for the window.
+    #[inline]
     pub fn block_input(&self) {
         Self::get().block_input();
     }
 
     /// Unblock input for the window.
+    #[inline]
     pub fn unblock_input(&self) {
         Self::get().unblock_input();
     }
 
     /// Sets the cursor to be displayed while input is blocked.
+    #[inline]
     pub fn set_blocking_cursor(&self, cursor: Option<Cursor>) {
         *Self::get().blocking_cursor.write() = cursor;
     }
@@ -99,7 +109,7 @@ impl Drop for Backends {
 pub(crate) struct GlobalState {
     hinstance: usize,
 
-    event_tx: flume::Sender<OverlayEvent>,
+    event_tx: flume::Sender<BackendEvent>,
 
     message_loops: IntDashMap<u32, MessageLoopState>,
     windows: IntDashMap<u32, WindowProcState>,
@@ -151,6 +161,7 @@ impl GlobalState {
         }
 
         *self.blocking_state.write() = None;
+        self.emit(BackendEvent::InputBlockingEnded);
     }
 
     /// Get or initialize the message loop state for the given thread ID.
@@ -174,19 +185,27 @@ impl GlobalState {
     }
 
     fn window_state<R>(&self, window_id: u32, f: impl FnOnce(&WindowProcState) -> R) -> R {
-        match self.windows.get(&window_id) {
-            Some(state) => f(state.value()),
-
-            None => f(self
-                .windows
-                .entry(window_id)
-                .or_insert_with(|| {
-                    // TODO:: emit Added event, proc hook
-                    WindowProcState::new((0, 0), None)
-                })
-                .downgrade()
-                .value()),
+        if let Some(state) = self.windows.get(&window_id) {
+            return f(state.value());
         }
+
+        let state = self
+            .windows
+            .entry(window_id)
+            .or_try_insert_with(|| -> anyhow::Result<WindowProcState> {
+                let state = WindowProcState::init(window_id)?;
+
+                let (width, height) = state.size();
+                self.emit(BackendEvent::Window {
+                    id: window_id,
+                    event: WindowEvent::Added { width, height },
+                });
+
+                Ok(state)
+            })
+            .expect("failed to initialize window state")
+            .downgrade();
+        f(state.value())
     }
 
     fn cleanup_window(&self, window_id: u32) {
@@ -194,15 +213,15 @@ impl GlobalState {
             return;
         }
 
-        self.emit(OverlayEvent::Window {
+        self.emit(BackendEvent::Window {
             id: window_id,
             event: WindowEvent::Destroyed,
         });
     }
 
-    /// Emit [`OverlayEvent`] to event sink. If one exists.
+    /// Emit [`BackendEvent`] to event sink. If one exists.
     #[inline]
-    pub(crate) fn emit(&self, event: OverlayEvent) {
+    pub(crate) fn emit(&self, event: BackendEvent) {
         _ = self.event_tx.send(event);
     }
 }

@@ -11,7 +11,6 @@ readme = "../../README.md"
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
-asdf-overlay-event = { workspace = true }
 asdf-overlay-hook = { workspace = true }
 
 tracing = "0.1"

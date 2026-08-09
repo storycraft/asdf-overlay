@@ -1,18 +1,13 @@
-use asdf_overlay_event::{
-    OverlayEvent, WindowEvent,
-    input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
-};
 use core::{alloc::Layout, mem, slice};
 use scopeguard::defer;
 use std::alloc;
 use tracing::trace;
 use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     Globalization::LCIDToLocaleName,
     System::SystemServices::{LOCALE_NAME_MAX_LENGTH, SORT_DEFAULT},
     UI::{
-        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
         Input::{
             Ime::{
                 self as ime, CANDIDATELIST, HIMC, IME_COMPOSITION_STRING, IME_CONVERSION_MODE,
@@ -22,18 +17,22 @@ use windows::Win32::{
             KeyboardAndMouse::GetKeyboardLayout,
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GetClientRect, SetCursor, WM_NCDESTROY,
+            self as msg, CallWindowProcA, DefWindowProcA, SetCursor, WM_NCDESTROY,
         },
     },
 };
 
 use crate::{
     Backends, cursors,
-    window::{ImeState, ListenInputFlags},
+    event::{
+        BackendEvent, WindowEvent,
+        input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
+    },
+    window::{ImeState, ListenInputFlags, get_client_size},
 };
 
 #[tracing::instrument]
-pub(crate) unsafe extern "system" fn hooked_wnd_proc(
+pub(super) unsafe extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
@@ -67,7 +66,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
                 if state.size() != (width, height) {
                     state.set_size(width, height);
 
-                    Backends::get().emit(OverlayEvent::Window {
+                    Backends::get().emit(BackendEvent::Window {
                         id: hwnd,
                         event: WindowEvent::Resized { width, height },
                     });
@@ -99,10 +98,9 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
             }
         }
 
-        msg::WM_APPCOMMAND
-            if Backends::get().input_blocked() => {
-                return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
-            }
+        msg::WM_APPCOMMAND if Backends::get().input_blocked() => {
+            return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
+        }
 
         // block other keyboard, mouse event
         msg::WM_CAPTURECHANGED
@@ -115,14 +113,14 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         | msg::WM_SYSDEADCHAR
         | msg::WM_UNICHAR
         | msg::WM_IME_REQUEST
-            if Backends::get().input_blocked() => {
-                return Some(LRESULT(0));
-            }
+            if Backends::get().input_blocked() =>
+        {
+            return Some(LRESULT(0));
+        }
 
-        msg::WM_INPUTLANGCHANGEREQUEST
-            if Backends::get().input_blocked() => {
-                return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
-            }
+        msg::WM_INPUTLANGCHANGEREQUEST if Backends::get().input_blocked() => {
+            return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
+        }
 
         msg::WM_IME_NOTIFY => {
             let listening_keyboard = Backends::get().window_state(hwnd, |state| {
@@ -286,7 +284,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
 }
 
 fn emit_ime_event(hwnd: u32, ime: Ime) {
-    Backends::get().emit(OverlayEvent::Window {
+    Backends::get().emit(BackendEvent::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Keyboard(KeyboardInput::Ime(ime))),
     });
@@ -441,18 +439,4 @@ fn ime_conversion_mode(himc: HIMC) -> ConversionMode {
         mode |= ConversionMode::KATAKANA;
     }
     mode
-}
-
-/// Get DPI aware client area size of the window.
-fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
-    unsafe {
-        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-        defer!({
-            SetThreadDpiAwarenessContext(old_context);
-        });
-
-        let mut rect = RECT::default();
-        GetClientRect(win, &mut rect)?;
-        Ok((rect.right as u32, rect.bottom as u32))
-    }
 }
