@@ -1,11 +1,12 @@
-use std::thread;
+use std::{sync::Arc, thread};
 
 use asdf_overlay_window::Backends;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowAttributes, WindowId},
 };
 
@@ -14,21 +15,26 @@ fn main() -> anyhow::Result<()> {
 
     let el = EventLoop::new()?;
 
-    let backends = Backends::new(unsafe { GetModuleHandleW(None) }?.0 as _)?;
-    thread::spawn(move || {
-        backends.block_input();
-
-        while let Some(event) = backends.recv() {
-            eprintln!("Backend event: {event:?}");
+    let backends = Arc::new(Backends::new(unsafe { GetModuleHandleW(None) }?.0 as _)?);
+    thread::spawn({
+        let backends = backends.clone();
+        move || {
+            while let Some(event) = backends.recv() {
+                eprintln!("Backend event: {event:?}");
+            }
         }
     });
 
-    el.run_app(&mut App { win: None })?;
+    el.run_app(&mut App {
+        win: None,
+        backends,
+    })?;
     Ok(())
 }
 
 struct App {
     win: Option<Window>,
+    backends: Arc<Backends>,
 }
 
 impl ApplicationHandler for App {
@@ -44,8 +50,24 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        if event == WindowEvent::CloseRequested {
-            el.exit();
+        match event {
+            WindowEvent::CloseRequested => {
+                el.exit();
+            }
+
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(KeyCode::Enter),
+                        ..
+                    },
+                ..
+            } => {
+                eprintln!("Blocking input.");
+                self.backends.block_input();
+            }
+
+            _ => {}
         }
     }
 }
