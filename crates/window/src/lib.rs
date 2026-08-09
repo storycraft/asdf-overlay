@@ -102,7 +102,7 @@ impl Backends {
 impl Drop for Backends {
     fn drop(&mut self) {
         // Release input blocking on drop.
-        Self::get().blocking_state.write().take();
+        Self::get().unblock_input();
     }
 }
 
