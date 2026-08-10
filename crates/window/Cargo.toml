@@ -10,7 +10,6 @@ rust-version.workspace = true
 readme = "../../README.md"
 
 [dependencies]
-asdf-overlay-common = { workspace = true }
 asdf-overlay-hook = { workspace = true }
 
 tracing = "0.1"
@@ -45,12 +44,3 @@ features = [
 winit = "0.30.13"
 eframe = "0.36.1"
 tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
-
-[dev-dependencies.windows]
-workspace = true
-features = [
-    "Win32_System_LibraryLoader",
-]
-
-[build-dependencies]
-winres = "0.1.12"

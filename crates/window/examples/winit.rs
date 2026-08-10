@@ -1,7 +1,6 @@
 use std::{sync::Arc, thread};
 
 use asdf_overlay_window::Backends;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use winit::{
     application::ApplicationHandler,
     event::{KeyEvent, WindowEvent},
@@ -15,7 +14,7 @@ fn main() -> anyhow::Result<()> {
 
     let el = EventLoop::new()?;
 
-    let backends = Arc::new(Backends::new(unsafe { GetModuleHandleW(None) }?.0 as _)?);
+    let backends = Arc::new(Backends::new()?);
     thread::spawn({
         let backends = backends.clone();
         move || {

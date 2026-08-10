@@ -23,7 +23,7 @@ use windows::Win32::{
 };
 
 use crate::{
-    Backends, cursors,
+    Backends,
     event::{
         Event, WindowEvent,
         input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
@@ -84,7 +84,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         {
             let global_state = Backends::get();
             if global_state.input_blocked() {
-                unsafe { SetCursor(global_state.blocking_cursor.read().and_then(cursors::load)) };
+                unsafe { SetCursor(global_state.blocking_cursor()) };
                 return Some(LRESULT(1));
             }
         }

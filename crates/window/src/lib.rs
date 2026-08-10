@@ -12,12 +12,11 @@ use core::{
 };
 
 use anyhow::Context;
-use asdf_overlay_common::cursor::Cursor;
 use once_cell::sync::OnceCell;
+use windows::Win32::UI::WindowsAndMessaging::HCURSOR;
 
 use crate::{
-    event::Event, global::GlobalState, message_loop::MessageLoopState,
-    window::WindowProcState,
+    event::Event, global::GlobalState, message_loop::MessageLoopState, window::WindowProcState,
 };
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
@@ -28,14 +27,14 @@ pub struct Backends {
 
 impl Backends {
     /// Initialize new [`Backends`] instance. This should only be called once.
-    pub fn new(hinstance: usize) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         let (event_tx, event_rx) = flume::unbounded();
 
         let init_inner = || -> anyhow::Result<GlobalState> {
             global::hook::install()?;
             message_loop::hook::install()?;
 
-            Ok(GlobalState::new(hinstance, event_tx))
+            Ok(GlobalState::new(event_tx))
         };
 
         static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -104,8 +103,8 @@ impl Backends {
 
     /// Sets the cursor to be displayed while input is blocked.
     #[inline]
-    pub fn set_blocking_cursor(&self, cursor: Option<Cursor>) {
-        *Self::get().blocking_cursor.write() = cursor;
+    pub fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
+        Self::get().set_blocking_cursor(cursor);
     }
 
     #[inline]

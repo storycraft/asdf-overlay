@@ -1,15 +1,18 @@
 pub(crate) mod hook;
 
-use core::ptr;
+use core::{
+    ptr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
-use asdf_overlay_common::cursor::Cursor;
 use parking_lot::RwLock;
 use windows::Win32::{
     Foundation::RECT,
-    UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN},
+    UI::WindowsAndMessaging::{GetSystemMetrics, HCURSOR, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN},
 };
 
 use crate::{
+    cursors::default_cursor,
     event::{Event, WindowEvent},
     message_loop::MessageLoopState,
     types::IntDashMap,
@@ -17,27 +20,35 @@ use crate::{
 };
 
 pub(crate) struct GlobalState {
-    pub(crate) hinstance: usize,
-
     event_tx: flume::Sender<Event>,
 
     pub(crate) message_loops: IntDashMap<u32, MessageLoopState>,
     pub(crate) windows: IntDashMap<u32, WindowProcState>,
 
-    pub(crate) blocking_cursor: RwLock<Option<Cursor>>,
+    blocking_cursor: AtomicUsize,
     pub(crate) blocking_state: RwLock<Option<InputBlockingState>>,
 }
 
 impl GlobalState {
-    pub(crate) fn new(hinstance: usize, event_tx: flume::Sender<Event>) -> Self {
+    pub(crate) fn new(event_tx: flume::Sender<Event>) -> Self {
         Self {
-            hinstance,
             event_tx,
             message_loops: IntDashMap::default(),
             windows: IntDashMap::default(),
-            blocking_cursor: RwLock::new(Some(Cursor::Default)),
+            blocking_cursor: AtomicUsize::new(default_cursor().0 as usize),
             blocking_state: RwLock::new(None),
         }
+    }
+
+    #[inline]
+    pub(crate) fn blocking_cursor(&self) -> Option<HCURSOR> {
+        let v = self.blocking_cursor.load(Ordering::Relaxed);
+        if v == 0 { None } else { Some(HCURSOR(v as _)) }
+    }
+
+    pub(crate) fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
+        self.blocking_cursor
+            .store(cursor.unwrap_or_default().0 as _, Ordering::Relaxed);
     }
 
     /// Check if input is currently blocked.

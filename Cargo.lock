@@ -378,6 +378,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows",
+ "winres",
 ]
 
 [[package]]
@@ -440,7 +441,6 @@ name = "asdf-overlay-window"
 version = "1.2.2"
 dependencies = [
  "anyhow",
- "asdf-overlay-common",
  "asdf-overlay-hook",
  "bitflags 2.13.1",
  "bytemuck",
@@ -456,7 +456,6 @@ dependencies = [
  "utf16string",
  "windows",
  "winit",
- "winres",
 ]
 
 [[package]]

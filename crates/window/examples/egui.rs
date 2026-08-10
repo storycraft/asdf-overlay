@@ -2,14 +2,13 @@ use std::{sync::Arc, thread};
 
 use asdf_overlay_window::Backends;
 use eframe::egui;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
 // egui example from https://github.com/emilk/egui/blob/main/examples/hello_world/src/main.rs
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let backends = Arc::new(Backends::new(unsafe { GetModuleHandleW(None) }?.0 as _)?);
+    let backends = Arc::new(Backends::new()?);
     thread::spawn({
         let backends = backends.clone();
         move || {

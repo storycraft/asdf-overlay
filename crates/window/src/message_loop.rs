@@ -8,7 +8,7 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{HCURSOR, PostThreadMessageA, SetCursor, ShowCursor, WM_NULL},
 };
 
-use crate::{Backends, cursors};
+use crate::Backends;
 
 pub type ProcDispatchFn = Box<dyn FnOnce(&MessageLoopState) + Send>;
 
@@ -37,13 +37,7 @@ impl MessageLoopState {
             }
 
             ShowCursor(true);
-            let prev_cursor = SetCursor(
-                Backends::get()
-                    .blocking_cursor
-                    .read()
-                    .and_then(cursors::load),
-            )
-            .0 as usize;
+            let prev_cursor = SetCursor(Backends::get().blocking_cursor()).0 as usize;
 
             *blocking_state = Some(InputBlockingState { prev_cursor });
         });
