@@ -11,7 +11,9 @@ use asdf_overlay_client::{
 async fn main() -> anyhow::Result<()> {
     let pid = env::args().nth(1).context("processs pid is not provided")?;
 
-    let dll_dir = env::current_dir().expect("cannot find pwd");
+    let dll_dir = env::current_dir()
+        .expect("cannot find pwd")
+        .join("packages/core");
 
     // inject overlay dll into target process
     let (mut conn, mut event) = inject(

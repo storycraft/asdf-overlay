@@ -17,7 +17,9 @@ use tokio::time::sleep;
 async fn main() -> anyhow::Result<()> {
     let pid = env::args().nth(1).context("processs pid is not provided")?;
 
-    let dll_dir = env::current_dir().expect("cannot find pwd");
+    let dll_dir = env::current_dir()
+        .expect("cannot find pwd")
+        .join("packages/core");
 
     // inject overlay dll into target process
     let (mut conn, mut event) = inject(
@@ -31,12 +33,18 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(OverlayEvent::Surface {
-        id,
-        event: SurfaceEvent::Added { .. },
-    }) = event.recv().await
-    else {
-        bail!("failed to receive main surface");
+    let id = loop {
+        let Some(event) = event.recv().await else {
+            bail!("failed to receive main surface");
+        };
+
+        if let OverlayEvent::Surface {
+            id,
+            event: SurfaceEvent::Added { .. },
+        } = event
+        {
+            break id;
+        }
     };
 
     sleep(Duration::from_secs(1)).await;
