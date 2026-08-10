@@ -6,6 +6,7 @@ use input::InputEvent;
 
 /// Describe a event.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
     /// Events related to a specific window.
     Window {
@@ -23,6 +24,7 @@ pub enum Event {
 
 /// Describe a window event.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum WindowEvent {
     /// A new window is identified.
     Added {

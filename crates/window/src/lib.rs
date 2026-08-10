@@ -1,4 +1,3 @@
-pub mod event;
 mod global;
 pub mod message_loop;
 mod types;
@@ -11,12 +10,11 @@ use core::{
 };
 
 use anyhow::Context;
+use asdf_overlay_window_event::Event;
 use once_cell::sync::OnceCell;
 use windows::Win32::UI::WindowsAndMessaging::HCURSOR;
 
-use crate::{
-    event::Event, global::GlobalState, message_loop::MessageLoopState, window::WindowProcState,
-};
+use crate::{global::GlobalState, message_loop::MessageLoopState, window::WindowProcState};
 
 static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
 

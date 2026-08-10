@@ -2,6 +2,13 @@ use core::{mem, sync::atomic::Ordering};
 use std::time::Instant;
 
 use asdf_overlay_hook::DetourHook;
+use asdf_overlay_window_event::{
+    Event, WindowEvent,
+    input::{
+        CursorAction, CursorEvent, CursorInput, CursorInputState, InputEvent, InputPosition, Key,
+        KeyInputState, KeyboardInput, ScrollAxis,
+    },
+};
 use once_cell::sync::OnceCell;
 use tracing::{debug, trace};
 use windows::{
@@ -24,17 +31,7 @@ use windows::{
     core::BOOL,
 };
 
-use crate::{
-    Backends,
-    event::{
-        Event, WindowEvent,
-        input::{
-            CursorAction, CursorEvent, CursorInput, CursorInputState, InputEvent, InputPosition,
-            Key, KeyInputState, KeyboardInput, ScrollAxis,
-        },
-    },
-    window::ListenInputFlags,
-};
+use crate::{Backends, window::ListenInputFlags};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);

@@ -1,6 +1,11 @@
 use core::{alloc::Layout, mem, slice};
-use scopeguard::defer;
 use std::alloc;
+
+use asdf_overlay_window_event::{
+    Event, WindowEvent,
+    input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
+};
+use scopeguard::defer;
 use tracing::trace;
 use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
@@ -24,10 +29,6 @@ use windows::Win32::{
 
 use crate::{
     Backends,
-    event::{
-        Event, WindowEvent,
-        input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
-    },
     window::{ImeState, ListenInputFlags, get_client_size},
 };
 

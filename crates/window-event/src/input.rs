@@ -6,6 +6,7 @@ use core::num::NonZeroU8;
 
 /// Describe an input event captured from a window.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InputEvent {
     /// A cursor input.
     Cursor(CursorInput),
@@ -15,6 +16,7 @@ pub enum InputEvent {
 
 /// Describe a cursor related input.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CursorInput {
     /// The type of cursor input.
     pub event: CursorEvent,
@@ -24,6 +26,7 @@ pub struct CursorInput {
 
 /// Describe a cursor event.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorEvent {
     /// Cursor entered the window from outside of the window.
     Enter,
@@ -59,6 +62,7 @@ pub enum CursorEvent {
 
 /// Describe the state of a cursor button input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorInputState {
     /// Button is pressed down.
     Pressed {
@@ -74,6 +78,7 @@ pub enum CursorInputState {
 
 /// Describe a keyboard related input.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum KeyboardInput {
     /// An raw Key input which does not consider keyboard layout.
     ///
@@ -101,6 +106,7 @@ pub enum KeyboardInput {
 
 /// Describe a virtual key code.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Key {
     /// A Windows Virtual-Key code.
     ///
@@ -122,6 +128,7 @@ impl Key {
 
 /// Describe a mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorAction {
     /// Left button
     Left,
@@ -141,6 +148,7 @@ pub enum CursorAction {
 
 /// Describe a scroll axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ScrollAxis {
     /// Horizontal axis
     X,
@@ -151,6 +159,7 @@ pub enum ScrollAxis {
 
 /// Describe the state of a key input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum KeyInputState {
     /// The key is pressed down.
     Pressed,
@@ -161,6 +170,7 @@ pub enum KeyInputState {
 
 /// Describe a 2D position for cursor input.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InputPosition {
     /// X position in pixels.
     ///
@@ -175,6 +185,7 @@ pub struct InputPosition {
 
 /// Describe an IME input.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Ime {
     /// IME is enabled due to various reasons, such as window gained focus.
     Enabled {
@@ -221,6 +232,7 @@ pub enum Ime {
 
 /// Describe a list of IME candidates.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImeCandidateList {
     /// The start index of the current page in the candidates list.
     pub page_start_index: u32,
@@ -238,6 +250,7 @@ pub struct ImeCandidateList {
 bitflags::bitflags! {
     /// Describe IME conversion modes.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     pub struct ConversionMode: u16 {
         /// Composing in native language of the IME.
         const NATIVE = 1;

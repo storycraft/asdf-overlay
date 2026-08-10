@@ -5,6 +5,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use asdf_overlay_window_event::{Event, WindowEvent};
 use parking_lot::RwLock;
 use windows::Win32::{
     Foundation::RECT,
@@ -13,12 +14,7 @@ use windows::Win32::{
     },
 };
 
-use crate::{
-    event::{Event, WindowEvent},
-    message_loop::MessageLoopState,
-    types::IntDashMap,
-    window::WindowProcState,
-};
+use crate::{message_loop::MessageLoopState, types::IntDashMap, window::WindowProcState};
 
 pub(crate) struct GlobalState {
     event_tx: flume::Sender<Event>,
