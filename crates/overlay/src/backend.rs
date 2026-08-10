@@ -11,7 +11,11 @@ use core::{mem, num::NonZeroU32};
 use std::collections::VecDeque;
 
 use anyhow::Context;
-use asdf_overlay_common::{cursor::Cursor, event::{OverlayEvent, window::WindowEvent}, surface::GpuLuid};
+use asdf_overlay_common::{
+    cursor::Cursor,
+    event::{OverlayEvent, window::WindowEvent},
+    surface::GpuLuid,
+};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
