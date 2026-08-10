@@ -1,25 +1,23 @@
+/// Additional cursor resoucres for overlay.
+///
+/// See `../resources/cursors.rc`.
 use asdf_overlay_common::cursor::Cursor;
 use windows::{
-    Win32::UI::WindowsAndMessaging::{
-        HCURSOR, IDC_APPSTARTING, IDC_ARROW, IDC_CROSS, IDC_HAND, IDC_HELP, IDC_IBEAM, IDC_NO,
-        IDC_PERSON, IDC_PIN, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE,
-        IDC_UPARROW, IDC_WAIT, LoadCursorW,
+    Win32::{
+        Foundation::HINSTANCE,
+        UI::WindowsAndMessaging::{
+            HCURSOR, IDC_APPSTARTING, IDC_ARROW, IDC_CROSS, IDC_HAND, IDC_HELP, IDC_IBEAM, IDC_NO,
+            IDC_PERSON, IDC_PIN, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE,
+            IDC_UPARROW, IDC_WAIT, LoadCursorW,
+        },
     },
     core::PCWSTR,
 };
 
-use crate::{
-    instance,
-    resources::cursors::{
-        IDC_ALIAS, IDC_CELL, IDC_COLRESIZE, IDC_COPYCUR, IDC_HAND_GRAB, IDC_HAND_GRABBING,
-        IDC_PAN_EAST, IDC_PAN_MIDDLE, IDC_PAN_MIDDLE_HORIZONTAL, IDC_PAN_MIDDLE_VERTICAL,
-        IDC_PAN_NORTH, IDC_PAN_NORTH_EAST, IDC_PAN_NORTH_WEST, IDC_PAN_SOUTH, IDC_PAN_SOUTH_EAST,
-        IDC_PAN_SOUTH_WEST, IDC_PAN_WEST, IDC_ROWRESIZE, IDC_VERTICALTEXT, IDC_ZOOMIN, IDC_ZOOMOUT,
-    },
-};
+use crate::Backends;
 
 /// Load [`HCURSOR`] resource from `cursor` if exists.
-pub fn load_cursor(cursor: Cursor) -> Option<HCURSOR> {
+pub(crate) fn load(cursor: Cursor) -> Option<HCURSOR> {
     #[inline]
     fn system_cursor(res: PCWSTR) -> Option<HCURSOR> {
         unsafe { LoadCursorW(None, res) }.ok()
@@ -27,7 +25,7 @@ pub fn load_cursor(cursor: Cursor) -> Option<HCURSOR> {
 
     #[inline]
     fn instance_cursor(res: PCWSTR) -> Option<HCURSOR> {
-        unsafe { LoadCursorW(Some(instance()), res) }.ok()
+        unsafe { LoadCursorW(Some(HINSTANCE(Backends::get().hinstance as _)), res) }.ok()
     }
 
     match cursor {
@@ -72,3 +70,25 @@ pub fn load_cursor(cursor: Cursor) -> Option<HCURSOR> {
         Cursor::PanWest => instance_cursor(IDC_PAN_WEST),
     }
 }
+
+const IDC_ALIAS: PCWSTR = PCWSTR(1 as _);
+const IDC_CELL: PCWSTR = PCWSTR(2 as _);
+const IDC_COLRESIZE: PCWSTR = PCWSTR(3 as _);
+const IDC_COPYCUR: PCWSTR = PCWSTR(4 as _);
+const IDC_HAND_GRAB: PCWSTR = PCWSTR(5 as _);
+const IDC_HAND_GRABBING: PCWSTR = PCWSTR(6 as _);
+const IDC_PAN_EAST: PCWSTR = PCWSTR(7 as _);
+const IDC_PAN_MIDDLE: PCWSTR = PCWSTR(8 as _);
+const IDC_PAN_MIDDLE_HORIZONTAL: PCWSTR = PCWSTR(9 as _);
+const IDC_PAN_MIDDLE_VERTICAL: PCWSTR = PCWSTR(10 as _);
+const IDC_PAN_NORTH: PCWSTR = PCWSTR(11 as _);
+const IDC_PAN_NORTH_EAST: PCWSTR = PCWSTR(12 as _);
+const IDC_PAN_NORTH_WEST: PCWSTR = PCWSTR(13 as _);
+const IDC_PAN_SOUTH: PCWSTR = PCWSTR(14 as _);
+const IDC_PAN_SOUTH_EAST: PCWSTR = PCWSTR(15 as _);
+const IDC_PAN_SOUTH_WEST: PCWSTR = PCWSTR(16 as _);
+const IDC_PAN_WEST: PCWSTR = PCWSTR(17 as _);
+const IDC_ROWRESIZE: PCWSTR = PCWSTR(18 as _);
+const IDC_VERTICALTEXT: PCWSTR = PCWSTR(19 as _);
+const IDC_ZOOMIN: PCWSTR = PCWSTR(20 as _);
+const IDC_ZOOMOUT: PCWSTR = PCWSTR(21 as _);

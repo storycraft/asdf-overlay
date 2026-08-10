@@ -28,8 +28,8 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{
             self as msg, ClipCursor, DefWindowProcA, GWLP_WNDPROC, GetClipCursor, GetSystemMetrics,
-            PostMessageA, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetCursor, SetWindowLongPtrA,
-            ShowCursor, WNDPROC,
+            PostMessageA, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SetWindowLongPtrA, ShowCursor,
+            WNDPROC,
         },
     },
 };
@@ -37,7 +37,7 @@ use windows::Win32::{
 use crate::{
     backend::{
         render::RenderData,
-        window::{InputBlockData, ListenInputFlags, WindowProcData, cursor::load_cursor},
+        window::{InputBlockData, ListenInputFlags, WindowProcData},
     },
     event_sink::OverlayEventSink,
     interop::DxInterop,
@@ -226,7 +226,7 @@ impl WindowBackend {
                 }
 
                 ShowCursor(true);
-                SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
+                // SetCursor(backend.proc.lock().blocking_cursor.and_then(load_cursor));
                 let clip_cursor = {
                     let mut rect = RECT::default();
                     _ = GetClipCursor(&mut rect);

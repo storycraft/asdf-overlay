@@ -1,0 +1,47 @@
+[package]
+name = "asdf-overlay-window"
+description = "Asdf Overlay window handling and input library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+readme = "../../README.md"
+
+[dependencies]
+asdf-overlay-hook = { workspace = true }
+asdf-overlay-window-event = { workspace = true }
+
+tracing = "0.1"
+anyhow = "1.0.97"
+parking_lot = { version = "0.12.3", features = ["hardware-lock-elision"] }
+once_cell = "1.21.3"
+dashmap = "6.1.0"
+nohash-hasher = "0.2.0"
+bytemuck = "1.22.0"
+bitflags = "2.9.1"
+flume = "0.12.0"
+utf16string = "0.2.0"
+scopeguard = "1.2.0"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_SystemServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Controls",
+    "Win32_Security",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Ime",
+    "Win32_Globalization",
+]
+
+[dev-dependencies]
+winit = "0.30.13"
+eframe = "0.36.1"
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }

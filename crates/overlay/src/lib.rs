@@ -49,23 +49,12 @@ pub mod surface;
 mod hook;
 mod interop;
 mod renderer;
-mod resources;
 mod texture;
 mod types;
 mod util;
 
-use anyhow::{Context, bail};
-use once_cell::sync::OnceCell;
+use anyhow::Context;
 use windows::Win32::Foundation::HINSTANCE;
-
-/// Module handle of the overlay.
-static INSTANCE: OnceCell<usize> = OnceCell::new();
-
-#[inline]
-/// Get overlay [`HINSTANCE`]
-pub(crate) fn instance() -> HINSTANCE {
-    HINSTANCE(*INSTANCE.get().unwrap() as _)
-}
 
 /// Initialize overlay, hooks.
 ///
@@ -73,10 +62,6 @@ pub(crate) fn instance() -> HINSTANCE {
 /// * Calling with holding loader lock (DllMain) will fail.
 /// * If given `hinstance` is invalid, some resources may not appear correctly.
 pub fn initialize(hinstance: usize) -> anyhow::Result<()> {
-    if INSTANCE.set(hinstance).is_err() {
-        bail!("Already initialized");
-    }
-
     hook::install(HINSTANCE(hinstance as _)).context("hook initialization failed")?;
     Ok(())
 }

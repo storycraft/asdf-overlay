@@ -2,7 +2,7 @@ use super::WindowBackend;
 use crate::{
     backend::{
         BACKENDS, Backends,
-        window::{CursorState, ImeState, WindowProcData, cursor::load_cursor},
+        window::{CursorState, ImeState, WindowProcData},
     },
     event_sink::OverlayEventSink,
     util::get_client_size,
@@ -33,13 +33,11 @@ use windows::Win32::{
                 ImmGetConversionStatus, ImmReleaseContext,
             },
             KeyboardAndMouse::{
-                GetDoubleClickTime, GetKeyboardLayout, ReleaseCapture, SetCapture, TME_LEAVE,
-                TRACKMOUSEEVENT, TrackMouseEvent,
+                GetDoubleClickTime, GetKeyboardLayout, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
             },
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, SetCursor, WM_NCDESTROY,
-            XBUTTON1,
+            self as msg, CallWindowProcA, DefWindowProcA, GetMessageTime, WM_NCDESTROY, XBUTTON1,
         },
     },
 };
@@ -80,7 +78,7 @@ fn process_wnd_proc(
         {
             let proc = backend.proc.lock();
             if proc.input_blocking() {
-                unsafe { SetCursor(proc.blocking_cursor.and_then(load_cursor)) };
+                // unsafe { SetCursor(proc.blocking_cursor.and_then(load_cursor)) };
                 return Some(LRESULT(1));
             }
         }
@@ -567,14 +565,6 @@ fn cursor_event<const BLOCK_RESULT: isize>(
     if proc.input_blocking() {
         // prevent deadlock
         drop(proc);
-        match state {
-            CursorInputState::Pressed { .. } => unsafe {
-                SetCapture(HWND(hwnd as _));
-            },
-            CursorInputState::Released => unsafe {
-                _ = ReleaseCapture();
-            },
-        }
 
         Some(LRESULT(BLOCK_RESULT))
     } else {

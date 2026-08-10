@@ -1,4 +1,3 @@
-pub(crate) mod cursor;
 pub(crate) mod proc;
 
 use super::WindowBackend;
