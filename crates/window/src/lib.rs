@@ -1,4 +1,3 @@
-mod cursors;
 pub mod event;
 mod global;
 pub mod message_loop;

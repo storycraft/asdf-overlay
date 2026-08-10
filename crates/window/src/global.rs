@@ -8,11 +8,12 @@ use core::{
 use parking_lot::RwLock;
 use windows::Win32::{
     Foundation::RECT,
-    UI::WindowsAndMessaging::{GetSystemMetrics, HCURSOR, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN},
+    UI::WindowsAndMessaging::{
+        GetSystemMetrics, HCURSOR, IDC_ARROW, LoadCursorW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    },
 };
 
 use crate::{
-    cursors::default_cursor,
     event::{Event, WindowEvent},
     message_loop::MessageLoopState,
     types::IntDashMap,
@@ -186,4 +187,8 @@ impl GlobalState {
 pub(crate) struct InputBlockingState {
     // Old cursor clipping rectangle, if any.
     pub(crate) clip_cursor: Option<RECT>,
+}
+
+fn default_cursor() -> HCURSOR {
+    unsafe { LoadCursorW(None, IDC_ARROW) }.unwrap()
 }
