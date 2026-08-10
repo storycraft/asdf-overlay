@@ -14,3 +14,18 @@ export type OverlayWindow = {
    */
   id: number,
 };
+
+/**
+ * Describe a surface in `Overlay`.
+ */
+export type OverlaySurface = {
+  /**
+   * Associated `Overlay` instance.
+   */
+  overlay: Overlay,
+
+  /**
+   * Surface id.
+   */
+  id: bigint,
+};

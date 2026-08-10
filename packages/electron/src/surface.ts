@@ -1,7 +1,7 @@
 import type { NativeImage, TextureInfo, WebContents, WebContentsPaintEventParams } from 'electron';
-import type { OverlayWindow } from './index.js';
 import EventEmitter from 'node:events';
-import { OverlaySurface, type GpuLuid } from '@asdf-overlay/core';
+import { OverlaySurface as CoreOverlaySurface, type GpuLuid } from '@asdf-overlay/core';
+import type { OverlaySurface } from './index.js';
 
 type Emitter = EventEmitter<{
   /**
@@ -25,14 +25,14 @@ export class ElectronOverlaySurface {
     image: NativeImage,
   ) => void;
 
-  private readonly surface: OverlaySurface;
+  private readonly inner: CoreOverlaySurface;
 
   private constructor(
-    private readonly window: OverlayWindow,
+    private readonly surface: OverlaySurface,
     luid: GpuLuid,
     private readonly contents: WebContents,
   ) {
-    this.surface = new OverlaySurface(luid);
+    this.inner = new CoreOverlaySurface(luid);
 
     this.handler = (e, rect, image) => {
       const offscreenTexture = e.texture;
@@ -60,11 +60,11 @@ export class ElectronOverlaySurface {
    * Connect Electron `WebContents` surface to target overlay window.
    */
   static connect(
-    window: OverlayWindow,
+    surface: OverlaySurface,
     luid: GpuLuid,
     contents: WebContents,
   ): ElectronOverlaySurface {
-    return new ElectronOverlaySurface({ ...window }, luid, contents);
+    return new ElectronOverlaySurface({ ...surface }, luid, contents);
   }
 
   /**
@@ -72,7 +72,7 @@ export class ElectronOverlaySurface {
    */
   async disconnect() {
     this.contents.off('paint', this.handler);
-    await this.window.overlay.updateHandle(this.window.id, {});
+    await this.surface.overlay.updateHandle(this.surface.id, { type: 'None' });
   }
 
   /**
@@ -87,7 +87,7 @@ export class ElectronOverlaySurface {
 
     // update only changed part
     try {
-      const update = this.surface.updateNtShtex(
+      const update = this.inner.updateNtShtex(
         texture.codedSize.width,
         texture.codedSize.height,
         texture.handle.ntHandle,
@@ -99,7 +99,7 @@ export class ElectronOverlaySurface {
       );
 
       if (update) {
-        await this.window.overlay.updateHandle(this.window.id, update);
+        await this.surface.overlay.updateHandle(this.surface.id, update);
       }
     } catch (e) {
       this.emitError(e);
@@ -115,13 +115,13 @@ export class ElectronOverlaySurface {
   ) {
     // TODO:: update only changed part
     try {
-      const update = this.surface.updateBitmap(
+      const update = this.inner.updateBitmap(
         image.getSize().width,
         image.toBitmap(),
       );
 
       if (update) {
-        await this.window.overlay.updateHandle(this.window.id, update);
+        await this.surface.overlay.updateHandle(this.surface.id, update);
       }
     } catch (e) {
       this.emitError(e);

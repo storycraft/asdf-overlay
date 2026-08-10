@@ -42,7 +42,7 @@ export class ElectronOverlayInput {
     this.contents.on(
       'cursor-changed',
       this.cursorChangedHandler = (_, type) => {
-        void this.window.overlay.setBlockingCursor(this.window.id, mapCssCursor(type));
+        void this.window.overlay.setBlockingCursor(mapCssCursor(type));
       },
     );
   }
@@ -63,7 +63,7 @@ export class ElectronOverlayInput {
     this.contents.off('cursor-changed', this.cursorChangedHandler);
 
     try {
-      await this.window.overlay.setBlockingCursor(this.window.id, Cursor.Default);
+      await this.window.overlay.setBlockingCursor(Cursor.Default);
     } catch {
       //
     }
@@ -141,10 +141,10 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX;
-    const y = input.clientY;
-    const globalX = input.windowX;
-    const globalY = input.windowY;
+    const x = input.x;
+    const y = input.y;
+    const globalX = input.x;
+    const globalY = input.y;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;
