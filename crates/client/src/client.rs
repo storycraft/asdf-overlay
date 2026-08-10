@@ -14,8 +14,8 @@ use asdf_overlay_common::{
         window::{WindowRequest, WindowRequestable},
     },
 };
-use bitcode::{Buffer, DecodeOwned};
 use dashmap::DashMap;
+use serde::de::DeserializeOwned;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
     net::windows::named_pipe::NamedPipeClient,
@@ -27,7 +27,7 @@ use tokio::{
 pub struct IpcClientConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeClient>,
-    buf: Buffer,
+    buf: Vec<u8>,
     map: Weak<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
     read_task: JoinHandle<anyhow::Result<()>>,
 }
@@ -50,7 +50,7 @@ impl IpcClientConn {
                     buf.resize(frame.size as usize, 0_u8);
                     rx.read_exact(&mut buf).await?;
 
-                    let packet: ServerToClientPacket = bitcode::decode(&buf)?;
+                    let packet: ServerToClientPacket = rmp_serde::from_slice(&buf)?;
                     match packet {
                         ServerToClientPacket::Response { id, payload } => {
                             if let Some((_, sender)) = map.remove(&id) {
@@ -69,7 +69,7 @@ impl IpcClientConn {
         let conn = IpcClientConn {
             next_id: 0,
             tx,
-            buf: Buffer::new(),
+            buf: vec![],
             map: Arc::downgrade(&map),
             read_task,
         };
@@ -99,7 +99,7 @@ impl IpcClientConn {
         self.request_inner::<T::Response>(req.into()).await
     }
 
-    async fn request_inner<T: DecodeOwned>(&mut self, req: Request) -> anyhow::Result<T> {
+    async fn request_inner<T: DeserializeOwned>(&mut self, req: Request) -> anyhow::Result<T> {
         let data = self
             .send(req)
             .await
@@ -107,7 +107,7 @@ impl IpcClientConn {
             .await
             .context("failed to receive response")?;
 
-        bitcode::decode(&data).context("invalid response payload")
+        rmp_serde::from_slice(&data).context("invalid response payload")
     }
 
     /// Send a request without waiting for the response.
@@ -120,16 +120,17 @@ impl IpcClientConn {
         let id = self.next_id;
         self.next_id += 1;
 
-        let data = self.buf.encode(&ClientRequest { id, req });
+        self.buf.clear();
+        rmp_serde::encode::write(&mut self.buf, &ClientRequest { id, req })?;
         Frame {
-            size: data.len() as _,
+            size: self.buf.len() as _,
         }
         .write(&mut self.tx)
         .await?;
 
         let (tx, rx) = oneshot::channel();
         map.insert(id, tx);
-        self.tx.write_all(data).await?;
+        self.tx.write_all(&self.buf).await?;
 
         self.tx.flush().await?;
         Ok(rx)

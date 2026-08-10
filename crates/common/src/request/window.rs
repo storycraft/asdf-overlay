@@ -2,10 +2,10 @@
 
 use core::fmt::Debug;
 
-use bitcode::{Decode, DecodeOwned, Encode};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Describes all possible kinds of window request.
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowRequest {
     /// Window identifier.
     pub id: u32,
@@ -14,15 +14,15 @@ pub struct WindowRequest {
     pub kind: WindowRequestKind,
 }
 
-#[derive(Debug, Clone, derive_more::From, Encode, Decode)]
+#[derive(Debug, Clone, derive_more::From, Serialize, Deserialize)]
 pub enum WindowRequestKind {
     /// Change whether to listen input events.
     ListenInput(ListenInput),
 }
 
 /// Trait implemented to sub types of [`WindowRequest`] enum.
-pub trait WindowRequestable: Into<WindowRequestKind> + Encode + DecodeOwned {
-    type Response: Encode + DecodeOwned;
+pub trait WindowRequestable: Into<WindowRequestKind> + Serialize + DeserializeOwned {
+    type Response: Serialize + DeserializeOwned;
 }
 
 macro_rules! impl_WindowRequestable {
@@ -33,7 +33,7 @@ macro_rules! impl_WindowRequestable {
     };
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 /// Listen input events.
 pub struct ListenInput {
     /// Whether to listen cursor related events.

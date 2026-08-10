@@ -9,8 +9,8 @@ authors.workspace = true
 rust-version.workspace = true
 
 [features]
-bitcode = ["dep:bitcode"]
+serde = ["dep:serde"]
 
 [dependencies]
-bitcode = { version = "0.6.9", optional = true }
+serde = { version = "1.0.229", features = ["derive"], optional = true }
 bitflags = "2.9.1"

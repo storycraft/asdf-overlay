@@ -5,7 +5,7 @@
 pub mod surface;
 pub mod window;
 
-use bitcode::{Decode, DecodeOwned, Encode};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     cursor::Cursor,
@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Describes all possible kind of requests.
-#[derive(Debug, Clone, Encode, Decode, derive_more::From)]
+#[derive(Debug, Clone, derive_more::From, Serialize, Deserialize)]
 pub enum Request {
     /// Whether to block input events from reaching all windows and listen all input events.
     BlockInput(BlockInput),
@@ -29,8 +29,8 @@ pub enum Request {
 }
 
 /// Trait implemented for request types.
-pub trait Requestable: Into<Request> + Encode + DecodeOwned {
-    type Response: Encode + DecodeOwned;
+pub trait Requestable: Into<Request> + Serialize + DeserializeOwned {
+    type Response: Serialize + DeserializeOwned;
 }
 
 macro_rules! impl_Requestable {
@@ -41,7 +41,7 @@ macro_rules! impl_Requestable {
     };
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 /// Block input events from reaching window and listen all input events
 pub struct BlockInput {
     /// Whether to block input events from reaching to window.
@@ -49,7 +49,7 @@ pub struct BlockInput {
 }
 impl_Requestable!(BlockInput, ());
 
-#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 /// Set cursor when being input blocked
 pub struct SetBlockingCursor {
     /// Cursor to be set.

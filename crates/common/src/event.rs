@@ -6,7 +6,7 @@
 //! * IPC client: `asdf-overlay-client`
 //! * IPC server: `asdf-overlay-dll`
 use asdf_overlay_window_event::WindowEvent;
-use bitcode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 use surface::SurfaceEvent;
 
@@ -14,7 +14,7 @@ pub use asdf_overlay_event as surface;
 pub use asdf_overlay_window_event as window;
 
 /// Describe a overlay event.
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OverlayEvent {
     /// Events related to a specific window.
     Window { id: u32, event: WindowEvent },
@@ -39,7 +39,7 @@ pub enum OverlayEvent {
 }
 
 /// Describe a log level.
-#[derive(Debug, Clone, Copy, Encode, Decode)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum LogLevel {
     Trace,
     Debug,

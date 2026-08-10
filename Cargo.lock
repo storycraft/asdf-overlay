@@ -327,12 +327,13 @@ version = "1.2.2"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
- "bitcode",
  "bytemuck",
  "dashmap",
  "goblin",
  "ntapi",
+ "rmp-serde",
  "scopeguard",
+ "serde",
  "tokio",
  "windows",
 ]
@@ -345,13 +346,14 @@ dependencies = [
  "asdf-overlay-event",
  "asdf-overlay-window-event",
  "async-stream",
- "bitcode",
  "derive_more",
  "num-derive",
  "num-traits",
  "parking_lot",
+ "rmp-serde",
  "rustc-hash 2.1.2",
  "scopeguard",
+ "serde",
  "tokio",
  "winapi",
 ]
@@ -365,9 +367,10 @@ dependencies = [
  "asdf-overlay-common",
  "asdf-overlay-vulkan-layer",
  "asdf-overlay-window",
- "bitcode",
  "parking_lot",
+ "rmp-serde",
  "scopeguard",
+ "serde",
  "static_vcruntime",
  "tokio",
  "tracing",
@@ -380,7 +383,7 @@ dependencies = [
 name = "asdf-overlay-event"
 version = "1.2.2"
 dependencies = [
- "bitcode",
+ "serde",
 ]
 
 [[package]]
@@ -456,8 +459,8 @@ dependencies = [
 name = "asdf-overlay-window-event"
 version = "1.2.2"
 dependencies = [
- "bitcode",
  "bitflags 2.13.1",
+ "serde",
 ]
 
 [[package]]
@@ -685,30 +688,6 @@ name = "bit-vec"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
-
-[[package]]
-name = "bitcode"
-version = "0.6.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a6ed1b54d8dc333e7be604d00fa9262f4635485ffea923647b6521a5fff045d"
-dependencies = [
- "arrayvec",
- "bitcode_derive",
- "bytemuck",
- "glam",
- "serde",
-]
-
-[[package]]
-name = "bitcode_derive"
-version = "0.6.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "238b90427dfad9da4a9abd60f3ec1cdee6b80454bde49ed37f1781dd8e9dc7f9"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
 
 [[package]]
 name = "bitflags"
@@ -1683,12 +1662,6 @@ dependencies = [
  "log",
  "xml-rs",
 ]
-
-[[package]]
-name = "glam"
-version = "0.33.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7360bd2cd76e0cd9032d42cf2922155cecea2685b0cfa4630c3246df030bcfd6"
 
 [[package]]
 name = "glifo"
@@ -3330,6 +3303,25 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
+
+[[package]]
+name = "rmp"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f81bee8c8ef9b577d1681a70ebbc962c232461e397b22c208c43c04b67a155"
+dependencies = [
+ "rmp",
+ "serde",
+]
 
 [[package]]
 name = "rustc-hash"

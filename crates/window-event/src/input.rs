@@ -6,7 +6,7 @@ use core::num::NonZeroU8;
 
 /// Describe an input event captured from a window.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InputEvent {
     /// A cursor input.
     Cursor(CursorInput),
@@ -16,7 +16,7 @@ pub enum InputEvent {
 
 /// Describe a cursor related input.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CursorInput {
     /// The type of cursor input.
     pub event: CursorEvent,
@@ -26,7 +26,7 @@ pub struct CursorInput {
 
 /// Describe a cursor event.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorEvent {
     /// Cursor entered the window from outside of the window.
     Enter,
@@ -62,7 +62,7 @@ pub enum CursorEvent {
 
 /// Describe the state of a cursor button input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorInputState {
     /// Button is pressed down.
     Pressed {
@@ -78,7 +78,7 @@ pub enum CursorInputState {
 
 /// Describe a keyboard related input.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum KeyboardInput {
     /// An raw Key input which does not consider keyboard layout.
     ///
@@ -106,7 +106,8 @@ pub enum KeyboardInput {
 
 /// Describe a virtual key code.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+
 pub struct Key {
     /// A Windows Virtual-Key code.
     ///
@@ -128,7 +129,7 @@ impl Key {
 
 /// Describe a mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CursorAction {
     /// Left button
     Left,
@@ -148,7 +149,7 @@ pub enum CursorAction {
 
 /// Describe a scroll axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ScrollAxis {
     /// Horizontal axis
     X,
@@ -159,7 +160,7 @@ pub enum ScrollAxis {
 
 /// Describe the state of a key input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum KeyInputState {
     /// The key is pressed down.
     Pressed,
@@ -170,7 +171,7 @@ pub enum KeyInputState {
 
 /// Describe a 2D position for cursor input.
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InputPosition {
     /// X position in pixels.
     ///
@@ -185,7 +186,7 @@ pub struct InputPosition {
 
 /// Describe an IME input.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Ime {
     /// IME is enabled due to various reasons, such as window gained focus.
     Enabled {
@@ -232,7 +233,7 @@ pub enum Ime {
 
 /// Describe a list of IME candidates.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImeCandidateList {
     /// The start index of the current page in the candidates list.
     pub page_start_index: u32,
@@ -268,47 +269,27 @@ bitflags::bitflags! {
     }
 }
 
-#[cfg(feature = "bitcode")]
+#[cfg(feature = "serde")]
 const _: () = {
-    impl bitcode::Encode for ConversionMode {
-        type Encoder = Encoder;
-    }
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Default)]
-    pub struct Encoder(<u16 as bitcode::Encode>::Encoder);
-
-    impl bitcode::__private::Encoder<ConversionMode> for Encoder {
-        fn encode(&mut self, t: &ConversionMode) {
-            self.0.encode(&t.bits());
+    impl Serialize for ConversionMode {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_u16(self.bits())
         }
     }
 
-    impl bitcode::__private::Buffer for Encoder {
-        fn collect_into(&mut self, out: &mut Vec<u8>) {
-            self.0.collect_into(out);
-        }
-
-        fn reserve(&mut self, additional: std::num::NonZeroUsize) {
-            self.0.reserve(additional);
-        }
-    }
-
-    impl<'a> bitcode::Decode<'a> for ConversionMode {
-        type Decoder = Decoder<'a>;
-    }
-
-    #[derive(Default)]
-    pub struct Decoder<'a>(<u16 as bitcode::Decode<'a>>::Decoder);
-
-    impl<'a> bitcode::__private::View<'a> for Decoder<'a> {
-        fn populate(
-            &mut self,
-            input: &mut &'a [u8],
-            length: usize,
-        ) -> bitcode::__private::Result<()> {
-            self.0.populate(input, length)
+    impl<'de> Deserialize<'de> for ConversionMode {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Ok(ConversionMode::from_bits_retain(u16::deserialize(
+                deserializer,
+            )?))
         }
     }
-
-    impl<'a> bitcode::__private::Decoder<'a, ConversionMode> for Decoder<'a> {}
 };

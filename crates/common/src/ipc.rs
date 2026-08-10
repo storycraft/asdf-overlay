@@ -2,7 +2,7 @@
 
 use core::error::Error;
 
-use bitcode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{event::OverlayEvent, request::Request};
@@ -16,7 +16,7 @@ pub fn create_ipc_addr(pid: u32, module_handle: u32) -> String {
 }
 
 /// Describes a request sent from the client to the server.
-#[derive(Encode, Decode)]
+#[derive(Serialize, Deserialize)]
 pub struct ClientRequest {
     /// Unique identifier for matching responses.
     pub id: u32,
@@ -26,7 +26,7 @@ pub struct ClientRequest {
 }
 
 /// Common ipc result type.
-#[derive(Encode, Decode)]
+#[derive(Serialize, Deserialize)]
 pub enum ResponseResult<T> {
     Ok(T),
     Err(String),
@@ -39,7 +39,7 @@ impl<E: Error, T> From<E> for ResponseResult<T> {
 }
 
 /// Describes a packet sent from server to client.
-#[derive(Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ServerToClientPacket {
     /// The packet is a response to a specific request.
     Response { id: u32, payload: Vec<u8> },

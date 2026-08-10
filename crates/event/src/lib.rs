@@ -1,6 +1,6 @@
 /// Describe a event.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Event {
     /// Events related to a specific surface.
     Surface {
@@ -12,7 +12,7 @@ pub enum Event {
 
 /// Describes a surface event.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SurfaceEvent {
     Added {
         /// Width of the surface
@@ -34,7 +34,7 @@ pub enum SurfaceEvent {
 ///
 /// This identifier is not persistent across reboots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GpuLuid {
     /// The low part of the LUID.
     pub low: u32,

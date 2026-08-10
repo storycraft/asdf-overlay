@@ -7,7 +7,7 @@ use asdf_overlay_common::{
     ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::Request,
 };
-use bitcode::{Buffer, Encode};
+use serde::Serialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
@@ -18,7 +18,6 @@ use tokio::{
 pub struct IpcServerConn {
     rx: ReadHalf<NamedPipeServer>,
     buf: Vec<u8>,
-    decode_buf: Buffer,
     chan: UnboundedSender<ServerToClientPacket>,
 }
 
@@ -30,16 +29,17 @@ impl IpcServerConn {
 
         tokio::spawn({
             async move {
-                let mut buf = Buffer::new();
+                let mut buf = vec![];
                 while let Some(packet) = chan_rx.recv().await {
-                    let data = buf.encode(&packet);
+                    buf.clear();
+                    rmp_serde::encode::write(&mut buf, &packet)?;
 
                     Frame {
-                        size: data.len() as u32,
+                        size: buf.len() as u32,
                     }
                     .write(&mut tx)
                     .await?;
-                    tx.write_all(data).await?;
+                    tx.write_all(&buf).await?;
 
                     tx.flush().await?;
                 }
@@ -51,7 +51,6 @@ impl IpcServerConn {
         Ok(Self {
             rx,
             buf: vec![],
-            decode_buf: Buffer::new(),
             chan: chan_tx,
         })
     }
@@ -69,15 +68,15 @@ impl IpcServerConn {
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
-        let packet: ClientRequest = self.decode_buf.decode(&self.buf)?;
+        let packet: ClientRequest = rmp_serde::from_slice(&self.buf)?;
         Ok((packet.id, packet.req))
     }
 
     /// Reply to the client with the given request ID and data.
-    pub fn reply<T: Encode>(&mut self, id: u32, response: T) -> anyhow::Result<()> {
+    pub fn reply<T: Serialize>(&mut self, id: u32, response: T) -> anyhow::Result<()> {
         _ = self.chan.send(ServerToClientPacket::Response {
             id,
-            payload: bitcode::encode(&response),
+            payload: rmp_serde::to_vec(&response)?,
         });
 
         Ok(())

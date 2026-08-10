@@ -1,10 +1,12 @@
 //! [`Cursor`] enum representing various cursor types.
 
-use bitcode::{Decode, Encode};
 use num_derive::FromPrimitive;
+use serde::{Deserialize, Serialize};
 
 /// Describes a possible cursor type.
-#[derive(Debug, Default, FromPrimitive, Clone, Copy, Hash, PartialEq, Eq, Encode, Decode)]
+#[derive(
+    Debug, Default, FromPrimitive, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub enum Cursor {
     /// The platform default cursor. Typically an arrow.
     #[default]
