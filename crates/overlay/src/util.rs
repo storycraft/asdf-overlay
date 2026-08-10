@@ -7,7 +7,9 @@ use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LUID},
         Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
-        UI::WindowsAndMessaging::{CreateDialogIndirectParamA, DLGTEMPLATE, DestroyWindow},
+        UI::WindowsAndMessaging::{
+            CreateDialogIndirectParamA, DLGITEMTEMPLATE, DLGTEMPLATE, DestroyWindow,
+        },
     },
     core::Interface,
 };
@@ -22,9 +24,15 @@ pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Opti
 ///
 /// Creating another dummy windows in closures fail.
 pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
+    let template = (DLGTEMPLATE::default(), [DLGITEMTEMPLATE::default(); 3]);
     unsafe {
-        let hwnd =
-            CreateDialogIndirectParamA(None, &DLGTEMPLATE::default(), None, None, LPARAM(0))?;
+        let hwnd = CreateDialogIndirectParamA(
+            None,
+            (&raw const template).cast::<DLGTEMPLATE>(),
+            None,
+            None,
+            LPARAM(0),
+        )?;
         defer!({
             _ = DestroyWindow(hwnd);
         });
