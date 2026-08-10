@@ -173,8 +173,13 @@ impl Overlay {
 
     /// Block window input and listen them.
     #[napi]
-    pub async fn block_input(&self, id: u32, block: bool) -> anyhow::Result<()> {
-        self.window_request(id, BlockInput { block }).await
+    pub async fn block_input(&self, block: bool) -> anyhow::Result<()> {
+        self.ipc()
+            .await?
+            .request(request::Request::BlockInput(BlockInput { block }))
+            .await?;
+
+        Ok(())
     }
 
     /// Detach and destroy overlay

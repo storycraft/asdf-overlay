@@ -15,8 +15,8 @@ pub struct GpuLuid {
     pub high: i32,
 }
 
-impl From<asdf_overlay_event::GpuLuid> for GpuLuid {
-    fn from(val: asdf_overlay_event::GpuLuid) -> Self {
+impl From<asdf_overlay_common::surface::GpuLuid> for GpuLuid {
+    fn from(val: asdf_overlay_common::surface::GpuLuid) -> Self {
         Self {
             low: val.low,
             high: val.high,
@@ -24,9 +24,9 @@ impl From<asdf_overlay_event::GpuLuid> for GpuLuid {
     }
 }
 
-impl From<GpuLuid> for asdf_overlay_event::GpuLuid {
+impl From<GpuLuid> for asdf_overlay_common::surface::GpuLuid {
     fn from(val: GpuLuid) -> Self {
-        asdf_overlay_event::GpuLuid {
+        asdf_overlay_common::surface::GpuLuid {
             low: val.low,
             high: val.high,
         }

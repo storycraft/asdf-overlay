@@ -3,13 +3,13 @@ pub mod input;
 
 use anyhow::Context;
 use asdf_overlay_client::client::IpcClientEventStream;
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
+use asdf_overlay_common::event::{OverlayEvent, window::WindowEvent};
 use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},
 };
 
-use crate::{GpuLuid, event::input::InputEvent};
+use crate::event::input::InputEvent;
 
 pub(crate) struct VarArgs(
     Box<dyn FnOnce(napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>>>,
@@ -63,12 +63,8 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
     while let Some(event) = stream.recv().await {
         match event {
             OverlayEvent::Window { id, event } => match event {
-                WindowEvent::Added {
-                    width,
-                    height,
-                    gpu_id,
-                } => {
-                    emitter.emit(("added", id, width, height, GpuLuid::from(gpu_id)));
+                WindowEvent::Added { width, height } => {
+                    emitter.emit(("added", id, width, height));
                 }
 
                 WindowEvent::Resized { width, height } => {
@@ -83,14 +79,18 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                     }
                 },
 
-                WindowEvent::InputBlockingEnded => {
-                    emitter.emit(("input_blocking_ended", id));
-                }
-
                 WindowEvent::Destroyed => {
                     emitter.emit(("destroyed", id));
                 }
             },
+
+            OverlayEvent::InputBlockingEnded => {
+                emitter.emit(("input_blocking_ended",));
+            }
+
+            _ => {
+                // TODO
+            }
         }
     }
 

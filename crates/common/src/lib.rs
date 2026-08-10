@@ -2,6 +2,8 @@
 //! This crate is not intended to be used directly by end users.
 
 pub mod cursor;
+pub mod event;
 pub mod ipc;
 pub mod request;
 pub mod size;
+pub mod surface;

@@ -1,7 +1,7 @@
 use core::ptr;
 
 use anyhow::Context;
-use asdf_overlay_event::GpuLuid;
+use asdf_overlay_common::surface::GpuLuid;
 use sync_wrapper::SyncWrapper;
 use windows::{
     Win32::{

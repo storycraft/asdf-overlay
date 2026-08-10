@@ -19,10 +19,11 @@ use asdf_overlay::{
     initialize,
 };
 use asdf_overlay_common::{
-    ipc::create_ipc_addr,
+    event::OverlayEvent,
+    ipc::{ServerResponse, create_ipc_addr},
     request::{Request, WindowRequest},
 };
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
+use asdf_overlay_window_event::WindowEvent;
 use core::time::Duration;
 use scopeguard::defer;
 use std::{ffi::OsStr, thread};
@@ -60,7 +61,7 @@ use crate::server::IpcServerConn;
 /// IPC server main loop.
 #[tracing::instrument(skip(server))]
 async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
-    fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
+    fn handle_window_event(hwnd: u32, req: WindowRequest) -> ServerResponse {
         let res = Backends::with_backend(hwnd, |backend| {
             match req {
                 WindowRequest::SetPosition(position) => {
@@ -89,26 +90,30 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                     backend.listen_input(flags);
                 }
 
-                WindowRequest::BlockInput(cmd) => {
-                    backend.block_input(cmd.block);
-                }
-
+                // WindowRequest::BlockInput(cmd) => {
+                //     backend.block_input(cmd.block);
+                // }
                 WindowRequest::SetBlockingCursor(cmd) => {
                     backend.set_blocking_cursor(cmd.cursor);
                 }
 
                 WindowRequest::UpdateSharedHandle(shared) => {
                     if let Err(err) = backend.update_surface(shared.handle) {
-                        error!("failed to open shared surface. err: {:?}", err);
-                        return false;
+                        return ServerResponse::Err(format!(
+                            "failed to open shared surface. err: {:?}",
+                            err
+                        ));
                     }
                 }
             }
 
-            true
+            ServerResponse::Ok
         });
 
-        Ok(res.unwrap_or(false))
+        match res {
+            Some(res) => res,
+            None => ServerResponse::Err(format!("no backend found for window {hwnd}")),
+        }
     }
 
     let mut conn = IpcServerConn::new(server).await?;
@@ -125,7 +130,6 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
                 event: WindowEvent::Added {
                     width: size.0,
                     height: size.1,
-                    gpu_id,
                 },
             });
         }
@@ -143,7 +147,11 @@ async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
 
         match req {
             Request::Window { id, request } => {
-                conn.reply(req_id, handle_window_event(id, request)?)?;
+                conn.reply(req_id, handle_window_event(id, request))?;
+            }
+
+            _ => {
+                // TODO
             }
         }
     }

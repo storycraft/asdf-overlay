@@ -4,8 +4,11 @@ use std::env;
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
-    common::{request::SetPosition, size::PercentLength},
-    event::{OverlayEvent, WindowEvent},
+    common::{
+        event::{OverlayEvent, window::WindowEvent},
+        request::SetPosition,
+        size::PercentLength,
+    },
     inject,
     surface::OverlaySurface,
 };

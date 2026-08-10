@@ -1,4 +1,4 @@
-use asdf_overlay_event::input::{self};
+use asdf_overlay_common::event::window::input;
 use napi_derive::napi;
 
 use crate::event::ime::Ime;
@@ -24,17 +24,11 @@ impl From<input::InputEvent> for InputEvent {
 /// Describe a cursor input.
 #[napi(object)]
 pub struct CursorInput {
-    /// X position relative to overlay surface.
-    pub client_x: i32,
-
-    /// Y position relative to overlay surface.
-    pub client_y: i32,
-
     /// X position relative to window.
-    pub window_x: i32,
+    pub x: i32,
 
     /// Y position relative to window.
-    pub window_y: i32,
+    pub y: i32,
 
     pub kind: CursorInputKind,
 }
@@ -42,10 +36,8 @@ pub struct CursorInput {
 impl From<input::CursorInput> for CursorInput {
     fn from(input: input::CursorInput) -> Self {
         CursorInput {
-            client_x: input.client.x,
-            client_y: input.client.y,
-            window_x: input.window.x,
-            window_y: input.window.y,
+            x: input.pos.x,
+            y: input.pos.y,
             kind: input.event.into(),
         }
     }

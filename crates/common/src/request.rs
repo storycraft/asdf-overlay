@@ -4,13 +4,16 @@
 
 use core::{fmt::Debug, num::NonZeroU32};
 
-use bincode::{Decode, Encode};
+use bitcode::{Decode, Encode};
 
 use crate::{cursor::Cursor, size::PercentLength};
 
 /// Describes a request.
-#[derive(Debug, Encode, Decode, Clone)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub enum Request {
+    /// Whether to block input events from reaching all windows and listen all input events.
+    BlockInput(BlockInput),
+
     /// Request to a specific window.
     Window {
         /// Window identifier.
@@ -22,7 +25,7 @@ pub enum Request {
 }
 
 /// Describes a request to a specific window.
-#[derive(Debug, Encode, Decode, Clone, derive_more::From)]
+#[derive(Debug, Clone, derive_more::From, Encode, Decode)]
 pub enum WindowRequest {
     /// Set overlay surface position.
     SetPosition(SetPosition),
@@ -35,9 +38,6 @@ pub enum WindowRequest {
 
     /// Change whether to listen input events.
     ListenInput(ListenInput),
-
-    /// Whether to block input events from reaching window and listen all input events.
-    BlockInput(BlockInput),
 
     /// Set cursor of a window when being input blocked.
     SetBlockingCursor(SetBlockingCursor),
@@ -60,7 +60,7 @@ macro_rules! impl_WindowRequestItem {
     };
 }
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Set overlay surface position relative to the window client area.
 pub struct SetPosition {
     /// X position of percent or absolute length relative to the window's width.
@@ -71,7 +71,7 @@ pub struct SetPosition {
 }
 impl_WindowRequestItem!(SetPosition);
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Set overlay surface positioning anchor relative to the top-left of the overlay surface.
 pub struct SetAnchor {
     /// Anchor of X axis as percent relative to the window's width.
@@ -82,7 +82,7 @@ pub struct SetAnchor {
 }
 impl_WindowRequestItem!(SetAnchor);
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Set overlay surface margin relative to the overlay surface's size.
 pub struct SetMargin {
     /// Margin of top side as percent or absolute length relative to the overlay surface's height.
@@ -111,7 +111,7 @@ impl SetMargin {
     }
 }
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Listen input events.
 pub struct ListenInput {
     /// Whether to listen cursor related events.
@@ -122,15 +122,14 @@ pub struct ListenInput {
 }
 impl_WindowRequestItem!(ListenInput);
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Block input events from reaching window and listen all input events
 pub struct BlockInput {
     /// Whether to block input events from reaching to window.
     pub block: bool,
 }
-impl_WindowRequestItem!(BlockInput);
 
-#[derive(Debug, Default, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Encode, Decode)]
 /// Set cursor of a window being input captured
 pub struct SetBlockingCursor {
     /// Cursor to be set.
@@ -139,7 +138,7 @@ pub struct SetBlockingCursor {
 }
 impl_WindowRequestItem!(SetBlockingCursor);
 
-#[derive(Debug, Encode, Decode, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 /// Update overlay surface
 pub struct UpdateSharedHandle {
     /// DirectX KMT shared handle to the overlay surface texture.

@@ -1,9 +1,8 @@
 //! Provides [`OverlayEventSink`] for receiving [`OverlayEvent`] from overlay system.
-
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use asdf_overlay_event::OverlayEvent;
+use asdf_overlay_common::event::OverlayEvent;
 
 /// Global [`OverlayEventSink`] instance.
 static CURRENT: ArcSwapOption<OverlayEventSink> = ArcSwapOption::const_empty();

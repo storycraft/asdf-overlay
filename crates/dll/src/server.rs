@@ -3,11 +3,11 @@
 //! * Using [`IpcClientEventEmitter`] one can emit events to the client.
 
 use asdf_overlay_common::{
+    event::OverlayEvent,
     ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
     request::Request,
 };
-use asdf_overlay_event::OverlayEvent;
-use bincode::Encode;
+use bitcode::Buffer;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
@@ -18,6 +18,7 @@ use tokio::{
 pub struct IpcServerConn {
     rx: ReadHalf<NamedPipeServer>,
     buf: Vec<u8>,
+    decode_buf: Buffer,
     chan: UnboundedSender<ServerToClientPacket>,
 }
 
@@ -29,20 +30,18 @@ impl IpcServerConn {
 
         tokio::spawn({
             async move {
-                let mut buf = Vec::new();
+                let mut buf = Buffer::new();
                 while let Some(packet) = chan_rx.recv().await {
-                    bincode::encode_into_std_write(packet, &mut buf, bincode::config::standard())?;
+                    let data = buf.encode(&packet);
 
                     Frame {
-                        size: buf.len() as u32,
+                        size: data.len() as u32,
                     }
                     .write(&mut tx)
                     .await?;
-                    tx.write_all(&buf).await?;
+                    tx.write_all(data).await?;
 
                     tx.flush().await?;
-
-                    buf.clear();
                 }
 
                 Ok::<_, anyhow::Error>(())
@@ -51,7 +50,8 @@ impl IpcServerConn {
 
         Ok(Self {
             rx,
-            buf: Vec::new(),
+            buf: vec![],
+            decode_buf: Buffer::new(),
             chan: chan_tx,
         })
     }
@@ -69,19 +69,15 @@ impl IpcServerConn {
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
-        let packet: ClientRequest =
-            bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
+        let packet: ClientRequest = self.decode_buf.decode(&self.buf)?;
         Ok((packet.id, packet.req))
     }
 
     /// Reply to the client with the given request ID and data.
-    pub fn reply(&mut self, id: u32, data: impl Encode) -> anyhow::Result<()> {
+    pub fn reply(&mut self, id: u32, response: ServerResponse) -> anyhow::Result<()> {
         _ = self
             .chan
-            .send(ServerToClientPacket::Response(ServerResponse {
-                id,
-                data: bincode::encode_to_vec(data, bincode::config::standard())?,
-            }));
+            .send(ServerToClientPacket::Response { id, response });
 
         Ok(())
     }

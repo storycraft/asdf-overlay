@@ -310,7 +310,6 @@ dependencies = [
  "arc-swap",
  "array-util",
  "asdf-overlay-common",
- "asdf-overlay-event",
  "asdf-overlay-hook",
  "bitflags 2.13.1",
  "bytemuck",
@@ -332,12 +331,11 @@ version = "1.2.2"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
- "asdf-overlay-event",
- "bincode",
+ "bitcode",
  "bytemuck",
+ "dashmap",
  "goblin",
  "ntapi",
- "scc",
  "scopeguard",
  "tokio",
  "windows",
@@ -348,9 +346,9 @@ name = "asdf-overlay-common"
 version = "1.2.2"
 dependencies = [
  "anyhow",
- "asdf-overlay-event",
+ "asdf-overlay-window-event",
  "async-stream",
- "bincode",
+ "bitcode",
  "derive_more",
  "num-derive",
  "num-traits",
@@ -368,9 +366,10 @@ dependencies = [
  "anyhow",
  "asdf-overlay",
  "asdf-overlay-common",
- "asdf-overlay-event",
  "asdf-overlay-vulkan-layer",
- "bincode",
+ "asdf-overlay-window",
+ "asdf-overlay-window-event",
+ "bitcode",
  "parking_lot",
  "scopeguard",
  "static_vcruntime",
@@ -379,14 +378,6 @@ dependencies = [
  "tracing-subscriber",
  "windows",
  "winres",
-]
-
-[[package]]
-name = "asdf-overlay-event"
-version = "1.2.2"
-dependencies = [
- "bincode",
- "bitflags 2.13.1",
 ]
 
 [[package]]
@@ -404,7 +395,7 @@ version = "1.2.2"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
- "asdf-overlay-event",
+ "asdf-overlay-common",
  "bytemuck",
  "futures",
  "mimalloc",
@@ -463,8 +454,8 @@ dependencies = [
 name = "asdf-overlay-window-event"
 version = "1.2.2"
 dependencies = [
+ "bitcode",
  "bitflags 2.13.1",
- "serde",
 ]
 
 [[package]]
@@ -679,26 +670,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "bincode"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
-dependencies = [
- "bincode_derive",
- "serde",
- "unty",
-]
-
-[[package]]
-name = "bincode_derive"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
-dependencies = [
- "virtue",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,6 +685,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
 
 [[package]]
+name = "bitcode"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a6ed1b54d8dc333e7be604d00fa9262f4635485ffea923647b6521a5fff045d"
+dependencies = [
+ "arrayvec",
+ "bitcode_derive",
+ "bytemuck",
+ "glam",
+ "serde",
+]
+
+[[package]]
+name = "bitcode_derive"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "238b90427dfad9da4a9abd60f3ec1cdee6b80454bde49ed37f1781dd8e9dc7f9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -724,9 +719,6 @@ name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "block2"
@@ -1689,6 +1681,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.33.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360bd2cd76e0cd9032d42cf2922155cecea2685b0cfa4630c3246df030bcfd6"
 
 [[package]]
 name = "glifo"
@@ -3385,28 +3383,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
-name = "saa"
-version = "5.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68f5acb362a0e75c2a963532fa7fabf13dff81626dc494df16488d30befcbea0"
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "scc"
-version = "3.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bcd12b6caff5213cc3c03123cde8c3db5e413008a63b0c0ba35e6275825ea92"
-dependencies = [
- "saa",
- "sdd",
 ]
 
 [[package]]
@@ -3452,15 +3434,6 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit 0.19.2",
  "tiny-skia",
-]
-
-[[package]]
-name = "sdd"
-version = "4.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5f0e40a01b94e35d1dacbcfbe5bfd3d31e37d9590b2e6d86a82b0e87bd4f551"
-dependencies = [
- "saa",
 ]
 
 [[package]]
@@ -4088,12 +4061,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "unty"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
-
-[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4175,12 +4142,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "virtue"
-version = "0.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "walkdir"

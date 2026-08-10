@@ -1,4 +1,4 @@
-use asdf_overlay_event::input;
+use asdf_overlay_common::event::window::input;
 use napi_derive::napi;
 
 /// Describe a IME event.

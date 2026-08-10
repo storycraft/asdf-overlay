@@ -27,7 +27,6 @@ asdf-overlay-dll = { version = "1.2.2", path = "./crates/dll" }
 asdf-overlay-hook = { version = "1.2.2", path = "./crates/hook" }
 asdf-overlay-client = { version = "1.2.2", path = "./crates/client" }
 asdf-overlay-common = { version = "1.2.2", path = "./crates/common" }
-asdf-overlay-event = { version = "1.2.2", path = "./crates/event" }
 asdf-overlay-vulkan-layer = { version = "1.2.2", path = "./crates/vulkan-layer" }
 asdf-overlay-window = { version = "1.2.2", path = "./crates/window" }
 asdf-overlay-window-event = { version = "1.2.2", path = "./crates/window-event" }

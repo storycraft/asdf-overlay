@@ -15,12 +15,13 @@ crate-type = ["cdylib"]
 [dependencies]
 asdf-overlay = { workspace = true }
 asdf-overlay-common = { workspace = true }
-asdf-overlay-event = { workspace = true, features = ["bincode"] }
+asdf-overlay-window = { workspace = true }
+asdf-overlay-window-event = { workspace = true, features = ["bitcode"] }
 asdf-overlay-vulkan-layer = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 anyhow = "1.0.97"
-bincode = "2.0.1"
+bitcode = "0.6.9"
 parking_lot = { version = "0.12.3", features = ["hardware-lock-elision"] }
 scopeguard = "1.2.0"
 tracing-subscriber = "0.3"

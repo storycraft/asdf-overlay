@@ -14,7 +14,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 asdf-overlay-client = { workspace = true }
-asdf-overlay-event = { workspace = true }
+asdf-overlay-common = { workspace = true }
+
 tokio = { workspace = true, features = ["full"] }
 napi-derive = "3.6.2"
 

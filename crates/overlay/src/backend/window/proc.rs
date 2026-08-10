@@ -7,11 +7,14 @@ use crate::{
     event_sink::OverlayEventSink,
     util::get_client_size,
 };
-use asdf_overlay_event::{
-    OverlayEvent, WindowEvent,
-    input::{
-        ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime,
-        ImeCandidateList, InputEvent, InputPosition, KeyboardInput, ScrollAxis,
+use asdf_overlay_common::event::{
+    OverlayEvent,
+    window::{
+        WindowEvent,
+        input::{
+            ConversionMode, CursorAction, CursorEvent, CursorInput, CursorInputState, Ime,
+            ImeCandidateList, InputEvent, InputPosition, KeyboardInput, ScrollAxis,
+        },
     },
 };
 use core::{alloc::Layout, mem, slice};
@@ -585,7 +588,7 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
         x: x as _,
         y: y as _,
     };
-    let surface = InputPosition {
+    let _surface = InputPosition {
         x: window.x - position.0,
         y: window.y - position.1,
     };
@@ -593,8 +596,8 @@ fn cursor_input(id: u32, position: (i32, i32), lparam: LPARAM, event: CursorEven
         id,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event,
-            client: surface,
-            window,
+            // TODO
+            pos: window,
         })),
     }
 }

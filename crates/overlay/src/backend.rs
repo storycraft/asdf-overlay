@@ -11,8 +11,7 @@ use core::{mem, num::NonZeroU32};
 use std::collections::VecDeque;
 
 use anyhow::Context;
-use asdf_overlay_common::cursor::Cursor;
-use asdf_overlay_event::{GpuLuid, OverlayEvent, WindowEvent};
+use asdf_overlay_common::{cursor::Cursor, event::{OverlayEvent, window::WindowEvent}, surface::GpuLuid};
 use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -99,7 +98,8 @@ impl Backends {
                     event: WindowEvent::Added {
                         width: window_size.0,
                         height: window_size.1,
-                        gpu_id: interop.gpu_id(),
+                        // TODO
+                        // gpu_id: interop.gpu_id(),
                     },
                 });
 
@@ -273,10 +273,7 @@ impl WindowBackend {
                 let ime_cx = ImmAssociateContext(HWND(backend.id as _), HIMC(data.old_ime_cx as _));
                 _ = ImmDestroyContext(ime_cx);
 
-                OverlayEventSink::emit(OverlayEvent::Window {
-                    id: backend.id,
-                    event: WindowEvent::InputBlockingEnded,
-                });
+                OverlayEventSink::emit(OverlayEvent::InputBlockingEnded);
             });
         }
     }

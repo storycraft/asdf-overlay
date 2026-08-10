@@ -9,10 +9,10 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-asdf-overlay-event = { workspace = true, features = ["bincode"] }
+asdf-overlay-window-event = { workspace = true, features = ["bitcode"] }
 tokio = { workspace = true, features = ["io-util", "rt", "sync", "net"] }
 
-bincode = { version = "2.0.1", features = ["derive"] }
+bitcode = { version = "0.6.9" }
 winapi = { version = "0.3", features = ["winerror"] }
 anyhow = "1.0.97"
 parking_lot = "0.12.3"

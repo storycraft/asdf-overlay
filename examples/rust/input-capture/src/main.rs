@@ -1,10 +1,12 @@
 use std::env;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use asdf_overlay_client::{
     OverlayDll,
-    common::request::BlockInput,
-    event::{OverlayEvent, WindowEvent},
+    common::{
+        event::OverlayEvent,
+        request::{BlockInput, Request},
+    },
     inject,
 };
 
@@ -26,24 +28,13 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(OverlayEvent::Window {
-        id,
-        event: WindowEvent::Added { .. },
-    }) = event.recv().await
-    else {
-        bail!("failed to receive main window");
-    };
-
-    conn.window(id).request(BlockInput { block: true }).await?;
+    conn.request(Request::BlockInput(BlockInput { block: true }))
+        .await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);
 
-        if let OverlayEvent::Window {
-            event: WindowEvent::InputBlockingEnded,
-            ..
-        } = event
-        {
+        if let OverlayEvent::InputBlockingEnded = event {
             break;
         }
     }

@@ -1,9 +1,9 @@
 //! Size-related types and utilities.
 
-use bincode::{Decode, Encode};
+use bitcode::{Decode, Encode};
 
 /// A length that can be specified as either a percentage of a container size or an absolute length.
-#[derive(Debug, Decode, Encode, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Encode, Decode)]
 pub enum PercentLength {
     /// A percentage length relative to a base size.
     ///
