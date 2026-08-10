@@ -3,6 +3,7 @@ pub mod input;
 
 use anyhow::Context;
 use asdf_overlay_client::client::IpcClientEventStream;
+use asdf_overlay_client::common::event::surface::SurfaceEvent;
 use asdf_overlay_client::common::event::{OverlayEvent, window::WindowEvent};
 use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
@@ -10,6 +11,7 @@ use napi::{
 };
 
 use crate::event::input::InputEvent;
+use crate::{GpuLuid, LogLevel};
 
 pub(crate) struct VarArgs(
     Box<dyn FnOnce(napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>>>,
@@ -64,23 +66,23 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
         match event {
             OverlayEvent::Window { id, event } => match event {
                 WindowEvent::Added { width, height } => {
-                    emitter.emit(("added", id, width, height));
+                    emitter.emit(("window_added", id, width, height));
                 }
 
                 WindowEvent::Resized { width, height } => {
-                    emitter.emit(("resized", id, width, height));
+                    emitter.emit(("window_resized", id, width, height));
                 }
                 WindowEvent::Input(input) => match InputEvent::from(input) {
                     InputEvent::Cursor { event } => {
-                        emitter.emit(("cursor_input", id, event));
+                        emitter.emit(("window_cursor_input", id, event));
                     }
                     InputEvent::Keyboard { event } => {
-                        emitter.emit(("keyboard_input", id, event));
+                        emitter.emit(("window_keyboard_input", id, event));
                     }
                 },
 
                 WindowEvent::Destroyed => {
-                    emitter.emit(("destroyed", id));
+                    emitter.emit(("window_destroyed", id));
                 }
             },
 
@@ -88,8 +90,21 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                 emitter.emit(("input_blocking_ended",));
             }
 
-            _ => {
-                // TODO
+            OverlayEvent::Surface { id, event } => match event {
+                SurfaceEvent::Added {
+                    width,
+                    height,
+                    gpu_id,
+                } => {
+                    emitter.emit(("surface_added", id, width, height, GpuLuid::from(gpu_id)));
+                }
+                SurfaceEvent::Destroyed => {
+                    emitter.emit(("surface_destroyed", id));
+                }
+            },
+
+            OverlayEvent::Log { level, message } => {
+                emitter.emit(("log", LogLevel::from(level), message));
             }
         }
     }

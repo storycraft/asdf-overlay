@@ -20,7 +20,7 @@ export class ElectronOverlayInput {
     this.window = { ...window };
 
     this.window.overlay.event.on(
-      'cursor_input',
+      'window_cursor_input',
       this.cursorInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -30,7 +30,7 @@ export class ElectronOverlayInput {
       },
     );
     this.window.overlay.event.on(
-      'keyboard_input',
+      'window_keyboard_input',
       this.keyboardInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -58,8 +58,8 @@ export class ElectronOverlayInput {
    * Disconnect overlay inputs.
    */
   async disconnect() {
-    this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
-    this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);
+    this.window.overlay.event.off('window_cursor_input', this.cursorInputHandler);
+    this.window.overlay.event.off('window_keyboard_input', this.keyboardInputHandler);
     this.contents.off('cursor-changed', this.cursorChangedHandler);
 
     try {

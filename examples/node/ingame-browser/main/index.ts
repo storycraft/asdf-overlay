@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay, percent, type GpuLuid, type KeyInputState } from '@asdf-overlay/core';
+import { defaultDllDir, Overlay, type GpuLuid, type KeyInputState } from '@asdf-overlay/core';
 import find from 'find-process';
-import { type OverlayWindow } from '@asdf-overlay/electron';
+import { type OverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
 import { ElectronOverlaySurface } from '@asdf-overlay/electron/surface';
 import { ElectronOverlayInput } from '@asdf-overlay/electron/input';
 
@@ -10,6 +10,10 @@ async function createOverlayWindow(pid: number) {
     defaultDllDir().replace('app.asar', 'app.asar.unpacked'),
     pid,
   );
+
+  overlay.event.on('log', (level, message) => {
+    console.info(`[${level}] ${message}`);
+  });
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -20,28 +24,34 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  const [id, luid] = await new Promise<[number, GpuLuid]>(resolve => overlay.event.once(
-    'added',
-    (id, _width, _height, luid) => {
-      resolve([id, luid]);
-    }),
-  );
-  const window: OverlayWindow = { id, overlay };
+  const [windowId, [surfaceId, luid]] = await Promise.all([
+    new Promise<number>(resolve => overlay.event.on(
+      'window_added',
+      (id, _width, _height) => {
+        resolve(id);
+      }),
+    ),
+    new Promise<[bigint, GpuLuid]>(resolve => overlay.event.once(
+      'surface_added',
+      (id, _width, _height, luid) => {
+        resolve([id, luid]);
+      }),
+    )
+  ]);
 
-  // centre layout
-  void overlay.setPosition(id, percent(0.5), percent(0.5));
-  void overlay.setAnchor(id, percent(0.5), percent(0.5));
+  const window: OverlayWindow = { id: windowId, overlay };
+  const surface: OverlaySurface = { id: surfaceId, overlay };
 
-  let surface: ElectronOverlaySurface | null = null;
+  let electronSurface: ElectronOverlaySurface | null = null;
 
   // always listen keyboard events
-  await overlay.listenInput(id, false, true);
+  await overlay.listenInput(windowId, false, true);
 
   let overlayInput: ElectronOverlayInput | null = null;
   let block = false;
   let shiftState: KeyInputState = 'Released';
   let aState: KeyInputState = 'Released';
-  overlay.event.on('keyboard_input', (_, input) => {
+  overlay.event.on('window_keyboard_input', (_, input) => {
     keybind: if (input.type === 'Key') {
       const key = input.key;
       if (key.code === 0x10 && !key.extended) {
@@ -58,7 +68,7 @@ async function createOverlayWindow(pid: number) {
 
         if (block) {
           overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
-          surface = ElectronOverlaySurface.connect(window, luid, mainWindow.webContents);
+          electronSurface = ElectronOverlaySurface.connect(surface, luid, mainWindow.webContents);
 
           // do full repaint
           mainWindow.webContents.startPainting();
@@ -70,7 +80,7 @@ async function createOverlayWindow(pid: number) {
         }
 
         // block all inputs reaching window and listen
-        void overlay.blockInput(id, block);
+        void overlay.blockInput(block);
         return;
       }
     }
@@ -81,8 +91,8 @@ async function createOverlayWindow(pid: number) {
     block = false;
     mainWindow.webContents.stopPainting();
     mainWindow.blurWebView();
-    void surface?.disconnect().then(() => {
-      surface = null;
+    void electronSurface?.disconnect().then(() => {
+      electronSurface = null;
     });
     void overlayInput?.disconnect().then(() => {
       overlayInput = null;

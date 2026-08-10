@@ -9,6 +9,27 @@ use napi_derive::napi;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+#[napi]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl From<common::event::LogLevel> for LogLevel {
+    fn from(value: common::event::LogLevel) -> Self {
+        match value {
+            common::event::LogLevel::Trace => Self::Trace,
+            common::event::LogLevel::Debug => Self::Debug,
+            common::event::LogLevel::Info => Self::Info,
+            common::event::LogLevel::Warn => Self::Warn,
+            common::event::LogLevel::Error => Self::Error,
+        }
+    }
+}
+
 #[napi(object)]
 pub struct GpuLuid {
     pub low: u32,

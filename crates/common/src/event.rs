@@ -29,5 +29,21 @@ pub enum OverlayEvent {
     InputBlockingEnded,
 
     /// Log message from overlay system.
-    Log {},
+    Log {
+        /// Log level of the message.
+        level: LogLevel,
+
+        /// Log message.
+        message: String,
+    },
+}
+
+/// Describe a log level.
+#[derive(Debug, Clone, Copy, Encode, Decode)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
 }
