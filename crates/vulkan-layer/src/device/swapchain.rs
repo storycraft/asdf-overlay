@@ -4,10 +4,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tracing::{debug, trace};
 
-use crate::{
-    device::DISPATCH_TABLE, map::IntDashMap,
-    renderer::VulkanRenderer,
-};
+use crate::{device::DISPATCH_TABLE, map::IntDashMap, renderer::VulkanRenderer};
 
 /// Data associated with a [`vk::SwapchainKHR`].
 pub struct SwapchainData {
