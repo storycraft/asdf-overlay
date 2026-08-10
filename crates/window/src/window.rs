@@ -48,7 +48,7 @@ impl WindowProcState {
                     HWND(id as _),
                     GWLP_WNDPROC,
                     hooked_wnd_proc as *const () as _,
-                ))
+                ) as _)
             };
 
             if res.is_none() {
