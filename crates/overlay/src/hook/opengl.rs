@@ -12,7 +12,7 @@ use windows::{
         Foundation::{HMODULE, HWND, LUID},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
-            Gdi::HDC,
+            Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
@@ -23,14 +23,7 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink,
-    gl,
-    hook::opengl::data::with_renderer_gl_data,
-    renderer::opengl::OpenglRenderer,
-    surface::{Renderer, SurfaceState, Surfaces},
-    types::IntDashMap,
-    util::find_adapter_by_luid,
-    wgl,
+    event_sink::OverlayEventSink, gl, hook::opengl::data::with_renderer_gl_data, renderer::opengl::OpenglRenderer, surface::{Renderer, SurfaceState, Surfaces}, types::IntDashMap, util::{find_adapter_by_luid, get_client_size}, wgl,
 };
 
 struct Hook {
@@ -183,7 +176,11 @@ fn draw_overlay(hdc: HDC) {
     };
     data.hglrc = unsafe { wglGetCurrentContext() }.0 as usize;
 
-    let res = Surfaces::with(key, setup_fn, |backend| inner(backend, &mut data.renderer));
+    let res = Surfaces::with(
+        key,
+        || setup_fn(unsafe { WindowFromDC(hdc) }),
+        |backend| inner(backend, &mut data.renderer),
+    );
     match res {
         Ok(_) => {}
         Err(_err) => {
@@ -192,10 +189,9 @@ fn draw_overlay(hdc: HDC) {
     }
 }
 
-fn setup_fn() -> anyhow::Result<SurfaceState> {
-    // TODO: get the actual size of the window instead of hardcoding it
-
-    SurfaceState::new(get_dxgi_adapter().as_ref(), (1920, 1080), Renderer::Opengl)
+fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
+    let size = get_client_size(hwnd).unwrap_or_default();
+    SurfaceState::new(get_dxgi_adapter().as_ref(), size, Renderer::Opengl)
 }
 
 #[tracing::instrument]

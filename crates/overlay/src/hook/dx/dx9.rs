@@ -27,7 +27,7 @@ use crate::{
     renderer::dx9::Dx9Renderer,
     surface::{Renderer, SurfaceState, Surfaces},
     types::IntDashMap,
-    util::find_adapter_by_luid,
+    util::{find_adapter_by_luid, get_client_size},
 };
 
 /// Mapping from [`IDirect3DDevice9`] to [`Dx9Renderer`].
@@ -61,7 +61,7 @@ extern "system" fn hooked_present(
 
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-        draw_overlay(device);
+        draw_overlay(device, dest_window_override);
     }
 
     unsafe {
@@ -88,7 +88,7 @@ extern "system" fn hooked_swapchain_present(
 
     let swapchain = unsafe { IDirect3DSwapChain9::from_raw_borrowed(&this) }.unwrap();
     let device = unsafe { swapchain.GetDevice() }.unwrap();
-    draw_overlay(&device);
+    draw_overlay(&device, dest_window_override);
 
     unsafe {
         HOOK.swapchain_present.wait().original_fn()(
@@ -129,7 +129,7 @@ extern "system" fn hooked_present_ex(
 
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-        draw_overlay(device);
+        draw_overlay(device, dest_window_override);
     }
 
     unsafe {
@@ -144,13 +144,13 @@ extern "system" fn hooked_present_ex(
     }
 }
 
-fn draw_overlay(device: &IDirect3DDevice9) {
+fn draw_overlay(device: &IDirect3DDevice9, dest_window_override: HWND) {
     // Use device pointer as key.
     let id = device.as_raw() as u64;
 
     let res = Surfaces::with(
         id,
-        || setup_fn(device),
+        || setup_fn(device, dest_window_override),
         |state| {
             if Renderer::Dx9 != state.renderer {
                 trace!("ignoring dx9 rendering");
@@ -191,24 +191,29 @@ fn cleanup_renderer(device: usize) {
         return;
     }
 
+    Surfaces::cleanup_state(device as _);
     debug!("dx9 renderer cleanup");
-    // TODO:: cleanup state
 }
 
-fn setup_fn(device: &IDirect3DDevice9) -> anyhow::Result<SurfaceState> {
+fn setup_fn(device: &IDirect3DDevice9, dest_window_override: HWND) -> anyhow::Result<SurfaceState> {
     let swapchain = unsafe { device.GetSwapChain(0) }.context("failed to get dx9 swapchain")?;
     let mut present_params = D3DPRESENT_PARAMETERS::default();
     unsafe { swapchain.GetPresentParameters(&mut present_params) }
         .context("failed to get present param")?;
 
-    SurfaceState::new(
-        get_dxgi_adapter(device).as_ref(),
+    let mut hwnd = dest_window_override;
+    if hwnd.is_invalid() {
+        hwnd = present_params.hDeviceWindow;
+    }
+
+    let size = get_client_size(hwnd).unwrap_or_else(|_| {
         (
             present_params.BackBufferWidth,
             present_params.BackBufferHeight,
-        ),
-        Renderer::Dx9,
-    )
+        )
+    });
+
+    SurfaceState::new(get_dxgi_adapter(device).as_ref(), size, Renderer::Dx9)
 }
 
 fn get_dxgi_adapter(device: &IDirect3DDevice9) -> Option<IDXGIAdapter> {

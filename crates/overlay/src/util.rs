@@ -5,10 +5,14 @@ use core::mem::{self, ManuallyDrop};
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LUID},
+        Foundation::{HWND, LPARAM, LUID, RECT},
         Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
-        UI::WindowsAndMessaging::{
-            CreateDialogIndirectParamA, DLGITEMTEMPLATE, DLGTEMPLATE, DestroyWindow,
+        UI::{
+            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
+            WindowsAndMessaging::{
+                CreateDialogIndirectParamA, DLGITEMTEMPLATE, DLGTEMPLATE, DestroyWindow,
+                GetClientRect,
+            },
         },
     },
     core::Interface,
@@ -18,6 +22,20 @@ use windows::{
 // as per: https://github.com/microsoft/windows-rs/blob/83d4e0b4d49d004f52523614f292bc1526142052/crates/samples/windows/direct3d12/src/main.rs#L493
 pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Option<T>> {
     unsafe { mem::transmute_copy(inf) }
+}
+
+/// Get DPI aware client area size of the window.
+pub fn get_client_size(hwnd: HWND) -> anyhow::Result<(u32, u32)> {
+    unsafe {
+        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+        defer!({
+            SetThreadDpiAwarenessContext(old_context);
+        });
+
+        let mut rect = RECT::default();
+        GetClientRect(hwnd, &mut rect)?;
+        Ok((rect.right as u32, rect.bottom as u32))
+    }
 }
 
 /// Create dummy class and window for various operation.
