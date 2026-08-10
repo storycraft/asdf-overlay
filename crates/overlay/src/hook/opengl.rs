@@ -23,7 +23,14 @@ use windows::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink, gl, hook::opengl::data::with_renderer_gl_data, renderer::opengl::OpenglRenderer, surface::{Renderer, SurfaceState, Surfaces}, types::IntDashMap, util::{find_adapter_by_luid, get_client_size}, wgl,
+    event_sink::OverlayEventSink,
+    gl,
+    hook::opengl::data::with_renderer_gl_data,
+    renderer::opengl::OpenglRenderer,
+    surface::{Renderer, SurfaceState, Surfaces},
+    types::IntDashMap,
+    util::{find_adapter_by_luid, get_client_size},
+    wgl,
 };
 
 struct Hook {

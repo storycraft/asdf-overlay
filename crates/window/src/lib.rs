@@ -105,10 +105,7 @@ impl Backends {
     }
 
     pub fn reset(&self) {
-        self.unblock_input();
-        for state in Self::get().windows.iter() {
-            state.reset();
-        }
+        Self::get().reset();
     }
 
     #[inline]

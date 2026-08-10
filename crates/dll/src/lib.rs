@@ -120,6 +120,7 @@ async fn run(
 
         let backends = backends.clone();
 
+        let emitter = emitter.clone();
         async move {
             while let Some(event) = backends.recv_async().await {
                 _ = emitter.emit(match event {
