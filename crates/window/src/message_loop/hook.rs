@@ -296,22 +296,6 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
 #[inline]
 fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
-        // Block WM_POINTER* by forwarding to DefWindowProc, which converts them
-        // to legacy WM_LBUTTON*/WM_MOUSEMOVE/WM_MOUSEWHEEL messages.
-        // Those legacy messages then re-enter this WndProc where they are
-        // emitted to the message loop and blocked.
-        msg::WM_POINTERUPDATE
-        | msg::WM_POINTERDOWN
-        | msg::WM_POINTERUP
-        | msg::WM_POINTERENTER
-        | msg::WM_POINTERLEAVE
-        | msg::WM_POINTERACTIVATE
-        | msg::WM_POINTERCAPTURECHANGED
-        | msg::WM_POINTERWHEEL
-        | msg::WM_POINTERHWHEEL => {
-            unsafe { DefWindowProcA(HWND(id as _), msg.message, msg.wParam, msg.lParam) };
-        }
-
         msg::WM_MOUSEMOVE => {
             cursor_move(id, msg.lParam);
         }
@@ -526,10 +510,25 @@ fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
 }
 
 #[inline]
-fn is_cursor_message(message: u32) -> bool {
+fn is_filter_target(message: u32) -> bool {
     matches!(
         message,
-        msg::WM_MOUSEMOVE
+        // Block WM_POINTER* by forwarding to DefWindowProc, which converts them
+        // to legacy WM_LBUTTON*/WM_MOUSEMOVE/WM_MOUSEWHEEL messages.
+        // Those legacy messages then re-enter this WndProc where they are
+        // emitted to the message loop and blocked.
+        msg::WM_POINTERUPDATE
+            | msg::WM_POINTERDOWN
+            | msg::WM_POINTERUP
+            | msg::WM_POINTERENTER
+            | msg::WM_POINTERLEAVE
+            | msg::WM_POINTERACTIVATE
+            | msg::WM_POINTERCAPTURECHANGED
+            | msg::WM_POINTERWHEEL
+            | msg::WM_POINTERHWHEEL
+
+            // Mouse messages
+            | msg::WM_MOUSEMOVE
             | msg::WM_LBUTTONDOWN
             | msg::WM_LBUTTONUP
             | msg::WM_LBUTTONDBLCLK
@@ -545,23 +544,9 @@ fn is_cursor_message(message: u32) -> bool {
             | msg::WM_XBUTTONDBLCLK
             | msg::WM_MOUSEWHEEL
             | msg::WM_MOUSEHWHEEL
-            | msg::WM_POINTERUPDATE
-            | msg::WM_POINTERDOWN
-            | msg::WM_POINTERUP
-            | msg::WM_POINTERENTER
-            | msg::WM_POINTERLEAVE
-            | msg::WM_POINTERACTIVATE
-            | msg::WM_POINTERCAPTURECHANGED
-            | msg::WM_POINTERWHEEL
-            | msg::WM_POINTERHWHEEL
-    )
-}
 
-#[inline]
-fn is_keyboard_message(message: u32) -> bool {
-    matches!(
-        message,
-        msg::WM_KEYDOWN
+            // Keyboard messages
+            | msg::WM_KEYDOWN
             | msg::WM_KEYUP
             | msg::WM_CHAR
             | msg::WM_SYSKEYDOWN
@@ -573,7 +558,7 @@ fn is_keyboard_message(message: u32) -> bool {
 /// Filter input messages when blocking is enabled
 #[inline]
 fn should_filter(msg: &MSG) -> bool {
-    if !is_cursor_message(msg.message) && !is_keyboard_message(msg.message) {
+    if !is_filter_target(msg.message) {
         return false;
     }
 
