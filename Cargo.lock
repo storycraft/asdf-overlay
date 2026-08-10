@@ -365,7 +365,6 @@ dependencies = [
  "asdf-overlay-common",
  "asdf-overlay-vulkan-layer",
  "asdf-overlay-window",
- "asdf-overlay-window-event",
  "bitcode",
  "parking_lot",
  "scopeguard",

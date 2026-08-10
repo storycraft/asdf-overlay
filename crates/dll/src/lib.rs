@@ -16,10 +16,7 @@ extern crate asdf_overlay_vulkan_layer;
 use anyhow::Context;
 use asdf_overlay::{event_sink::OverlayEventSink, initialize, surface::Surfaces};
 use asdf_overlay_common::{
-    event::{
-        OverlayEvent,
-        surface::{Event, SurfaceEvent},
-    },
+    event::{OverlayEvent, surface::SurfaceEvent, window::WindowEvent},
     ipc::create_ipc_addr,
     request::{
         BlockInput, Request, Requestable, SetBlockingCursor,
@@ -30,7 +27,6 @@ use asdf_overlay_common::{
     },
 };
 use asdf_overlay_window::{Backends, window::ListenInputFlags};
-use asdf_overlay_window_event::WindowEvent;
 use core::time::Duration;
 use scopeguard::defer;
 use std::{ffi::OsStr, sync::Arc, thread};
@@ -106,14 +102,39 @@ async fn run(
         }
     }
 
-    OverlayEventSink::set(move |event| match event {
-        Event::Surface { id, event } => {
-            _ = emitter.emit(OverlayEvent::Surface { id, event });
+    // setup overlay event sink
+    OverlayEventSink::set({
+        use asdf_overlay_common::event::surface::Event;
+
+        let emitter = emitter.clone();
+        move |event| match event {
+            Event::Surface { id, event } => {
+                _ = emitter.emit(OverlayEvent::Surface { id, event });
+            }
         }
     });
+
+    // setup window event sink
+    let window_task = tokio::spawn({
+        use asdf_overlay_common::event::window::Event;
+
+        let backends = backends.clone();
+
+        async move {
+            while let Some(event) = backends.recv_async().await {
+                _ = emitter.emit(match event {
+                    Event::Window { id, event } => OverlayEvent::Window { id, event },
+                    Event::InputBlockingEnded => OverlayEvent::InputBlockingEnded,
+                });
+            }
+        }
+    });
+
     defer!({
         debug!("cleanup start");
+        window_task.abort();
         OverlayEventSink::clear();
+        backends.reset();
         Surfaces::reset();
     });
 

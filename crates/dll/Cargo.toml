@@ -16,7 +16,6 @@ crate-type = ["cdylib"]
 asdf-overlay = { workspace = true }
 asdf-overlay-common = { workspace = true }
 asdf-overlay-window = { workspace = true }
-asdf-overlay-window-event = { workspace = true, features = ["bitcode"] }
 asdf-overlay-vulkan-layer = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 

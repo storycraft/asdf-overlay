@@ -75,6 +75,10 @@ impl WindowProcState {
         })
     }
 
+    pub fn reset(&self) {
+        self.input_flags.store(0, Ordering::Relaxed);
+    }
+
     pub fn size(&self) -> (u32, u32) {
         (
             self.size.0.load(Ordering::Relaxed),
