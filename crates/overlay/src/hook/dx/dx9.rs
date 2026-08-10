@@ -206,7 +206,7 @@ fn setup_fn(device: &IDirect3DDevice9, dest_window_override: HWND) -> anyhow::Re
         hwnd = present_params.hDeviceWindow;
     }
 
-    let size = get_client_size(hwnd).unwrap_or_else(|_| {
+    let size = get_client_size(hwnd).unwrap_or({
         (
             present_params.BackBufferWidth,
             present_params.BackBufferHeight,
