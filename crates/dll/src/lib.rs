@@ -16,7 +16,10 @@ extern crate asdf_overlay_vulkan_layer;
 use anyhow::Context;
 use asdf_overlay::{event_sink::OverlayEventSink, initialize, surface::Surfaces};
 use asdf_overlay_common::{
-    event::{OverlayEvent, surface::Event},
+    event::{
+        OverlayEvent,
+        surface::{Event, SurfaceEvent},
+    },
     ipc::create_ipc_addr,
     request::{
         BlockInput, Request, Requestable, SetBlockingCursor,
@@ -81,6 +84,23 @@ async fn run(
                 _ = emitter.emit(OverlayEvent::Window {
                     id,
                     event: WindowEvent::Added { width, height },
+                });
+            });
+        }
+
+        // send existing surfaces
+        for id in Surfaces::iter() {
+            Surfaces::state(id, |state| {
+                let (width, height) = state.size();
+                let gpu_id = state.interop.gpu_id();
+
+                _ = emitter.emit(OverlayEvent::Surface {
+                    id,
+                    event: SurfaceEvent::Added {
+                        width,
+                        height,
+                        gpu_id,
+                    },
                 });
             });
         }

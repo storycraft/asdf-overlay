@@ -8,7 +8,6 @@ use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use anyhow::Context;
 use asdf_overlay_event::{Event, SurfaceEvent};
-use dashmap::mapref::multiple::RefMulti;
 use once_cell::sync::Lazy;
 use windows::Win32::Graphics::Dxgi::IDXGIAdapter;
 
@@ -28,8 +27,8 @@ pub struct Surfaces {
 
 impl Surfaces {
     /// Iterate over all surfaces.
-    pub fn iter<'a>() -> impl Iterator<Item = RefMulti<'a, u64, SurfaceState>> {
-        SURFACES.map.iter()
+    pub fn iter<'a>() -> impl Iterator<Item = u64> {
+        SURFACES.map.iter().map(|r| *r.key())
     }
 
     /// Run closure with the specified surface, if it exists.
