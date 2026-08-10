@@ -10,15 +10,15 @@ use windows::{
             D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1, ID3D11Texture2D,
             ID3DDeviceContextState,
         },
-        Dxgi::IDXGISwapChain1,
+        Dxgi::{IDXGIDevice, IDXGISwapChain1},
     },
     core::Interface,
 };
 
 use crate::{
-    backend::{WindowBackend, render::Renderer},
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
     renderer::dx11::Dx11Renderer,
+    surface::{Renderer, SurfaceState},
     types::IntDashMap,
 };
 
@@ -77,39 +77,19 @@ fn with_or_init_renderer_data<R>(
     f(&mut data)
 }
 
-pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    let mut render = backend.render.lock();
-    match render.renderer {
-        Some(Renderer::Dx11) => {}
+pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
+    if state.renderer != Renderer::Dx11 {
+        trace!("ignoring dx11 rendering");
+        return;
+    }
 
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx11);
-            debug!("switching from opengl to dx11 render");
-            // skip drawing on render changes
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx11 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx11);
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let Some(surface) = render.surface.get() else {
+    let Some(size) = state.surface_size() else {
         return;
     };
 
-    let size = surface.size();
-    let update = render.surface.take_update();
-    let position = render.position;
-    let screen = render.window_size;
-    drop(render);
-
+    let update = state.surface.take_update();
+    let position = state.position();
+    let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx11 renderer");
 
@@ -144,10 +124,26 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
     });
 }
 
+pub(super) fn setup_fn(
+    device: &ID3D11Device1,
+    swapchain: &IDXGISwapChain1,
+) -> anyhow::Result<SurfaceState> {
+    let adapter = unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() };
+    let desc = unsafe { swapchain.GetDesc() }?;
+
+    SurfaceState::new(
+        adapter.as_ref(),
+        (desc.BufferDesc.Width, desc.BufferDesc.Height),
+        Renderer::Dx11,
+    )
+}
+
 #[tracing::instrument]
 fn cleanup_swapchain(swapchain: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     debug!("dx11 renderer cleanup");
+
+    // TODO:: cleanup state
 }

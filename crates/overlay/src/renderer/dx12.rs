@@ -1,7 +1,6 @@
 mod sync;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use core::{
     mem::ManuallyDrop,
     slice::{self},
@@ -205,7 +204,7 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
+    pub fn update_texture(&mut self, shared: Option<u32>) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
@@ -232,10 +231,7 @@ impl Dx12Renderer {
             .get_or_create(|handle| {
                 let mut texture = None;
                 unsafe {
-                    device.OpenSharedHandle::<ID3D12Resource>(
-                        HANDLE(handle.get() as _),
-                        &mut texture,
-                    )?;
+                    device.OpenSharedHandle::<ID3D12Resource>(HANDLE(handle as _), &mut texture)?;
                 }
                 let texture = texture.context("cannot open shared texture")?;
 

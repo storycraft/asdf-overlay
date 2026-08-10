@@ -1,0 +1,15 @@
+[package]
+name = "asdf-overlay-event"
+description = "Asdf Overlay event"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+bitcode = ["dep:bitcode"]
+
+[dependencies]
+bitcode = { version = "0.6.9", optional = true }

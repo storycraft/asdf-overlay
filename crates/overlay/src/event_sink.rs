@@ -2,14 +2,14 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use asdf_overlay_common::event::OverlayEvent;
+use asdf_overlay_event::Event;
 
 /// Global [`OverlayEventSink`] instance.
 static CURRENT: ArcSwapOption<OverlayEventSink> = ArcSwapOption::const_empty();
 
 /// Event sink for overlay system.
 pub struct OverlayEventSink {
-    sink: Box<dyn Fn(OverlayEvent) + Send + Sync>,
+    sink: Box<dyn Fn(Event) + Send + Sync>,
 }
 
 impl OverlayEventSink {
@@ -20,8 +20,8 @@ impl OverlayEventSink {
     }
 
     #[inline]
-    /// Emit [`OverlayEvent`] to event sink. If one exists.
-    pub(crate) fn emit(event: OverlayEvent) {
+    /// Emit [`Event`] to event sink. If one exists.
+    pub(crate) fn emit(event: Event) {
         if let Some(ref this) = *CURRENT.load() {
             (this.sink)(event);
         }
@@ -30,7 +30,7 @@ impl OverlayEventSink {
     /// Set event sink function.
     ///
     /// Overlay will not detect windows or render before setting it.
-    pub fn set(sink: impl Fn(OverlayEvent) + Send + Sync + 'static) {
+    pub fn set(sink: impl Fn(Event) + Send + Sync + 'static) {
         CURRENT.store(Some(Arc::new(Self {
             sink: Box::new(sink),
         })));

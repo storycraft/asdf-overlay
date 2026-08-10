@@ -21,7 +21,7 @@ use windows::Win32::{
     },
 };
 
-use crate::{surface::OverlaySurface, util::with_keyed_mutex};
+use crate::{surface::texture::OverlaySurface, util::with_keyed_mutex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]

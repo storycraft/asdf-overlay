@@ -7,11 +7,6 @@ use crate::{instance::DISPATCH_TABLE, map::IntDashMap};
 /// vkSurfaceKHR to HWND mapping table
 static SURFACE_MAP: Lazy<IntDashMap<u64, u32>> = Lazy::new(IntDashMap::default);
 
-/// Get the HWND associated with a given [`vk::SurfaceKHR`].`
-pub fn get_surface_hwnd(surface: vk::SurfaceKHR) -> Option<u32> {
-    SURFACE_MAP.get(&surface.as_raw()).map(|hwnd| *hwnd)
-}
-
 /// Layer `vkCreateWin32SurfaceKHR` implementation
 pub(super) extern "system" fn create_win32_surface(
     instance: vk::Instance,

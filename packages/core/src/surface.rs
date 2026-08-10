@@ -1,5 +1,3 @@
-use core::num::NonZeroU32;
-
 use anyhow::Context;
 use asdf_overlay_client::{common::request, surface, ty};
 use bytemuck::try_pod_read_unaligned;
@@ -77,23 +75,29 @@ impl OverlaySurface {
     }
 }
 
-#[napi(object)]
-pub struct UpdateSharedHandle {
-    pub handle: Option<u32>,
+#[napi]
+pub enum UpdateSharedHandle {
+    Kmt(u32),
+    Nt(u32),
+    None,
 }
 
-impl From<request::UpdateSharedHandle> for UpdateSharedHandle {
-    fn from(update: request::UpdateSharedHandle) -> Self {
-        Self {
-            handle: update.handle.map(|h| h.get()),
+impl From<request::surface::UpdateSharedHandle> for UpdateSharedHandle {
+    fn from(update: request::surface::UpdateSharedHandle) -> Self {
+        match update {
+            request::surface::UpdateSharedHandle::Kmt(handle) => Self::Kmt(handle),
+            request::surface::UpdateSharedHandle::Nt(handle) => Self::Nt(handle),
+            request::surface::UpdateSharedHandle::None => Self::None,
         }
     }
 }
 
-impl From<UpdateSharedHandle> for request::UpdateSharedHandle {
+impl From<UpdateSharedHandle> for request::surface::UpdateSharedHandle {
     fn from(val: UpdateSharedHandle) -> Self {
-        request::UpdateSharedHandle {
-            handle: val.handle.and_then(NonZeroU32::new),
+        match val {
+            UpdateSharedHandle::Kmt(handle) => Self::Kmt(handle),
+            UpdateSharedHandle::Nt(handle) => Self::Nt(handle),
+            UpdateSharedHandle::None => Self::None,
         }
     }
 }

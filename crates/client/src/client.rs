@@ -7,10 +7,14 @@ use std::sync::{Arc, Weak};
 use anyhow::{Context as AnyhowContext, bail};
 use asdf_overlay_common::{
     event::OverlayEvent,
-    ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
-    request::{Request, WindowRequestItem},
+    ipc::{ClientRequest, Frame, ServerToClientPacket},
+    request::{
+        Request, Requestable,
+        surface::{SurfaceRequest, SurfaceRequestable},
+        window::{WindowRequest, WindowRequestable},
+    },
 };
-use bitcode::Buffer;
+use bitcode::{Buffer, DecodeOwned};
 use dashmap::DashMap;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, split},
@@ -24,7 +28,7 @@ pub struct IpcClientConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeClient>,
     buf: Buffer,
-    map: Weak<DashMap<u32, oneshot::Sender<ServerResponse>>>,
+    map: Weak<DashMap<u32, oneshot::Sender<Vec<u8>>>>,
     read_task: JoinHandle<anyhow::Result<()>>,
 }
 
@@ -33,24 +37,24 @@ impl IpcClientConn {
     pub async fn new(client: NamedPipeClient) -> anyhow::Result<(Self, IpcClientEventStream)> {
         let (mut rx, tx) = split(client);
 
-        let map = Arc::new(DashMap::<u32, oneshot::Sender<ServerResponse>>::new());
+        let map = Arc::new(DashMap::<u32, oneshot::Sender<Vec<u8>>>::new());
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
         let read_task = tokio::spawn({
             let map = map.clone();
 
             async move {
-                let mut body = Vec::new();
+                let mut buf = Vec::new();
                 loop {
                     let frame = Frame::read(&mut rx).await?;
-                    body.resize(frame.size as usize, 0_u8);
-                    rx.read_exact(&mut body).await?;
+                    buf.resize(frame.size as usize, 0_u8);
+                    rx.read_exact(&mut buf).await?;
 
-                    let packet: ServerToClientPacket = bitcode::decode(&body)?;
+                    let packet: ServerToClientPacket = bitcode::decode(&buf)?;
                     match packet {
-                        ServerToClientPacket::Response { id, response } => {
+                        ServerToClientPacket::Response { id, payload } => {
                             if let Some((_, sender)) = map.remove(&id) {
-                                _ = sender.send(response);
+                                _ = sender.send(payload);
                             }
                         }
 
@@ -82,9 +86,20 @@ impl IpcClientConn {
         IpcClientConnWindow { inner: self, id }
     }
 
+    /// Get request interface for a specific surface id.
+    /// The returned interface can be used to send surface-specific requests.
+    #[inline]
+    pub const fn surface(&mut self, id: u64) -> IpcClientConnSurface<'_> {
+        IpcClientConnSurface { inner: self, id }
+    }
+
     /// Send a request and wait for the response.
     /// Returns an error if the connection is closed or the request fails.
-    pub async fn request(&mut self, req: Request) -> anyhow::Result<ServerResponse> {
+    pub async fn request<T: Requestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
+        self.request_inner::<T::Response>(req.into()).await
+    }
+
+    async fn request_inner<T: DecodeOwned>(&mut self, req: Request) -> anyhow::Result<T> {
         let data = self
             .send(req)
             .await
@@ -92,12 +107,12 @@ impl IpcClientConn {
             .await
             .context("failed to receive response")?;
 
-        Ok(data)
+        bitcode::decode(&data).context("invalid response payload")
     }
 
     /// Send a request without waiting for the response.
     /// Returns a oneshot receiver that can be used to receive the response data.
-    async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<ServerResponse>> {
+    async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Vec<u8>>> {
         let Some(map) = self.map.upgrade() else {
             bail!("connection closed");
         };
@@ -134,13 +149,30 @@ pub struct IpcClientConnWindow<'a> {
 }
 
 impl IpcClientConnWindow<'_> {
-    /// Request any [`WindowRequestItem`].
-    pub async fn request(&mut self, req: impl WindowRequestItem) -> anyhow::Result<ServerResponse> {
+    /// Send a window request.
+    pub async fn request<T: WindowRequestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
         self.inner
-            .request(Request::Window {
+            .request_inner::<T::Response>(Request::Window(WindowRequest {
                 id: self.id,
-                request: req.into(),
-            })
+                kind: req.into(),
+            }))
+            .await
+    }
+}
+/// Request interface for a specific surface id.
+pub struct IpcClientConnSurface<'a> {
+    inner: &'a mut IpcClientConn,
+    id: u64,
+}
+
+impl IpcClientConnSurface<'_> {
+    /// Send a surface request.
+    pub async fn request<T: SurfaceRequestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
+        self.inner
+            .request_inner::<T::Response>(Request::Surface(SurfaceRequest {
+                id: self.id,
+                kind: req.into(),
+            }))
             .await
     }
 }

@@ -8,8 +8,9 @@
 use asdf_overlay_window_event::WindowEvent;
 use bitcode::{Decode, Encode};
 
-use crate::surface::SurfaceEvent;
+use surface::SurfaceEvent;
 
+pub use asdf_overlay_event as surface;
 pub use asdf_overlay_window_event as window;
 
 /// Describe a overlay event.
@@ -19,7 +20,7 @@ pub enum OverlayEvent {
     Window { id: u32, event: WindowEvent },
 
     /// Events related to a specific surface.
-    Surface { id: u32, event: SurfaceEvent },
+    Surface { id: u64, event: SurfaceEvent },
 
     /// Input blocking is turned off or interrupted by the user or system.
     ///

@@ -1,14 +1,14 @@
 use core::{ptr, slice};
 
 use asdf_overlay::{
-    backend::{Backends, WindowBackend, render::Renderer},
     event_sink::OverlayEventSink,
+    surface::{Renderer, SurfaceState, Surfaces},
 };
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
 use windows::Win32::{
     Foundation::LUID,
-    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory4},
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4},
 };
 
 use crate::{
@@ -45,21 +45,9 @@ pub(super) extern "system" fn present(
             let index = indices[i];
             _ = with_swapchain_data(swapchain, |data| {
                 let physical_device = table.physical_device;
-                if let Err(err) = Backends::with_or_init_backend(
-                    data.hwnd,
-                    || {
-                        let mut luid = LUID::default();
-                        unsafe {
-                            ptr::copy_nonoverlapping::<[u8; 8]>(
-                                &get_physical_device_luid(physical_device)?,
-                                &mut luid as *mut _ as _,
-                                1,
-                            );
-                        }
-                        let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
-
-                        unsafe { factory.EnumAdapterByLuid(luid).ok() }
-                    },
+                if let Err(err) = Surfaces::with(
+                    swapchain.as_raw(),
+                    || setup_fn(physical_device, data),
                     |backend| {
                         let semaphore = draw_overlay(
                             &table,
@@ -96,6 +84,31 @@ pub(super) extern "system" fn present(
     unsafe { (table.queue_present.unwrap())(queue, info) }
 }
 
+fn setup_fn(
+    physical_device: vk::PhysicalDevice,
+    data: &SwapchainData,
+) -> anyhow::Result<SurfaceState> {
+    SurfaceState::new(
+        get_dxgi_adapter(physical_device).as_ref(),
+        data.image_size,
+        Renderer::Vulkan,
+    )
+}
+
+fn get_dxgi_adapter(physical_device: vk::PhysicalDevice) -> Option<IDXGIAdapter> {
+    let mut luid = LUID::default();
+    unsafe {
+        ptr::copy_nonoverlapping::<[u8; 8]>(
+            &get_physical_device_luid(physical_device)?,
+            &mut luid as *mut _ as _,
+            1,
+        );
+    }
+    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+
+    unsafe { factory.EnumAdapterByLuid(luid).ok() }
+}
+
 /// Draw the overlay, create a semaphore chained to the provided wait semaphores, and return it.
 #[allow(clippy::too_many_arguments)]
 #[inline]
@@ -106,23 +119,13 @@ fn draw_overlay(
     data: &SwapchainData,
     queue: vk::Queue,
     queue_family_index: u32,
-    backend: &WindowBackend,
+    state: &SurfaceState,
     wait_semaphores: &[vk::Semaphore],
 ) -> Option<vk::Semaphore> {
-    let render = &mut *backend.render.lock();
-    match render.renderer {
-        Some(Renderer::Vulkan) => {}
-        Some(_) => {
-            trace!("ignoring vulkan rendering");
-            return None;
-        }
-        None => {
-            debug!("Found vulkan window");
-            render.renderer = Some(Renderer::Vulkan);
-            // wait next swap for possible dxgi swapchain check
-            return None;
-        }
-    };
+    if state.renderer != Renderer::Vulkan {
+        trace!("ignoring vulkan rendering");
+        return None;
+    }
 
     let mut renderer = data.renderer.lock();
     let renderer = renderer.get_or_insert_with(|| {
@@ -159,27 +162,27 @@ fn draw_overlay(
         .expect("renderer creation failed")
     });
 
-    if render.surface.invalidate_update() {
+    let size = state.surface_size()?;
+
+    if state.surface.invalidate_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         if let Err(err) = renderer.update_texture(
-            render.surface.get().map(|surface| surface.texture()),
+            state
+                .surface
+                .get()
+                .as_ref()
+                .map(|surface| surface.texture()),
             &props,
         ) {
             error!("failed to update vulkan texture. err: {err:?}");
             return None;
         }
     }
-    let surface = render.surface.get()?;
 
-    let res = renderer.draw(
-        queue,
-        wait_semaphores,
-        index,
-        render.position,
-        surface.size(),
-        render.window_size,
-    );
+    let position = state.position();
+    let screen = state.size();
+    let res = renderer.draw(queue, wait_semaphores, index, position, size, screen);
     trace!("vulkan render: {:?}", res);
     res.ok().flatten()
 }

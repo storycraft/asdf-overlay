@@ -1,7 +1,6 @@
-use core::{mem, num::NonZeroU32};
+use core::mem;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -117,7 +116,7 @@ impl Dx11Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
+    pub fn update_texture(&mut self, shared: Option<u32>) {
         self.texture.update(shared);
     }
 
@@ -191,15 +190,10 @@ impl Dx11Renderer {
     }
 }
 
-fn open_shared_texture(
-    device: &ID3D11Device,
-    handle: NonZeroU32,
-) -> anyhow::Result<Option<Dx11Tex>> {
+fn open_shared_texture(device: &ID3D11Device, handle: u32) -> anyhow::Result<Option<Dx11Tex>> {
     let mut texture = None;
-    if unsafe {
-        device.OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle.get() as _), &mut texture)
-    }
-    .is_err()
+    if unsafe { device.OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut texture) }
+        .is_err()
     {
         return Ok(None);
     }

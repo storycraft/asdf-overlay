@@ -1,8 +1,8 @@
 use core::ptr;
 
 use anyhow::Context;
-use asdf_overlay_common::surface::GpuLuid;
-use sync_wrapper::SyncWrapper;
+use asdf_overlay_event::GpuLuid;
+use parking_lot::Mutex;
 use windows::{
     Win32::{
         Foundation::HMODULE,
@@ -20,13 +20,16 @@ use windows::{
 
 /// Direct3D 11 device for storing and sharing overlay texture with other graphics backend.
 pub struct DxInterop {
-    gpu_id: GpuLuid,
+    /// This is the GPU adapter used by the surface.
+    /// Overlay surface texture must be created with this GPU.
+    /// Otherwise, surface cannot be rendered.
+    pub gpu_id: GpuLuid,
 
     /// Interop Direct3D 11 device.
     pub device: ID3D11Device,
 
     /// Interop Direct3D 11 device context.
-    pub cx: SyncWrapper<ID3D11DeviceContext>,
+    pub cx: Mutex<ID3D11DeviceContext>,
 }
 
 impl DxInterop {
@@ -67,7 +70,7 @@ impl DxInterop {
                     high: luid.HighPart,
                 },
                 device,
-                cx: SyncWrapper::new(cx),
+                cx: Mutex::new(cx),
             })
         }
     }

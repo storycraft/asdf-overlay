@@ -10,7 +10,7 @@ rust-version.workspace = true
 readme = "../../README.md"
 
 [dependencies]
-asdf-overlay-common = { workspace = true }
+asdf-overlay-event = { workspace = true }
 asdf-overlay-hook = { workspace = true }
 
 tracing = "0.1"
@@ -21,11 +21,7 @@ scopeguard = "1.2.0"
 dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 array-util = "1.0.2"
-bytemuck = "1.22.0"
-utf16string = "0.2.0"
-bitflags = "2.9.1"
 arc-swap = "1.7.1"
-sync_wrapper = "1.0.2"
 
 [dependencies.windows]
 workspace = true

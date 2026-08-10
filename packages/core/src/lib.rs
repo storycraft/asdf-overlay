@@ -2,7 +2,7 @@ pub mod event;
 pub mod overlay;
 pub mod surface;
 
-use asdf_overlay_client::common::size;
+use asdf_overlay_client::common;
 use mimalloc::MiMalloc;
 use napi_derive::napi;
 
@@ -15,8 +15,8 @@ pub struct GpuLuid {
     pub high: i32,
 }
 
-impl From<asdf_overlay_common::surface::GpuLuid> for GpuLuid {
-    fn from(val: asdf_overlay_common::surface::GpuLuid) -> Self {
+impl From<common::event::surface::GpuLuid> for GpuLuid {
+    fn from(val: common::event::surface::GpuLuid) -> Self {
         Self {
             low: val.low,
             high: val.high,
@@ -24,38 +24,11 @@ impl From<asdf_overlay_common::surface::GpuLuid> for GpuLuid {
     }
 }
 
-impl From<GpuLuid> for asdf_overlay_common::surface::GpuLuid {
+impl From<GpuLuid> for common::event::surface::GpuLuid {
     fn from(val: GpuLuid) -> Self {
-        asdf_overlay_common::surface::GpuLuid {
+        common::event::surface::GpuLuid {
             low: val.low,
             high: val.high,
         }
     }
-}
-
-#[napi]
-pub enum PercentLength {
-    Percent { value: f64 },
-    Length { value: f64 },
-}
-
-impl From<PercentLength> for size::PercentLength {
-    fn from(val: PercentLength) -> Self {
-        match val {
-            PercentLength::Percent { value } => size::PercentLength::Percent(value as _),
-            PercentLength::Length { value } => size::PercentLength::Length(value as _),
-        }
-    }
-}
-
-/// Utility function to create `PercentLength` using percent relative value.
-#[napi]
-pub fn percent(value: f64) -> PercentLength {
-    PercentLength::Percent { value }
-}
-
-/// Utility function to create `PercentLength` using absolute length value.
-#[napi]
-pub fn length(value: f64) -> PercentLength {
-    PercentLength::Length { value }
 }

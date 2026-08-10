@@ -14,18 +14,16 @@ use windows::{
     core::PCWSTR,
 };
 
-use crate::Backends;
-
 /// Load [`HCURSOR`] resource from `cursor` if exists.
-pub(crate) fn load(cursor: Cursor) -> Option<HCURSOR> {
+pub(crate) fn load(hinstance: usize, cursor: Cursor) -> Option<HCURSOR> {
     #[inline]
     fn system_cursor(res: PCWSTR) -> Option<HCURSOR> {
         unsafe { LoadCursorW(None, res) }.ok()
     }
 
     #[inline]
-    fn instance_cursor(res: PCWSTR) -> Option<HCURSOR> {
-        unsafe { LoadCursorW(Some(HINSTANCE(Backends::get().hinstance as _)), res) }.ok()
+    fn instance_cursor(hinstance: usize, res: PCWSTR) -> Option<HCURSOR> {
+        unsafe { LoadCursorW(Some(HINSTANCE(hinstance as _)), res) }.ok()
     }
 
     match cursor {
@@ -34,40 +32,40 @@ pub(crate) fn load(cursor: Cursor) -> Option<HCURSOR> {
         Cursor::Pointer => system_cursor(IDC_HAND),
         Cursor::Progress => system_cursor(IDC_APPSTARTING),
         Cursor::Wait => system_cursor(IDC_WAIT),
-        Cursor::Cell => instance_cursor(IDC_CELL),
+        Cursor::Cell => instance_cursor(hinstance, IDC_CELL),
         Cursor::Crosshair => system_cursor(IDC_CROSS),
         Cursor::Text => system_cursor(IDC_IBEAM),
-        Cursor::VerticalText => instance_cursor(IDC_VERTICALTEXT),
-        Cursor::Alias => instance_cursor(IDC_ALIAS),
-        Cursor::Copy => instance_cursor(IDC_COPYCUR),
+        Cursor::VerticalText => instance_cursor(hinstance, IDC_VERTICALTEXT),
+        Cursor::Alias => instance_cursor(hinstance, IDC_ALIAS),
+        Cursor::Copy => instance_cursor(hinstance, IDC_COPYCUR),
         Cursor::Move => system_cursor(IDC_SIZEALL),
         Cursor::NotAllowed => system_cursor(IDC_NO),
-        Cursor::Grab => instance_cursor(IDC_HAND_GRAB),
-        Cursor::Grabbing => instance_cursor(IDC_HAND_GRABBING),
-        Cursor::ColResize => instance_cursor(IDC_COLRESIZE),
-        Cursor::RowResize => instance_cursor(IDC_ROWRESIZE),
+        Cursor::Grab => instance_cursor(hinstance, IDC_HAND_GRAB),
+        Cursor::Grabbing => instance_cursor(hinstance, IDC_HAND_GRABBING),
+        Cursor::ColResize => instance_cursor(hinstance, IDC_COLRESIZE),
+        Cursor::RowResize => instance_cursor(hinstance, IDC_ROWRESIZE),
         Cursor::EastWestResize => system_cursor(IDC_SIZEWE),
         Cursor::NorthSouthResize => system_cursor(IDC_SIZENS),
         Cursor::NorthEastSouthWestResize => system_cursor(IDC_SIZENESW),
         Cursor::NorthWestSouthEastResize => system_cursor(IDC_SIZENWSE),
-        Cursor::ZoomIn => instance_cursor(IDC_ZOOMIN),
-        Cursor::ZoomOut => instance_cursor(IDC_ZOOMOUT),
+        Cursor::ZoomIn => instance_cursor(hinstance, IDC_ZOOMIN),
+        Cursor::ZoomOut => instance_cursor(hinstance, IDC_ZOOMOUT),
         Cursor::UpArrow => system_cursor(IDC_UPARROW),
         Cursor::Pin => system_cursor(IDC_PIN),
         Cursor::Person => system_cursor(IDC_PERSON),
         Cursor::Pen => system_cursor(PCWSTR(32631 as _)), // https://learn.microsoft.com/en-us/windows/win32/menurc/about-cursors
         Cursor::Cd => system_cursor(PCWSTR(32663 as _)),
-        Cursor::PanMiddle => instance_cursor(IDC_PAN_MIDDLE),
-        Cursor::PanMiddleHorizontal => instance_cursor(IDC_PAN_MIDDLE_HORIZONTAL),
-        Cursor::PanMiddleVertical => instance_cursor(IDC_PAN_MIDDLE_VERTICAL),
-        Cursor::PanEast => instance_cursor(IDC_PAN_EAST),
-        Cursor::PanNorth => instance_cursor(IDC_PAN_NORTH),
-        Cursor::PanNorthEast => instance_cursor(IDC_PAN_NORTH_EAST),
-        Cursor::PanNorthWest => instance_cursor(IDC_PAN_NORTH_WEST),
-        Cursor::PanSouth => instance_cursor(IDC_PAN_SOUTH),
-        Cursor::PanSouthEast => instance_cursor(IDC_PAN_SOUTH_EAST),
-        Cursor::PanSouthWest => instance_cursor(IDC_PAN_SOUTH_WEST),
-        Cursor::PanWest => instance_cursor(IDC_PAN_WEST),
+        Cursor::PanMiddle => instance_cursor(hinstance, IDC_PAN_MIDDLE),
+        Cursor::PanMiddleHorizontal => instance_cursor(hinstance, IDC_PAN_MIDDLE_HORIZONTAL),
+        Cursor::PanMiddleVertical => instance_cursor(hinstance, IDC_PAN_MIDDLE_VERTICAL),
+        Cursor::PanEast => instance_cursor(hinstance, IDC_PAN_EAST),
+        Cursor::PanNorth => instance_cursor(hinstance, IDC_PAN_NORTH),
+        Cursor::PanNorthEast => instance_cursor(hinstance, IDC_PAN_NORTH_EAST),
+        Cursor::PanNorthWest => instance_cursor(hinstance, IDC_PAN_NORTH_WEST),
+        Cursor::PanSouth => instance_cursor(hinstance, IDC_PAN_SOUTH),
+        Cursor::PanSouthEast => instance_cursor(hinstance, IDC_PAN_SOUTH_EAST),
+        Cursor::PanSouthWest => instance_cursor(hinstance, IDC_PAN_SOUTH_WEST),
+        Cursor::PanWest => instance_cursor(hinstance, IDC_PAN_WEST),
     }
 }
 

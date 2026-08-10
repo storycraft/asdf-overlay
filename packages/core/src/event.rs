@@ -3,7 +3,7 @@ pub mod input;
 
 use anyhow::Context;
 use asdf_overlay_client::client::IpcClientEventStream;
-use asdf_overlay_common::event::{OverlayEvent, window::WindowEvent};
+use asdf_overlay_client::common::event::{OverlayEvent, window::WindowEvent};
 use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},

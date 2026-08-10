@@ -1,11 +1,7 @@
-use core::num::NonZeroU32;
-
-use asdf_overlay_common::request::UpdateSharedHandle;
-
 #[derive(Debug)]
 pub enum OverlayTextureState<T> {
     None,
-    Handle(NonZeroU32),
+    Handle(u32),
     Created(T),
 }
 
@@ -14,16 +10,16 @@ impl<T> OverlayTextureState<T> {
         Self::None
     }
 
-    pub fn update(&mut self, shared: UpdateSharedHandle) {
-        match shared.handle {
-            Some(handle) => *self = Self::Handle(handle),
-            None => *self = Self::None,
+    pub fn update(&mut self, handle: Option<u32>) {
+        *self = match handle {
+            Some(handle) => Self::Handle(handle),
+            None => Self::None,
         }
     }
 
     pub fn get_or_create(
         &mut self,
-        f: impl FnOnce(NonZeroU32) -> anyhow::Result<Option<T>>,
+        f: impl FnOnce(u32) -> anyhow::Result<Option<T>>,
     ) -> anyhow::Result<Option<&mut T>> {
         Ok(match *self {
             Self::None => None,

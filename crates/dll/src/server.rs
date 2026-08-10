@@ -4,10 +4,10 @@
 
 use asdf_overlay_common::{
     event::OverlayEvent,
-    ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
+    ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::Request,
 };
-use bitcode::Buffer;
+use bitcode::{Buffer, Encode};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
@@ -74,10 +74,11 @@ impl IpcServerConn {
     }
 
     /// Reply to the client with the given request ID and data.
-    pub fn reply(&mut self, id: u32, response: ServerResponse) -> anyhow::Result<()> {
-        _ = self
-            .chan
-            .send(ServerToClientPacket::Response { id, response });
+    pub fn reply<T: Encode>(&mut self, id: u32, response: T) -> anyhow::Result<()> {
+        _ = self.chan.send(ServerToClientPacket::Response {
+            id,
+            payload: bitcode::encode(&response),
+        });
 
         Ok(())
     }

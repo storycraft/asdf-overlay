@@ -9,6 +9,7 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+asdf-overlay-event = { workspace = true, features = ["bitcode"] }
 asdf-overlay-window-event = { workspace = true, features = ["bitcode"] }
 tokio = { workspace = true, features = ["io-util", "rt", "sync", "net"] }
 

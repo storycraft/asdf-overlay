@@ -3,10 +3,7 @@ use std::env;
 use anyhow::Context;
 use asdf_overlay_client::{
     OverlayDll,
-    common::{
-        event::OverlayEvent,
-        request::{BlockInput, Request},
-    },
+    common::{event::OverlayEvent, request::BlockInput},
     inject,
 };
 
@@ -28,8 +25,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    conn.request(Request::BlockInput(BlockInput { block: true }))
-        .await?;
+    conn.request(BlockInput { block: true }).await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);

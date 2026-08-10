@@ -17,17 +17,17 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
         },
-        Dxgi::{IDXGISwapChain1, IDXGISwapChain3},
+        Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4, IDXGISwapChain1, IDXGISwapChain3},
     },
     core::Interface,
 };
 
 use crate::{
-    backend::{WindowBackend, render::Renderer},
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
     },
     renderer::dx12::Dx12Renderer,
+    surface::{Renderer, SurfaceState},
     types::IntDashMap,
 };
 
@@ -81,49 +81,23 @@ fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     })
 }
 
-pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
+pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
     let Some(queue) = get_queue_for(device) else {
         return;
     };
 
-    let mut render = backend.render.lock();
-    match render.renderer {
-        Some(Renderer::Dx12) => {}
+    if state.renderer != Renderer::Dx12 {
+        trace!("ignoring dx12 rendering");
+        return;
+    }
 
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx12);
-            debug!("switching from opengl to dx12 render");
-            // skip drawing on render changes
-            return;
-        }
-        // use dxgi swapchain instead
-        Some(Renderer::Vulkan) => {
-            render.renderer = Some(Renderer::Dx12);
-            debug!("switching from vulkan to dx12 render");
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx12 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx12);
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let Some(surface) = render.surface.get() else {
+    let Some(size) = state.surface_size() else {
         return;
     };
 
-    let size = surface.size();
-    let update = render.surface.take_update();
-    let position = render.position;
-    let screen = render.window_size;
-    drop(render);
-
+    let update = state.surface.take_update();
+    let position = state.position();
+    let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx12 renderer");
         if let Some(update) = update {
@@ -151,6 +125,25 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &
     });
 }
 
+pub(super) fn setup_fn(
+    device: &ID3D12Device,
+    swapchain: &IDXGISwapChain1,
+) -> anyhow::Result<SurfaceState> {
+    let desc = unsafe { swapchain.GetDesc() }?;
+
+    SurfaceState::new(
+        get_dxgi_adapter(device).as_ref(),
+        (desc.BufferDesc.Width, desc.BufferDesc.Height),
+        Renderer::Dx12,
+    )
+}
+
+fn get_dxgi_adapter(device: &ID3D12Device) -> Option<IDXGIAdapter> {
+    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+    let luid = unsafe { device.GetAdapterLuid() };
+    unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
+}
+
 pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     let Some(mut data) = RENDERERS.get_mut(&(swapchain.as_raw() as _)) else {
         return;
@@ -168,6 +161,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
     debug!("dx12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
+    // TODO:: cleanup state
 }
 
 #[tracing::instrument]

@@ -25,16 +25,16 @@ pub struct ClientRequest {
     pub req: Request,
 }
 
-/// Describes a response sent from server to client.
+/// Common ipc result type.
 #[derive(Encode, Decode)]
-pub enum ServerResponse {
-    Ok,
+pub enum ResponseResult<T> {
+    Ok(T),
     Err(String),
 }
 
-impl<T: Error> From<T> for ServerResponse {
-    fn from(err: T) -> Self {
-        ServerResponse::Err(err.to_string())
+impl<E: Error, T> From<E> for ResponseResult<T> {
+    fn from(err: E) -> Self {
+        ResponseResult::Err(err.to_string())
     }
 }
 
@@ -42,7 +42,7 @@ impl<T: Error> From<T> for ServerResponse {
 #[derive(Encode, Decode)]
 pub enum ServerToClientPacket {
     /// The packet is a response to a specific request.
-    Response { id: u32, response: ServerResponse },
+    Response { id: u32, payload: Vec<u8> },
 
     /// The packet is an event notification.
     Event(OverlayEvent),

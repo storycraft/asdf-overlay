@@ -5,9 +5,8 @@ use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
     common::{
-        event::{OverlayEvent, window::WindowEvent},
-        request::SetPosition,
-        size::PercentLength,
+        event::{OverlayEvent, surface::SurfaceEvent},
+        request::surface::SetPosition,
     },
     inject,
     surface::OverlaySurface,
@@ -32,22 +31,19 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(OverlayEvent::Window {
+    let Some(OverlayEvent::Surface {
         id,
-        event: WindowEvent::Added { .. },
+        event: SurfaceEvent::Added { .. },
     }) = event.recv().await
     else {
-        bail!("failed to receive main window");
+        bail!("failed to receive main surface");
     };
 
     sleep(Duration::from_secs(1)).await;
 
     // set initial position
-    conn.window(id)
-        .request(SetPosition {
-            x: PercentLength::Length(100.0),
-            y: PercentLength::Length(100.0),
-        })
+    conn.surface(id)
+        .request(SetPosition { x: 100, y: 100 })
         .await?;
 
     let mut surface: OverlaySurface = OverlaySurface::new(None)?;
@@ -59,18 +55,15 @@ async fn main() -> anyhow::Result<()> {
 
         let update = surface.update_bitmap(i as _, &data)?;
         if let Some(shared) = update {
-            conn.window(id).request(shared).await?;
+            conn.surface(id).request(shared).await?;
         }
 
         sleep(Duration::from_millis(10)).await;
     }
 
     // move rectangle
-    conn.window(id)
-        .request(SetPosition {
-            x: PercentLength::Length(200.0),
-            y: PercentLength::Length(200.0),
-        })
+    conn.surface(id)
+        .request(SetPosition { x: 200, y: 200 })
         .await?;
 
     // sleep for 1 secs and remove overlay (dropped)

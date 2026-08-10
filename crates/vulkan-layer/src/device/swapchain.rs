@@ -1,19 +1,16 @@
-use asdf_overlay::backend::Backends;
+use asdf_overlay::surface::Surfaces;
 use ash::vk::{self, AllocationCallbacks, Handle};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tracing::{debug, trace};
 
 use crate::{
-    device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap,
+    device::DISPATCH_TABLE, map::IntDashMap,
     renderer::VulkanRenderer,
 };
 
 /// Data associated with a [`vk::SwapchainKHR`].
 pub struct SwapchainData {
-    /// HWND of the surface the swapchain is tied to.
-    pub hwnd: u32,
-
     /// Size of the swapchain images.
     pub image_size: (u32, u32),
 
@@ -63,11 +60,9 @@ pub(super) extern "system" fn create_swapchain(
 
     debug!("initializing swapchain data");
     let swapchain = unsafe { *swapchain }.as_raw();
-    let hwnd = get_surface_hwnd(info.surface).unwrap();
     SWAPCHAIN_MAP.insert(
         swapchain,
         SwapchainData {
-            hwnd,
             image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
             renderer: Mutex::new(None),
@@ -96,9 +91,6 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
         debug!("vulkan renderer cleanup");
         data.renderer.lock().take();
 
-        _ = Backends::with_backend(data.hwnd, |backend| {
-            let mut render = backend.render.lock();
-            render.invalidate_surface();
-        });
+        Surfaces::cleanup_state(swapchain.as_raw());
     });
 }

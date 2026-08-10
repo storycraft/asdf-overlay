@@ -8,25 +8,29 @@
 #[cfg(debug_assertions)]
 mod dbg;
 
+mod cursors;
 mod server;
 
 extern crate asdf_overlay_vulkan_layer;
 
 use anyhow::Context;
-use asdf_overlay::{
-    backend::{Backends, window::ListenInputFlags},
-    event_sink::OverlayEventSink,
-    initialize,
-};
+use asdf_overlay::{event_sink::OverlayEventSink, initialize, surface::Surfaces};
 use asdf_overlay_common::{
-    event::OverlayEvent,
-    ipc::{ServerResponse, create_ipc_addr},
-    request::{Request, WindowRequest},
+    event::{OverlayEvent, surface::Event},
+    ipc::create_ipc_addr,
+    request::{
+        BlockInput, Request, Requestable, SetBlockingCursor,
+        surface::{
+            SetPosition, SurfaceRequest, SurfaceRequestKind, SurfaceRequestable, UpdateSharedHandle,
+        },
+        window::{ListenInput, WindowRequest, WindowRequestKind, WindowRequestable},
+    },
 };
+use asdf_overlay_window::{Backends, window::ListenInputFlags};
 use asdf_overlay_window_event::WindowEvent;
 use core::time::Duration;
 use scopeguard::defer;
-use std::{ffi::OsStr, thread};
+use std::{ffi::OsStr, sync::Arc, thread};
 use tokio::{
     net::windows::named_pipe::{NamedPipeServer, ServerOptions},
     runtime::Runtime,
@@ -35,7 +39,7 @@ use tokio::{
 use tracing::{debug, error, trace, warn};
 use windows::{
     Win32::{
-        Foundation::{GENERIC_READ, GENERIC_WRITE, HINSTANCE},
+        Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE, HINSTANCE},
         Security::{
             ACL, AllocateAndInitializeSid,
             Authorization::{
@@ -59,116 +63,143 @@ use windows::{
 use crate::server::IpcServerConn;
 
 /// IPC server main loop.
-#[tracing::instrument(skip(server))]
-async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
-    fn handle_window_event(hwnd: u32, req: WindowRequest) -> ServerResponse {
-        let res = Backends::with_backend(hwnd, |backend| {
-            match req {
-                WindowRequest::SetPosition(position) => {
-                    backend.update_layout(|layout| {
-                        layout.position = (position.x, position.y);
-                    });
-                }
-
-                WindowRequest::SetAnchor(anchor) => {
-                    backend.update_layout(|layout| {
-                        layout.anchor = (anchor.x, anchor.y);
-                    });
-                }
-
-                WindowRequest::SetMargin(margin) => {
-                    backend.update_layout(|layout| {
-                        layout.margin = (margin.top, margin.right, margin.bottom, margin.left);
-                    });
-                }
-
-                WindowRequest::ListenInput(cmd) => {
-                    let mut flags = ListenInputFlags::empty();
-                    flags.set(ListenInputFlags::CURSOR, cmd.cursor);
-                    flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
-
-                    backend.listen_input(flags);
-                }
-
-                // WindowRequest::BlockInput(cmd) => {
-                //     backend.block_input(cmd.block);
-                // }
-                WindowRequest::SetBlockingCursor(cmd) => {
-                    backend.set_blocking_cursor(cmd.cursor);
-                }
-
-                WindowRequest::UpdateSharedHandle(shared) => {
-                    if let Err(err) = backend.update_surface(shared.handle) {
-                        return ServerResponse::Err(format!(
-                            "failed to open shared surface. err: {:?}",
-                            err
-                        ));
-                    }
-                }
-            }
-
-            ServerResponse::Ok
-        });
-
-        match res {
-            Some(res) => res,
-            None => ServerResponse::Err(format!("no backend found for window {hwnd}")),
-        }
-    }
-
+#[tracing::instrument(skip(backends, server))]
+async fn run(
+    hinstance: usize,
+    backends: Arc<Backends>,
+    server: NamedPipeServer,
+) -> anyhow::Result<()> {
     let mut conn = IpcServerConn::new(server).await?;
     let emitter = conn.create_emitter();
     {
         debug!("sending initial data");
         // send existing windows
-        for backend in Backends::iter() {
-            let render = backend.render.lock();
-            let gpu_id = render.interop.gpu_id();
-            let size = render.window_size;
-            _ = emitter.emit(OverlayEvent::Window {
-                id: *backend.key() as _,
-                event: WindowEvent::Added {
-                    width: size.0,
-                    height: size.1,
-                },
+        for id in backends.windows() {
+            backends.window(id, |state| {
+                let (width, height) = state.size();
+
+                _ = emitter.emit(OverlayEvent::Window {
+                    id,
+                    event: WindowEvent::Added { width, height },
+                });
             });
         }
     }
 
-    OverlayEventSink::set(move |event| _ = emitter.emit(event));
+    OverlayEventSink::set(move |event| match event {
+        Event::Surface { id, event } => {
+            _ = emitter.emit(OverlayEvent::Surface { id, event });
+        }
+    });
     defer!({
         debug!("cleanup start");
         OverlayEventSink::clear();
-        Backends::cleanup_backends();
+        Surfaces::reset();
     });
 
     while let Ok((req_id, req)) = conn.recv().await {
         trace!("recv id: {req_id} req: {req:?}");
 
         match req {
-            Request::Window { id, request } => {
-                conn.reply(req_id, handle_window_event(id, request))?;
+            Request::Window(window) => {
+                handle_window_request(&mut conn, req_id, &backends, window)?;
             }
 
-            _ => {
-                // TODO
+            Request::BlockInput(BlockInput { block }) => {
+                if block {
+                    backends.block_input();
+                } else {
+                    backends.unblock_input();
+                }
+
+                conn.reply::<<BlockInput as Requestable>::Response>(req_id, ())?;
+            }
+
+            Request::SetBlockingCursor(SetBlockingCursor { cursor }) => {
+                backends.set_blocking_cursor(
+                    cursor.and_then(|cursor| cursors::load(hinstance, cursor)),
+                );
+
+                conn.reply::<<SetBlockingCursor as Requestable>::Response>(req_id, ())?;
+            }
+
+            Request::Surface(surface) => {
+                handle_surface_request(&mut conn, req_id, surface)?;
             }
         }
     }
     Ok(())
 }
 
+fn handle_window_request(
+    conn: &mut IpcServerConn,
+    req_id: u32,
+    backends: &Backends,
+    req: WindowRequest,
+) -> anyhow::Result<()> {
+    match req.kind {
+        WindowRequestKind::ListenInput(cmd) => {
+            let mut flags = ListenInputFlags::empty();
+            flags.set(ListenInputFlags::CURSOR, cmd.cursor);
+            flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+
+            backends.window(req.id, |state| state.set_input_flags(flags));
+            conn.reply::<<ListenInput as WindowRequestable>::Response>(req_id, ())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_surface_request(
+    conn: &mut IpcServerConn,
+    req_id: u32,
+    req: SurfaceRequest,
+) -> anyhow::Result<()> {
+    match req.kind {
+        SurfaceRequestKind::SetPosition(cmd) => {
+            _ = Surfaces::state(req.id, |state| state.set_position(cmd.x, cmd.y));
+            conn.reply::<<SetPosition as SurfaceRequestable>::Response>(req_id, ())?;
+        }
+
+        SurfaceRequestKind::UpdateSharedHandle(shared) => {
+            defer!({
+                if let UpdateSharedHandle::Nt(handle) = shared {
+                    _ = unsafe { CloseHandle(HANDLE(handle as _)) };
+                }
+            });
+            Surfaces::state(req.id, |state| {
+                if let Err(err) = state.set_overlay_texture(shared.handle()) {
+                    error!("failed to open shared surface. err: {:?}", err);
+                }
+            });
+
+            conn.reply::<<UpdateSharedHandle as SurfaceRequestable>::Response>(req_id, ())?;
+        }
+    }
+
+    Ok(())
+}
+
 /// IPC server listener.
 #[tracing::instrument(skip(create_server))]
 async fn run_server(
+    hinstance: usize,
     mut server: NamedPipeServer,
     mut create_server: impl FnMut() -> anyhow::Result<NamedPipeServer>,
 ) {
+    // initialize windows
+    let backends = Arc::new(Backends::new().expect("failed to setup backends"));
+
+    // initialize overlay
+    initialize().expect("initialization failed");
+    debug!("hook installed");
+
     loop {
         debug!("waiting ipc client...");
         match server.connect().await {
             Ok(_) => {
-                if let Err(err) = run(server).await {
+                if let Err(err) = run(hinstance, backends.clone(), server).await {
                     warn!("client connection ended unexpectedly. err: {:?}", err);
                 }
             }
@@ -238,13 +269,7 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     let create_server =
         move || create_ipc_server(create_ipc_addr(pid, module_handle as u32), false);
 
-    thread::spawn(move || {
-        // initialize overlay
-        initialize(module_handle as _).expect("initialization failed");
-        debug!("hook installed");
-
-        rt.block_on(run_server(server, create_server))
-    });
+    thread::spawn(move || rt.block_on(run_server(module_handle, server, create_server)));
     true
 }
 

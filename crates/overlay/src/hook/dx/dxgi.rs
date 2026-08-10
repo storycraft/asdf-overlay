@@ -21,8 +21,7 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIFactory4, IDXGISwapChain1,
-                IDXGISwapChain3,
+                IDXGIFactory1, IDXGISwapChain1, IDXGISwapChain3,
             },
         },
     },
@@ -30,25 +29,20 @@ use windows::{
 };
 
 use crate::{
-    backend::Backends,
     event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
+    surface::Surfaces,
 };
 
 #[tracing::instrument]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
-    let Ok(hwnd) = (unsafe { swapchain.GetHwnd() }) else {
-        return;
-    };
+    // use swapchain pointer as unique identifier
+    let id = swapchain.as_raw() as u64;
 
     if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
-        if let Err(_err) = Backends::with_or_init_backend(
-            hwnd.0 as _,
-            || {
-                let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
-                let luid = unsafe { device.GetAdapterLuid() };
-                unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
-            },
+        if let Err(_err) = Surfaces::with(
+            id,
+            || dx12::setup_fn(&device, swapchain),
             |backend| {
                 dx12::draw_overlay(
                     backend,
@@ -60,9 +54,9 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
         }
     } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() }
-        && let Err(_err) = Backends::with_or_init_backend(
-            hwnd.0 as _,
-            || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
+        && let Err(_err) = Surfaces::with(
+            id,
+            || dx11::setup_fn(&device, swapchain),
             |backend| {
                 dx11::draw_overlay(backend, &device, swapchain);
             },
