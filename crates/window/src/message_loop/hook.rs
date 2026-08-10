@@ -272,6 +272,10 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
         // Call TranslateMessage for char messages
         _ = TranslateMessage(msg);
 
+        if msg.hwnd.is_invalid() {
+            return;
+        }
+
         // Call Default WndProc so non client area works.
         if UNICODE {
             CallWindowProcW(
@@ -552,6 +556,9 @@ fn is_filter_target(message: u32) -> bool {
             | msg::WM_SYSKEYDOWN
             | msg::WM_SYSKEYUP
             | msg::WM_SYSCHAR
+
+            // Raw input messages
+            | msg::WM_INPUT
     )
 }
 

@@ -6,10 +6,7 @@ use tracing::debug;
 use windows::{
     Win32::{
         Foundation::{POINT, RECT},
-        UI::Input::{
-            HRAWINPUT, RAW_INPUT_DATA_COMMAND_FLAGS, RAWINPUT, RAWINPUTHEADER, RID_HEADER,
-            RID_INPUT,
-        },
+        UI::Input::{HRAWINPUT, RAW_INPUT_DATA_COMMAND_FLAGS, RAWINPUT},
     },
     core::BOOL,
 };
@@ -47,7 +44,6 @@ pub(crate) struct Hook {
     pub(crate) get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
     pub(crate) get_key_state: DetourHook<GetKeyStateFn>,
     pub(crate) get_keyboard_state: DetourHook<GetKeyboardStateFn>,
-    pub(crate) get_raw_input_data: DetourHook<GetRawInputDataFn>,
     pub(crate) get_raw_input_buffer: DetourHook<GetRawInputBufferFn>,
 }
 pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
@@ -61,13 +57,6 @@ type GetPhysicalCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetAsyncKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyboardStateFn = unsafe extern "system" fn(*mut u8) -> BOOL;
-type GetRawInputDataFn = unsafe extern "system" fn(
-    HRAWINPUT,
-    RAW_INPUT_DATA_COMMAND_FLAGS,
-    *mut c_void,
-    *mut u32,
-    u32,
-) -> u32;
 type GetRawInputBufferFn = unsafe extern "system" fn(*mut RAWINPUT, *mut u32, u32) -> u32;
 
 pub(crate) fn install() -> anyhow::Result<()> {
@@ -101,10 +90,6 @@ pub(crate) fn install() -> anyhow::Result<()> {
         let get_keyboard_state =
             DetourHook::attach(GetKeyboardState as _, hooked_get_keyboard_state as _)?;
 
-        debug!("hooking GetRawInputData");
-        let get_raw_input_data =
-            DetourHook::attach(GetRawInputData as _, hooked_get_raw_input_data as _)?;
-
         debug!("hooking GetRawInputBuffer");
         let get_raw_input_buffer =
             DetourHook::attach(GetRawInputBuffer as _, hooked_get_raw_input_buffer as _)?;
@@ -119,7 +104,6 @@ pub(crate) fn install() -> anyhow::Result<()> {
             get_async_key_state,
             get_key_state,
             get_keyboard_state,
-            get_raw_input_data,
             get_raw_input_buffer,
         })
     })?;
@@ -215,72 +199,6 @@ extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
         buf.write_bytes(0u8, 256);
     };
     BOOL(1)
-}
-
-#[tracing::instrument]
-extern "system" fn hooked_get_raw_input_data(
-    hrawinput: HRAWINPUT,
-    uicommand: RAW_INPUT_DATA_COMMAND_FLAGS,
-    pdata: *mut c_void,
-    pcbsize: *mut u32,
-    cbsizeheader: u32,
-) -> u32 {
-    if !Backends::get().input_blocked() {
-        return unsafe {
-            HOOK.wait().get_raw_input_data.original_fn()(
-                hrawinput,
-                uicommand,
-                pdata,
-                pcbsize,
-                cbsizeheader,
-            )
-        };
-    }
-
-    // Determine the expected data size based on the command, matching the
-    // real Win32 API behaviour so callers (e.g. Godot 4) that validate the
-    // returned size against the queried size do not crash.
-    let data_size: u32 = match uicommand {
-        RID_HEADER => core::mem::size_of::<RAWINPUTHEADER>() as u32,
-        RID_INPUT => core::mem::size_of::<RAWINPUT>() as u32,
-        _ => 0,
-    };
-
-    if !pcbsize.is_null() {
-        unsafe { pcbsize.write(data_size) };
-    }
-
-    // Size query: return 0 (success) after writing the required buffer size.
-    if pdata.is_null() {
-        return 0;
-    }
-
-    // Data query: write a dummy HID struct and return the number of bytes
-    // written, exactly as the real API would on success.
-    // Use RIM_TYPEHID so games treat this as an unknown HID device and
-    // ignore the empty payload instead of interpreting zeroed fields as
-    // mouse/keyboard input.
-
-    let hid_header = RAWINPUTHEADER {
-        dwType: 2, // RIM_TYPEHID
-        dwSize: data_size,
-        ..Default::default()
-    };
-
-    match uicommand {
-        RID_HEADER => unsafe {
-            pdata.cast::<RAWINPUTHEADER>().write(hid_header);
-        },
-        RID_INPUT => unsafe {
-            pdata.cast::<RAWINPUT>().write(RAWINPUT {
-                header: hid_header,
-                ..Default::default()
-            });
-        },
-        _ => {}
-    }
-
-    data_size
 }
 
 #[tracing::instrument]
