@@ -27,7 +27,7 @@ pub struct Surfaces {
 
 impl Surfaces {
     /// Iterate over all surfaces.
-    pub fn iter<'a>() -> impl Iterator<Item = u64> {
+    pub fn iter() -> impl Iterator<Item = u64> {
         SURFACES.map.iter().map(|r| *r.key())
     }
 
