@@ -25,7 +25,10 @@ use windows::{
 use crate::{
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
-    }, renderer::dx12::Dx12Renderer, surface::{Renderer, SurfaceState, Surfaces}, types::IntDashMap,
+    },
+    renderer::dx12::Dx12Renderer,
+    surface::{Renderer, SurfaceState, Surfaces},
+    types::IntDashMap,
 };
 
 struct WeakID3D12CommandQueue(*mut c_void);

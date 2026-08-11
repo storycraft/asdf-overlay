@@ -36,6 +36,10 @@ impl Surfaces {
         Some(f(&*SURFACES.map.get(&id)?))
     }
 
+    pub fn contains(id: u64) -> bool {
+        SURFACES.map.contains_key(&id)
+    }
+
     pub fn reset() {
         for state in SURFACES.map.iter() {
             state.reset();
