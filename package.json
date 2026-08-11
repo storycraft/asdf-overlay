@@ -29,7 +29,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "typescript": "catalog:",
-    "typescript-eslint": "^8.59.3"
+    "typescript-eslint": "^8.62.0"
   },
   "packageManager": "pnpm@11.17.0"
 }

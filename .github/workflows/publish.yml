@@ -56,12 +56,12 @@ jobs:
         run: cargo binstall cargo-release --no-confirm
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 22.x
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
@@ -94,13 +94,15 @@ jobs:
 
       - name: Publish node package
         run: pnpm ci:publish
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_DRY_RUN: ${{ !inputs.execute && 'true' || 'false' }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Bump cargo package versions, publish
-        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify --no-confirm ${{ inputs.execute && '--execute' || '' }}
+        run: cargo release ${{ steps.bump.outputs.version }} --workspace --no-confirm --no-verify ${{ inputs.execute && '--execute' || '' }}
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
