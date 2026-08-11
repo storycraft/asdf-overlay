@@ -1,6 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -111,6 +112,7 @@ extern "system" fn hooked_release(this: *mut c_void) -> u32 {
 
     // renderer includes refs from IDirect3DVertexBuffer9, IDirect3DStateBlock9 and optionally texture.
     if count == 2 || count == 3 {
+        reset_renderer(this as _);
         cleanup_renderer(this as _);
     }
 
@@ -188,13 +190,29 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
     }
 }
 
-fn cleanup_renderer(device: usize) {
-    if RENDERERS.remove(&device).is_none() {
-        return;
-    }
+fn post_reset(device: &IDirect3DDevice9) {
+    let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+    let back_buffer =
+        unsafe { default_swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO) }.unwrap();
+    let mut desc = D3DSURFACE_DESC::default();
+    unsafe { back_buffer.GetDesc(&mut desc) }.unwrap();
 
+    OverlayEventSink::emit(Event::Surface {
+        id: device.as_raw() as _,
+        event: SurfaceEvent::Resized {
+            width: desc.Width,
+            height: desc.Height,
+        },
+    });
+}
+
+fn cleanup_renderer(device: usize) {
     info!("dx9 renderer cleanup");
     Surfaces::cleanup_state(device as _);
+}
+
+fn reset_renderer(device: usize) {
+    RENDERERS.remove(&device);
 }
 
 fn setup_fn(
@@ -235,9 +253,15 @@ fn get_dxgi_adapter(device: &IDirect3DDevice9) -> Option<IDXGIAdapter> {
 #[tracing::instrument]
 extern "system" fn hooked_reset(this: *mut c_void, param: *mut D3DPRESENT_PARAMETERS) -> HRESULT {
     trace!("Reset called");
-    cleanup_renderer(this as _);
+    reset_renderer(this as _);
 
-    unsafe { HOOK.reset.wait().original_fn()(this, param) }
+    let res = unsafe { HOOK.reset.wait().original_fn()(this, param) };
+    if res.is_err() {
+        return res;
+    }
+
+    post_reset(unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap());
+    res
 }
 
 #[tracing::instrument]
@@ -247,9 +271,15 @@ extern "system" fn hooked_reset_ex(
     fullscreen_display_mode: *mut D3DDISPLAYMODEEX,
 ) -> HRESULT {
     trace!("ResetEx called");
-    cleanup_renderer(this as _);
+    reset_renderer(this as _);
 
-    unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) }
+    let res = unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) };
+    if res.is_err() {
+        return res;
+    }
+
+    post_reset(unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap());
+    res
 }
 
 type PresentFn = unsafe extern "system" fn(
