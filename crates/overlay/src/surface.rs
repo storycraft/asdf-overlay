@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use windows::Win32::Graphics::Dxgi::IDXGIAdapter;
 
 use crate::{
-    event_sink::OverlayEventSink, interop::DxInterop, surface::texture::SurfaceTextureSlot,
+    event_sink::OverlayEventSink, interop::DxInterop, surface::texture::OverlayTextureSlot,
     types::IntDashMap,
 };
 
@@ -94,13 +94,13 @@ impl Surfaces {
 #[non_exhaustive]
 pub struct SurfaceState {
     position: (AtomicI32, AtomicI32),
-    pub size: (AtomicU32, AtomicU32),
+    size: (AtomicU32, AtomicU32),
 
     pub interop: DxInterop,
     pub renderer: Renderer,
 
     #[doc(hidden)]
-    pub surface: SurfaceTextureSlot,
+    pub texture: OverlayTextureSlot,
 }
 
 impl SurfaceState {
@@ -110,20 +110,20 @@ impl SurfaceState {
         renderer: Renderer,
     ) -> anyhow::Result<Self> {
         let interop = DxInterop::create(adapter).context("failed to create dx interop")?;
-        let surface = SurfaceTextureSlot::new();
+        let surface = OverlayTextureSlot::new();
 
         Ok(Self {
             position: (AtomicI32::new(0), AtomicI32::new(0)),
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
             interop,
             renderer,
-            surface,
+            texture: surface,
         })
     }
 
     #[doc(hidden)]
-    pub fn surface_size(&self) -> Option<(u32, u32)> {
-        self.surface.get().as_ref().map(|surface| surface.size())
+    pub fn texture_size(&self) -> Option<(u32, u32)> {
+        self.texture.get().as_ref().map(|surface| surface.size())
     }
 
     pub fn size(&self) -> (u32, u32) {
@@ -131,6 +131,12 @@ impl SurfaceState {
             self.size.0.load(Ordering::Relaxed),
             self.size.1.load(Ordering::Relaxed),
         )
+    }
+
+    #[doc(hidden)]
+    pub fn set_size(&self, width: u32, height: u32) {
+        self.size.0.store(width, Ordering::Relaxed);
+        self.size.1.store(height, Ordering::Relaxed);
     }
 
     pub fn position(&self) -> (i32, i32) {
@@ -146,7 +152,7 @@ impl SurfaceState {
     }
 
     pub fn set_overlay_texture(&self, handle: Option<u32>) -> anyhow::Result<()> {
-        self.surface.update(&self.interop.device, handle)
+        self.texture.update(&self.interop.device, handle)
     }
 
     /// Reset the surface state to its initial state.

@@ -162,14 +162,14 @@ fn draw_overlay(
         .expect("renderer creation failed")
     });
 
-    let size = state.surface_size()?;
+    let size = state.texture_size()?;
 
-    if state.surface.invalidate_update() {
+    if state.texture.invalidate_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         if let Err(err) = renderer.update_texture(
             state
-                .surface
+                .texture
                 .get()
                 .as_ref()
                 .map(|surface| surface.texture()),

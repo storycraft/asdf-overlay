@@ -83,11 +83,11 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &ID
         return;
     }
 
-    let Some(size) = state.surface_size() else {
+    let Some(size) = state.texture_size() else {
         return;
     };
 
-    let update = state.surface.take_update();
+    let update = state.texture.take_update();
     let position = state.position();
     let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {

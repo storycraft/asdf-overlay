@@ -106,13 +106,14 @@ fn resize_swapchain(swapchain: &IDXGISwapChain1) {
 
 fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
     let id = swapchain.as_raw() as u64;
-    if !Surfaces::contains(id) {
-        return;
-    }
 
-    OverlayEventSink::emit(Event::Surface {
-        id,
-        event: SurfaceEvent::Resized { width, height },
+    Surfaces::state(id, |state| {
+        state.set_size(width, height);
+
+        OverlayEventSink::emit(Event::Surface {
+            id,
+            event: SurfaceEvent::Resized { width, height },
+        });
     });
 }
 

@@ -88,12 +88,12 @@ impl OverlaySurface {
     }
 }
 
-pub struct SurfaceTextureSlot {
+pub struct OverlayTextureSlot {
     inner: RwLock<Option<OverlaySurface>>,
     updated: AtomicBool,
 }
 
-impl SurfaceTextureSlot {
+impl OverlayTextureSlot {
     pub(crate) const fn new() -> Self {
         Self {
             inner: RwLock::new(None),

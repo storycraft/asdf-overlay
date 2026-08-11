@@ -161,7 +161,7 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
                 return;
             }
 
-            let surface_lock = state.surface.get();
+            let surface_lock = state.texture.get();
             let Some(surface) = surface_lock.as_ref() else {
                 return;
             };
@@ -191,18 +191,23 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
 }
 
 fn post_reset(device: &IDirect3DDevice9) {
-    let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-    let back_buffer =
-        unsafe { default_swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO) }.unwrap();
-    let mut desc = D3DSURFACE_DESC::default();
-    unsafe { back_buffer.GetDesc(&mut desc) }.unwrap();
+    let id = device.as_raw() as _;
 
-    OverlayEventSink::emit(Event::Surface {
-        id: device.as_raw() as _,
-        event: SurfaceEvent::Resized {
-            width: desc.Width,
-            height: desc.Height,
-        },
+    Surfaces::state(id, |state| {
+        let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
+        let back_buffer =
+            unsafe { default_swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO) }.unwrap();
+        let mut desc = D3DSURFACE_DESC::default();
+        unsafe { back_buffer.GetDesc(&mut desc) }.unwrap();
+
+        state.set_size(desc.Width, desc.Height);
+        OverlayEventSink::emit(Event::Surface {
+            id: device.as_raw() as _,
+            event: SurfaceEvent::Resized {
+                width: desc.Width,
+                height: desc.Height,
+            },
+        });
     });
 }
 

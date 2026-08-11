@@ -134,16 +134,16 @@ fn draw_overlay(hdc: HDC) {
                 }
             };
 
-            let Some(surface_size) = state.surface_size() else {
+            let Some(surface_size) = state.texture_size() else {
                 return;
             };
 
             let position = state.position();
             let screen = state.size();
-            if state.surface.invalidate_update()
+            if state.texture.invalidate_update()
                 && let Err(err) = renderer.update_texture(
                     state
-                        .surface
+                        .texture
                         .get()
                         .as_ref()
                         .map(|surface| surface.texture()),
