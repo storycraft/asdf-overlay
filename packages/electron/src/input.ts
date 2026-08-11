@@ -16,6 +16,7 @@ export class ElectronOverlayInput {
   private constructor(
     private readonly window: OverlayWindow,
     private readonly contents: WebContents,
+    private readonly scaleFactor: number,
   ) {
     this.window = { ...window };
 
@@ -51,7 +52,7 @@ export class ElectronOverlayInput {
    * Connect overlay inputs to a Electron `WebContents`.
    */
   static connect(window: OverlayWindow, contents: WebContents): ElectronOverlayInput {
-    return new ElectronOverlayInput({ ...window }, contents);
+    return new ElectronOverlayInput({ ...window }, contents, 1.0 /* todo */);
   }
 
   /**
@@ -141,10 +142,10 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX;
-    const y = input.clientY;
-    const globalX = input.windowX;
-    const globalY = input.windowY;
+    const x = input.clientX / this.scaleFactor;
+    const y = input.clientY / this.scaleFactor;
+    const globalX = input.windowX / this.scaleFactor;
+    const globalY = input.windowY / this.scaleFactor;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;
