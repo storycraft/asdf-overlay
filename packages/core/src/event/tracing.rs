@@ -33,7 +33,7 @@ impl From<common::event::tracing::TracingMetadata> for TracingMetadata {
     }
 }
 
-#[napi]
+#[napi(string_enum)]
 pub enum LogLevel {
     Trace,
     Debug,
