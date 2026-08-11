@@ -1,12 +1,12 @@
 mod sync;
 
 use anyhow::Context;
-use tracing::Level;
 use core::{
     mem::ManuallyDrop,
     slice::{self},
 };
 use sync::RendererFence;
+use tracing::Level;
 use windows::{
     Win32::{
         Foundation::{HANDLE, RECT},

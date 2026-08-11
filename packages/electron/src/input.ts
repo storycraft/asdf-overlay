@@ -105,7 +105,7 @@ export class ElectronOverlayInput {
     }
 
     if (input_kind.state.type === 'Pressed') {
-      const clickCount = 1 + ~~input_kind.state.doubleClick;
+      const clickCount = input_kind.state.clickCount;
       this.clickCounts.push(clickCount);
       this.contents.sendInputEvent({
         type: 'mouseDown',
@@ -120,7 +120,7 @@ export class ElectronOverlayInput {
         modifiers: this.modifiers,
       });
     } else {
-      const clickCount = this.clickCounts.pop() ?? 1;
+      const clickCount = this.clickCounts.pop() ?? 0;
       this.contents.sendInputEvent({
         type: 'mouseUp',
         button,

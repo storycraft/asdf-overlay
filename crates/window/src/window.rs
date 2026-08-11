@@ -1,9 +1,9 @@
+mod click_state;
 mod proc;
 
 use core::{
     mem,
     sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering},
-    time::Duration,
 };
 use std::time::Instant;
 
@@ -11,10 +11,7 @@ use parking_lot::{Mutex, RwLock};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
     UI::{
-        Input::{
-            Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
-            KeyboardAndMouse::GetDoubleClickTime,
-        },
+        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
         WindowsAndMessaging::{
             DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
             SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
@@ -22,7 +19,11 @@ use windows::Win32::{
     },
 };
 
-use crate::{Backends, message_loop::MessageLoopState, window::proc::hooked_wnd_proc};
+use crate::{
+    Backends,
+    message_loop::MessageLoopState,
+    window::{click_state::ClickState, proc::hooked_wnd_proc},
+};
 
 pub struct WindowProcState {
     original_proc: WNDPROC,
@@ -37,7 +38,7 @@ pub struct WindowProcState {
     blocking_state: Mutex<Option<InputBlockData>>,
 
     ime: RwLock<ImeState>,
-    last_click_time: [Mutex<Option<Instant>>; 5],
+    click_state: Mutex<ClickState>,
 }
 
 impl WindowProcState {
@@ -71,7 +72,7 @@ impl WindowProcState {
             blocking_state: Mutex::new(None),
 
             ime: RwLock::new(ImeState::Disabled),
-            last_click_time: [const { Mutex::new(None) }; 5],
+            click_state: Mutex::new(ClickState::new()),
         })
     }
 
@@ -99,19 +100,8 @@ impl WindowProcState {
         self.size.1.store(height, Ordering::Relaxed);
     }
 
-    pub(crate) fn check_double_click(&self, index: usize, new_time: Instant) -> bool {
-        let mut slot = self.last_click_time[index].lock();
-        let Some(last_click_time) = slot.replace(new_time) else {
-            return false;
-        };
-
-        let delta = new_time.duration_since(last_click_time);
-        if delta > Duration::from_millis(unsafe { GetDoubleClickTime() } as _) {
-            return false;
-        }
-
-        *slot = None;
-        true
+    pub(crate) fn get_click_count(&self, button: u32, new_time: Instant) -> u32 {
+        self.click_state.lock().get_click_count(button, new_time)
     }
 
     pub(crate) fn block_input(&self) {

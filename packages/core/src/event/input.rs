@@ -184,15 +184,18 @@ impl From<input::CursorAction> for CursorAction {
 /// Cursor input state.
 #[napi]
 pub enum CursorInputState {
-    Pressed { double_click: bool },
+    Pressed {
+        /// Consecutive click count.
+        click_count: u32,
+    },
     Released,
 }
 
 impl From<input::CursorInputState> for CursorInputState {
     fn from(state: input::CursorInputState) -> Self {
         match state {
-            input::CursorInputState::Pressed { double_click } => {
-                CursorInputState::Pressed { double_click }
+            input::CursorInputState::Pressed { click_count } => {
+                CursorInputState::Pressed { click_count }
             }
             input::CursorInputState::Released => CursorInputState::Released,
         }

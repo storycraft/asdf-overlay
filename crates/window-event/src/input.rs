@@ -66,10 +66,10 @@ pub enum CursorEvent {
 pub enum CursorInputState {
     /// Button is pressed down.
     Pressed {
-        /// Whether if this click should be treated as part of last click of double clicking.
+        /// Consecutive click count.
         ///
         /// The actual timing is platform and user setting dependent.
-        double_click: bool,
+        click_count: u32,
     },
 
     /// Button is released.
