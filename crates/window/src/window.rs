@@ -100,8 +100,10 @@ impl WindowProcState {
         self.size.1.store(height, Ordering::Relaxed);
     }
 
-    pub(crate) fn get_click_count(&self, button: u32, new_time: Instant) -> u32 {
-        self.click_state.lock().get_click_count(button, new_time)
+    pub(crate) fn get_click_count(&self, x: i32, y: i32, button: u32, new_time: Instant) -> u32 {
+        self.click_state
+            .lock()
+            .get_click_count(x, y, button, new_time)
     }
 
     pub(crate) fn block_input(&self) {

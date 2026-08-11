@@ -396,8 +396,9 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
     };
 
     let state = if pressed {
-        let click_count = Backends::get()
-            .window_state(hwnd, |state| state.get_click_count(index, Instant::now()));
+        let click_count = Backends::get().window_state(hwnd, |state| {
+            state.get_click_count(pos.x, pos.y, index, Instant::now())
+        });
 
         CursorInputState::Pressed { click_count }
     } else {

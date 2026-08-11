@@ -12,24 +12,36 @@ impl ClickState {
         Self { inner: None }
     }
 
-    pub(crate) fn get_click_count(&mut self, button: u32, time: Instant) -> u32 {
-        let multi_click_time = Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
+    pub(crate) fn get_click_count(&mut self, x: i32, y: i32, button: u32, time: Instant) -> u32 {
+        fn is_consecutive(inner: &Inner, x: i32, y: i32, button: u32, time: Instant) -> bool {
+            const MAX_DISTANCE: u32 = 4;
+
+            if inner.button != button {
+                return false;
+            }
+
+            if inner.x.abs_diff(x) > MAX_DISTANCE / 2 || inner.y.abs_diff(y) > MAX_DISTANCE / 2 {
+                return false;
+            }
+
+            let multi_click_time = Duration::from_millis(unsafe { GetDoubleClickTime() } as _);
+            time.duration_since(inner.last_click_time) <= multi_click_time
+        }
 
         match self.inner {
-            Some(ref mut inner)
-                if inner.last_button == button
-                    && time.duration_since(inner.last_click_time) <= multi_click_time =>
-            {
-                inner.last_click_count += 1;
+            Some(ref mut inner) if is_consecutive(inner, x, y, button, time) => {
+                inner.click_count += 1;
                 inner.last_click_time = time;
 
-                inner.last_click_count
+                inner.click_count
             }
 
             _ => {
                 self.inner = Some(Inner {
-                    last_button: button,
-                    last_click_count: 1,
+                    x,
+                    y,
+                    button,
+                    click_count: 1,
                     last_click_time: time,
                 });
 
@@ -40,7 +52,9 @@ impl ClickState {
 }
 
 struct Inner {
-    last_button: u32,
-    last_click_count: u32,
+    x: i32,
+    y: i32,
+    button: u32,
+    click_count: u32,
     last_click_time: Instant,
 }
