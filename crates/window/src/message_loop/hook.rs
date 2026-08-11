@@ -23,8 +23,8 @@ use windows::{
                 TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
-                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+                self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
+                PM_REMOVE, TranslateMessage,
             },
         },
     },
@@ -241,9 +241,8 @@ fn read_message<const UNICODE: bool>(msg: &MSG) {
     }
 
     backends.message_loop_state(id, move |msg_loop_state| {
-        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-        if !root_hwnd.is_invalid() {
-            let window_id = root_hwnd.0 as _;
+        if !msg.hwnd.is_invalid() {
+            let window_id = msg.hwnd.0 as _;
 
             let input_blocked = backends.input_blocked();
             let input_flags = backends.window_state(window_id, |state| state.input_flags());
