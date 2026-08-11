@@ -275,7 +275,7 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
         // Call Default WndProc so non client area works.
         if UNICODE {
             CallWindowProcW(
-                Some(DefWindowProcA),
+                Some(DefWindowProcW),
                 msg.hwnd,
                 msg.message,
                 msg.wParam,
@@ -283,7 +283,7 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
             );
         } else {
             CallWindowProcA(
-                Some(DefWindowProcW),
+                Some(DefWindowProcA),
                 msg.hwnd,
                 msg.message,
                 msg.wParam,
