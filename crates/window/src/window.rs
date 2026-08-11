@@ -191,7 +191,7 @@ bitflags::bitflags! {
     }
 }
 
-/// Get DPI aware client area size of the window.
+/// Get client area size of the window.
 fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
     unsafe {
         let mut rect = RECT::default();
