@@ -18,7 +18,7 @@ use windows::{
 use crate::{
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
     renderer::dx11::Dx11Renderer,
-    surface::{Renderer, SurfaceState},
+    surface::{Renderer, SurfaceState, Surfaces},
     types::IntDashMap,
 };
 
@@ -145,5 +145,5 @@ fn cleanup_swapchain(swapchain: usize) {
     };
     info!("dx11 renderer cleanup");
 
-    // TODO:: cleanup state
+    Surfaces::cleanup_state(swapchain as _);
 }

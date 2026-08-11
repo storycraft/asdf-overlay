@@ -25,10 +25,7 @@ use windows::{
 use crate::{
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
-    },
-    renderer::dx12::Dx12Renderer,
-    surface::{Renderer, SurfaceState},
-    types::IntDashMap,
+    }, renderer::dx12::Dx12Renderer, surface::{Renderer, SurfaceState, Surfaces}, types::IntDashMap,
 };
 
 struct WeakID3D12CommandQueue(*mut c_void);
@@ -161,7 +158,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
     info!("dx12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
-    // TODO:: cleanup state
+    Surfaces::cleanup_state(swapchain as _);
 }
 
 #[tracing::instrument]
