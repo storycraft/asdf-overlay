@@ -5,10 +5,9 @@
 //!
 //! Injection can be done using `asdf-overlay-client` crate.
 
-#[cfg(debug_assertions)]
-mod dbg;
-
 mod cursors;
+mod event_sink;
+mod ipc_tracing;
 mod server;
 
 extern crate asdf_overlay_vulkan_layer;
@@ -59,7 +58,7 @@ use windows::{
     core::{BOOL, PSTR},
 };
 
-use crate::server::IpcServerConn;
+use crate::{event_sink::EventSink, server::IpcServerConn};
 
 /// IPC server main loop.
 #[tracing::instrument(skip(backends, server))]
@@ -102,38 +101,25 @@ async fn run(
         }
     }
 
+    // setup event sink
+    EventSink::set(move |event| {
+        _ = emitter.emit(event);
+    });
+
     // setup overlay event sink
     OverlayEventSink::set({
         use asdf_overlay_common::event::surface::Event;
 
-        let emitter = emitter.clone();
         move |event| match event {
             Event::Surface { id, event } => {
-                _ = emitter.emit(OverlayEvent::Surface { id, event });
-            }
-        }
-    });
-
-    // setup window event sink
-    let window_task = tokio::spawn({
-        use asdf_overlay_common::event::window::Event;
-
-        let backends = backends.clone();
-
-        let emitter = emitter.clone();
-        async move {
-            while let Some(event) = backends.recv_async().await {
-                _ = emitter.emit(match event {
-                    Event::Window { id, event } => OverlayEvent::Window { id, event },
-                    Event::InputBlockingEnded => OverlayEvent::InputBlockingEnded,
-                });
+                EventSink::emit(OverlayEvent::Surface { id, event });
             }
         }
     });
 
     defer!({
         debug!("cleanup start");
-        window_task.abort();
+        EventSink::clear();
         OverlayEventSink::clear();
         backends.reset();
         Surfaces::reset();
@@ -233,6 +219,22 @@ async fn run_server(
     // initialize windows
     let backends = Arc::new(Backends::new().expect("failed to setup backends"));
 
+    // setup window event sink
+    tokio::spawn({
+        use asdf_overlay_common::event::window::Event;
+
+        let backends = backends.clone();
+
+        async move {
+            while let Some(event) = backends.recv_async().await {
+                EventSink::emit(match event {
+                    Event::Window { id, event } => OverlayEvent::Window { id, event },
+                    Event::InputBlockingEnded => OverlayEvent::InputBlockingEnded,
+                });
+            }
+        }
+    });
+
     // initialize overlay
     initialize().expect("initialization failed");
     debug!("hook installed");
@@ -269,27 +271,12 @@ async fn run_server(
 #[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
-    #[cfg(debug_assertions)]
-    fn setup_tracing() {
-        use tracing::level_filters::LevelFilter;
-
-        use crate::dbg::WinDbgMakeWriter;
-
-        tracing_subscriber::fmt::fmt()
-            .with_ansi(false)
-            .with_thread_ids(true)
-            .with_max_level(LevelFilter::TRACE)
-            .with_writer(WinDbgMakeWriter::new())
-            .init();
-    }
-
     if fdw_reason != DLL_PROCESS_ATTACH {
         return true;
     }
 
     // setup tracing first
-    #[cfg(debug_assertions)]
-    setup_tracing();
+    ipc_tracing::subscriber();
 
     // setup tokio runtime
     let Ok(rt) = Runtime::new() else {

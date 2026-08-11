@@ -1,17 +1,20 @@
 pub mod ime;
 pub mod input;
+pub mod tracing;
 
 use anyhow::Context;
 use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common::event::surface::SurfaceEvent;
+use asdf_overlay_client::common::event::tracing::TracingEvent;
 use asdf_overlay_client::common::event::{OverlayEvent, window::WindowEvent};
 use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},
 };
 
+use crate::GpuLuid;
 use crate::event::input::InputEvent;
-use crate::{GpuLuid, LogLevel};
+use crate::event::tracing::TracingMetadata;
 
 pub(crate) struct VarArgs(
     Box<dyn FnOnce(napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>>>,
@@ -103,9 +106,17 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                 }
             },
 
-            OverlayEvent::Log { level, message } => {
-                emitter.emit(("log", LogLevel::from(level), message));
-            }
+            OverlayEvent::Tracing(event) => match event {
+                TracingEvent::Enter(metadata) => {
+                    emitter.emit(("tracing_enter", TracingMetadata::from(metadata)));
+                }
+                TracingEvent::Event { metadata, message } => {
+                    emitter.emit(("tracing_event", TracingMetadata::from(metadata), message));
+                }
+                TracingEvent::Exit => {
+                    emitter.emit(("tracing_exit",));
+                }
+            },
         }
     }
 

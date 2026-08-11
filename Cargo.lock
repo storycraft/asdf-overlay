@@ -363,6 +363,7 @@ name = "asdf-overlay-dll"
 version = "1.2.5"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "asdf-overlay",
  "asdf-overlay-common",
  "asdf-overlay-vulkan-layer",
@@ -3986,6 +3987,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
  "nu-ansi-term",
+ "parking_lot",
  "sharded-slab",
  "smallvec",
  "thread_local",
