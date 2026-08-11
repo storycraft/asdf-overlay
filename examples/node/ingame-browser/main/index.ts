@@ -12,7 +12,7 @@ async function createOverlayWindow(pid: number) {
   );
 
   overlay.event.on('tracing_event', (metadata, message) => {
-    console.info(metadata, message);
+    console.info({ metadata, message });
   });
 
   // Create the browser window.
