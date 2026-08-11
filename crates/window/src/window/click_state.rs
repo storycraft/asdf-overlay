@@ -30,6 +30,8 @@ impl ClickState {
 
         match self.inner {
             Some(ref mut inner) if is_consecutive(inner, x, y, button, time) => {
+                inner.x = x;
+                inner.y = y;
                 inner.click_count += 1;
                 inner.last_click_time = time;
 
