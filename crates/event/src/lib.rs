@@ -27,6 +27,13 @@ pub enum SurfaceEvent {
         /// otherwise overlay rendering may fail.
         gpu_id: GpuLuid,
     },
+    Resized {
+        // New width of the surface
+        width: u32,
+
+        // New height of the surface
+        height: u32,
+    },
     Destroyed,
 }
 

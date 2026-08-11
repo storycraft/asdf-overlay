@@ -101,6 +101,11 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                 } => {
                     emitter.emit(("surface_added", id, width, height, GpuLuid::from(gpu_id)));
                 }
+
+                SurfaceEvent::Resized { width, height } => {
+                    emitter.emit(("surface_resized", id, width, height));
+                }
+
                 SurfaceEvent::Destroyed => {
                     emitter.emit(("surface_destroyed", id));
                 }
