@@ -5,7 +5,7 @@ use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, error, info, trace};
+use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LUID, RECT},
@@ -50,7 +50,7 @@ fn with_or_init_renderer<R>(
     f(&mut data)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present(
     this: *mut c_void,
     source_rect: *const RECT,
@@ -77,7 +77,7 @@ extern "system" fn hooked_present(
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_swapchain_present(
     this: *mut c_void,
     source_rect: *const RECT,
@@ -104,7 +104,7 @@ extern "system" fn hooked_swapchain_present(
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_release(this: *mut c_void) -> u32 {
     trace!("IDirect3DDevice9::Release called");
 
@@ -119,7 +119,7 @@ extern "system" fn hooked_release(this: *mut c_void) -> u32 {
     count
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present_ex(
     this: *mut c_void,
     source_rect: *const RECT,
@@ -250,7 +250,7 @@ fn get_dxgi_adapter(device: &IDirect3DDevice9) -> Option<IDXGIAdapter> {
     find_adapter_by_luid(&factory, luid)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_reset(this: *mut c_void, param: *mut D3DPRESENT_PARAMETERS) -> HRESULT {
     trace!("Reset called");
     reset_renderer(this as _);
@@ -264,7 +264,7 @@ extern "system" fn hooked_reset(this: *mut c_void, param: *mut D3DPRESENT_PARAME
     res
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_reset_ex(
     this: *mut c_void,
     param: *mut D3DPRESENT_PARAMETERS,

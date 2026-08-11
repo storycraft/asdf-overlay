@@ -10,7 +10,7 @@ use asdf_overlay_window_event::{
     },
 };
 use once_cell::sync::OnceCell;
-use tracing::{debug, trace};
+use tracing::{Level, debug, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
@@ -174,7 +174,7 @@ fn peek_message<const UNICODE: bool>(
     original_read
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_a(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -185,7 +185,7 @@ extern "system" fn hooked_get_message_a(
     get_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_w(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -196,7 +196,7 @@ extern "system" fn hooked_get_message_w(
     get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_pos() -> u32 {
     trace!("GetMessagePos called");
     if !Backends::get().input_blocked() {
@@ -206,7 +206,7 @@ extern "system" fn hooked_get_message_pos() -> u32 {
     0
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_peek_message_a(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -218,7 +218,7 @@ extern "system" fn hooked_peek_message_a(
     peek_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax, wremovemsg)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_peek_message_w(
     lpmsg: *mut MSG,
     hwnd: HWND,

@@ -6,7 +6,7 @@ use asdf_overlay_window_event::{
     input::{ConversionMode, Ime, ImeCandidateList, InputEvent, KeyboardInput},
 };
 use scopeguard::defer;
-use tracing::trace;
+use tracing::{Level, trace};
 use utf16string::{LittleEndian, WStr, WString};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
@@ -32,7 +32,7 @@ use crate::{
     window::{ImeState, ListenInputFlags, get_client_size},
 };
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 pub(super) unsafe extern "system" fn hooked_wnd_proc(
     hwnd: HWND,
     msg: u32,

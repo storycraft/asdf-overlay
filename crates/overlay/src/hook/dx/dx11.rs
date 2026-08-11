@@ -1,7 +1,7 @@
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
-use tracing::{info, trace};
+use tracing::{Level, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -138,7 +138,7 @@ pub(super) fn setup_fn(
     )
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;

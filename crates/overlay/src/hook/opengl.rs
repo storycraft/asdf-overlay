@@ -6,7 +6,7 @@ use std::ffi::CString;
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, error, info, trace};
+use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND, LUID},
@@ -47,7 +47,7 @@ struct GlData {
 // hdc -> GlData
 static MAP: Lazy<IntDashMap<u64, GlData>> = Lazy::new(IntDashMap::default);
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 pub fn hook(dummy_hwnd: HWND) {
     fn inner() -> anyhow::Result<()> {
         let addrs = get_wgl_addrs().context("failed to load opengl addrs")?;
@@ -75,7 +75,7 @@ pub fn hook(dummy_hwnd: HWND) {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
@@ -201,7 +201,7 @@ fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
     SurfaceState::new(get_dxgi_adapter().as_ref(), size, Renderer::Opengl)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
@@ -218,7 +218,7 @@ struct WglAddrs {
     swap_buffers: WglSwapBuffersFn,
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     // Grab a handle to opengl32.dll
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
@@ -244,11 +244,11 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     })
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn setup_gl() -> anyhow::Result<()> {
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::TRACE)]
     fn loader(module: HMODULE, s: &str) -> *const c_void {
         let name = CString::new(s).unwrap();
 

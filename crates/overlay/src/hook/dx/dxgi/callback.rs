@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use tracing::Level;
 use windows::{
     Win32::Graphics::{Direct3D::ID3DDestructionNotifier, Dxgi::IDXGISwapChain1},
     core::Interface,
@@ -13,7 +14,7 @@ pub fn register_swapchain_destruction_callback<F: FnOnce(usize) + Send + 'static
         f: F,
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     extern "system" fn callback<F: FnOnce(usize)>(this: *mut c_void) {
         let this = unsafe { Box::from_raw(this.cast::<Data<F>>()) };
         (this.f)(this.this)

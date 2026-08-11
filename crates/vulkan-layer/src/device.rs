@@ -16,7 +16,7 @@ use ash::{
     vk::{self, BaseInStructure, Handle},
 };
 use once_cell::sync::Lazy;
-use tracing::{debug, trace};
+use tracing::{Level, debug, trace};
 
 /// Map of [`Device`] to its dispatch table.
 static DISPATCH_TABLE: Lazy<IntDashMap<u64, DispatchTable>> = Lazy::new(IntDashMap::default);
@@ -100,7 +100,7 @@ pub(super) fn get_queue_data(queue: vk::Queue) -> Option<QueueData> {
 }
 
 /// Layer's implementation of `vkGetDeviceProcAddr`.
-#[tracing::instrument(skip(name))]
+#[tracing::instrument(level = Level::DEBUG, skip(name))]
 pub(super) extern "system" fn get_proc_addr(
     device: vk::Device,
     name: *const c_char,
@@ -122,7 +122,7 @@ pub(super) extern "system" fn get_proc_addr(
 }
 
 /// Implementation of layer's `vkCreateDevice`.
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 pub(super) extern "system" fn create_device(
     ph_device: vk::PhysicalDevice,
     info: *const vk::DeviceCreateInfo,
@@ -210,7 +210,7 @@ pub(super) extern "system" fn create_device(
 }
 
 /// Implementation of layer's `vkDestroyDevice`.
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 extern "system" fn destroy_device(
     device: vk::Device,
     allocator: *const vk::AllocationCallbacks<'_>,

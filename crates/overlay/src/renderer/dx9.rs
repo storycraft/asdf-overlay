@@ -5,6 +5,7 @@ use core::{
 
 use anyhow::Context;
 use scopeguard::defer;
+use tracing::Level;
 use windows::Win32::{
     Foundation::HANDLE,
     Graphics::{
@@ -54,7 +55,7 @@ pub struct Dx9Renderer {
 }
 
 impl Dx9Renderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new(device: &IDirect3DDevice9) -> anyhow::Result<Self> {
         unsafe {
             let mut vertex_buffer = None;
@@ -164,7 +165,7 @@ impl Dx9Renderer {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     pub fn draw(
         &mut self,
         device: &IDirect3DDevice9,

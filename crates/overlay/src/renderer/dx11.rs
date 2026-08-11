@@ -1,6 +1,7 @@
 use core::mem;
 
 use anyhow::Context;
+use tracing::Level;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -44,7 +45,7 @@ pub struct Dx11Renderer {
 }
 
 impl Dx11Renderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
             let mut vertex_shader = None;
@@ -120,7 +121,7 @@ impl Dx11Renderer {
         self.texture.update(shared);
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     pub fn draw(
         &mut self,
         device: &ID3D11Device,

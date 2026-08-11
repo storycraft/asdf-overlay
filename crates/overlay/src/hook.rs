@@ -7,9 +7,11 @@ pub mod util {
     pub use super::dx::original_execute_command_lists;
 }
 
+use tracing::Level;
+
 use crate::util::with_dummy_hwnd;
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 /// Install various hooks.
 pub fn install() -> anyhow::Result<()> {
     with_dummy_hwnd(|dummy_hwnd| {

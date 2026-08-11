@@ -1,6 +1,7 @@
 mod sync;
 
 use anyhow::Context;
+use tracing::Level;
 use core::{
     mem::ManuallyDrop,
     slice::{self},
@@ -123,7 +124,7 @@ pub struct Dx12Renderer {
 }
 
 impl Dx12Renderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new(device: &ID3D12Device, swapchain: &IDXGISwapChain) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
@@ -209,7 +210,7 @@ impl Dx12Renderer {
         self.texture.update(shared);
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,

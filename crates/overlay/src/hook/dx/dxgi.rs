@@ -6,7 +6,7 @@ use anyhow::Context;
 use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
-use tracing::{debug, error, trace};
+use tracing::{Level, debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -35,7 +35,7 @@ use crate::{
     surface::Surfaces,
 };
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
     // use swapchain pointer as unique identifier
     let id = swapchain.as_raw() as u64;
@@ -67,7 +67,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
@@ -83,7 +83,7 @@ extern "system" fn hooked_present(
     unsafe { HOOK.present.wait().original_fn()(this, sync_interval, flags) }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
@@ -116,7 +116,7 @@ fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
     });
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
@@ -141,7 +141,7 @@ extern "system" fn hooked_resize_buffers(
     res
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_resize_buffers1(
     this: *mut c_void,
     buffer_count: u32,
@@ -248,7 +248,7 @@ pub struct DxgiFunctions {
 }
 
 /// Get pointer to dxgi functions
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 pub fn get_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
     unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;

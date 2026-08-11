@@ -9,7 +9,7 @@ use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, info, trace};
+use tracing::{Level, debug, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -72,7 +72,7 @@ fn with_or_init_renderer_data<R>(
     f(&mut data)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(unsafe {
         ID3D12CommandQueue::from_raw_borrowed(&QUEUE_MAP.remove(&(device.as_raw() as _))?.1.0)
@@ -153,7 +153,7 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     data.rtv.reset();
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize, device: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
@@ -164,7 +164,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
     Surfaces::cleanup_state(swapchain as _);
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,
@@ -213,7 +213,7 @@ pub fn hook() -> anyhow::Result<()> {
 }
 
 /// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT type by creating dummy device
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
     unsafe {
         let mut device = None;

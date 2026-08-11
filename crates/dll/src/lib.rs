@@ -34,7 +34,7 @@ use tokio::{
     runtime::Runtime,
     time::sleep,
 };
-use tracing::{debug, error, trace, warn};
+use tracing::{Level, debug, error, trace, warn};
 use windows::{
     Win32::{
         Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE, HINSTANCE},
@@ -61,7 +61,7 @@ use windows::{
 use crate::{event_sink::EventSink, server::IpcServerConn};
 
 /// IPC server main loop.
-#[tracing::instrument(skip(backends, server))]
+#[tracing::instrument(level = Level::DEBUG, skip(backends, server))]
 async fn run(
     hinstance: usize,
     backends: Arc<Backends>,
@@ -210,7 +210,7 @@ fn handle_surface_request(
 }
 
 /// IPC server listener.
-#[tracing::instrument(skip(create_server))]
+#[tracing::instrument(level = Level::TRACE, skip(create_server))]
 async fn run_server(
     hinstance: usize,
     mut server: NamedPipeServer,

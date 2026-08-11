@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use scopeguard::{ScopeGuard, defer};
-use tracing::trace;
+use tracing::{Level, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
@@ -36,7 +36,7 @@ pub struct OpenglRenderer {
 }
 
 impl OpenglRenderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new() -> anyhow::Result<Self> {
         unsafe {
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
@@ -99,7 +99,7 @@ impl OpenglRenderer {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     pub fn draw(
         &mut self,
         position: (i32, i32),
@@ -150,7 +150,7 @@ impl OpenglRenderer {
 }
 
 impl Drop for OpenglRenderer {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     fn drop(&mut self) {
         self.interop.take();
         unsafe {
