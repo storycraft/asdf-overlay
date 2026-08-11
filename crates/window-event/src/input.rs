@@ -107,7 +107,6 @@ pub enum KeyboardInput {
 /// Describe a virtual key code.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-
 pub struct Key {
     /// A Windows Virtual-Key code.
     ///
