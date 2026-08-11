@@ -3,11 +3,6 @@ on:
   pull_request:
     paths:
       - '**.rs'
-  push:
-    branches:
-      - main
-    paths:
-      - '**.rs'
 
 name: rustfmt
 jobs:
