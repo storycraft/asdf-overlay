@@ -20,6 +20,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
             components: rustfmt
-      - uses: clechasseur/rs-clippy-check@v6.0.5
-        with:
-          args: --all-features
+      - uses: actions-rust-lang/rustfmt@v1
