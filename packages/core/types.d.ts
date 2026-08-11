@@ -45,11 +45,21 @@ export declare type OverlayEventEmitter = EventEmitter<{
    * Input blocking is interrupted and turned off.
    */
   input_blocking_ended: [id: number],
+  
+  /**
+   * Tracing span has been entered.
+   */
+  tracing_enter: [metadata: TracingMetadata],
 
   /**
-   * A log message from the overlay system.
+   * A tracing event has been emitted.
    */
-  log: [level: LogLevel, message: string],
+  tracing_event: [metadata: TracingMetadata, message?: string],
+
+  /**
+   * Tracing span has been exited.
+   */
+  tracing_exit: [],
 
   /**
    * An error has occured on ipc connection.
