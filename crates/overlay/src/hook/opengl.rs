@@ -6,7 +6,7 @@ use std::ffi::CString;
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND, LUID},
@@ -90,7 +90,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             renderer_cleanup = true;
         }
 
-        debug!(
+        info!(
             "gl renderer cleanup hdc: {key:x} hglrc: {:x}",
             gl_data.hglrc
         );
@@ -123,7 +123,7 @@ fn draw_overlay(hdc: HDC) {
             let renderer = match renderer {
                 Some(renderer) => renderer,
                 None => {
-                    debug!("initializing opengl renderer");
+                    info!("initializing opengl renderer");
                     renderer.insert(match OpenglRenderer::new() {
                         Ok(renderer) => renderer,
                         Err(err) => {

@@ -2,7 +2,7 @@ use asdf_overlay::surface::Surfaces;
 use ash::vk::{self, AllocationCallbacks, Handle};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use tracing::{debug, trace};
+use tracing::{info, trace};
 
 use crate::{device::DISPATCH_TABLE, map::IntDashMap, renderer::VulkanRenderer};
 
@@ -55,7 +55,7 @@ pub(super) extern "system" fn create_swapchain(
         return res;
     }
 
-    debug!("initializing swapchain data");
+    info!("initializing vk swapchain data");
     let swapchain = unsafe { *swapchain }.as_raw();
     SWAPCHAIN_MAP.insert(
         swapchain,
@@ -85,7 +85,7 @@ pub(super) extern "system" fn destroy_swapchain(
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
     _ = with_swapchain_data(swapchain, |data| {
-        debug!("vulkan renderer cleanup");
+        info!("vulkan renderer cleanup");
         data.renderer.lock().take();
 
         Surfaces::cleanup_state(swapchain.as_raw());

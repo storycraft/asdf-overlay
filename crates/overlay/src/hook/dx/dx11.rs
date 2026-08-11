@@ -1,7 +1,7 @@
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
-use tracing::{debug, trace};
+use tracing::{info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -38,7 +38,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            debug!("initializing dx11 renderer");
+            info!("initializing dx11 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D11Device1>()? };
 
             let state = unsafe {
@@ -143,7 +143,7 @@ fn cleanup_swapchain(swapchain: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    debug!("dx11 renderer cleanup");
+    info!("dx11 renderer cleanup");
 
     // TODO:: cleanup state
 }

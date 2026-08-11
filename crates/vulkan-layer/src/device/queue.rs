@@ -5,7 +5,7 @@ use asdf_overlay::{
     surface::{Renderer, SurfaceState, Surfaces},
 };
 use ash::vk::{self, Handle};
-use tracing::{debug, error, trace};
+use tracing::{error, info, trace};
 use windows::Win32::{
     Foundation::LUID,
     Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4},
@@ -129,7 +129,7 @@ fn draw_overlay(
 
     let mut renderer = data.renderer.lock();
     let renderer = renderer.get_or_insert_with(|| {
-        debug!("initializing vulkan renderer");
+        info!("initializing vulkan renderer");
 
         let mut image_count = 0;
         let mut images = Vec::<vk::Image>::new();

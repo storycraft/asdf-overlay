@@ -9,7 +9,7 @@ use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -53,7 +53,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            debug!("initializing dx12 renderer");
+            info!("initializing dx12 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
             let ref_mut = entry.insert(RendererData {
@@ -158,7 +158,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    debug!("dx12 renderer cleanup");
+    info!("dx12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
     // TODO:: cleanup state

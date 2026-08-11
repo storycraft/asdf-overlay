@@ -4,7 +4,7 @@ use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LUID, RECT},
@@ -41,7 +41,7 @@ fn with_or_init_renderer<R>(
     let mut data = match RENDERERS.entry(device.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            debug!("initializing dx9 renderer");
+            info!("initializing dx9 renderer");
             entry.insert(Dx9Renderer::new(device)?)
         }
     };
@@ -193,8 +193,8 @@ fn cleanup_renderer(device: usize) {
         return;
     }
 
+    info!("dx9 renderer cleanup");
     Surfaces::cleanup_state(device as _);
-    debug!("dx9 renderer cleanup");
 }
 
 fn setup_fn(

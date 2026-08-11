@@ -162,7 +162,7 @@ pub(super) extern "system" fn create_device(
         return res;
     }
 
-    debug!("initializing device dispatch table");
+    debug!("initializing vk device dispatch table");
     let info = unsafe { &*info };
     let device = unsafe { *device };
 
