@@ -276,7 +276,7 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     }
 
     // setup tracing first
-    ipc_tracing::subscriber();
+    tracing::subscriber::set_global_default(ipc_tracing::subscriber()).unwrap();
 
     // setup tokio runtime
     let Ok(rt) = Runtime::new() else {
