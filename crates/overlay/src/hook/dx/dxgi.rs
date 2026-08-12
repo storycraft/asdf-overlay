@@ -109,7 +109,6 @@ fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
 
     Surfaces::state(id, |state| {
         state.resize(width, height);
-
         OverlayEventSink::emit(Event::Surface {
             id,
             event: SurfaceEvent::Resized { width, height },

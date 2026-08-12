@@ -1,4 +1,5 @@
 mod data;
+mod proc;
 
 use core::{ffi::c_void, mem};
 use std::ffi::CString;
@@ -7,13 +8,14 @@ use anyhow::Context;
 use asdf_overlay_event::{RenderApi, SurfaceInfo};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
+use scopeguard::defer;
 use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND, LUID},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
-            Gdi::{HDC, WindowFromDC},
+            Gdi::{GetDC, HDC, ReleaseDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
@@ -46,7 +48,7 @@ struct GlData {
     hglrc: usize,
     renderer: Option<OpenglRenderer>,
 }
-// hdc -> GlData
+// hwnd -> GlData
 static MAP: Lazy<IntDashMap<u64, GlData>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument(level = Level::DEBUG)]
@@ -94,9 +96,20 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
         info!("gl renderer cleanup");
         Surfaces::cleanup_state(key);
-        unsafe {
-            _ = wglMakeCurrent(HDC(key as _), HGLRC(gl_data.hglrc as _));
-        }
+
+        let Some(renderer) = gl_data.renderer.take() else {
+            return false;
+        };
+
+        let hwnd = HWND(key as _);
+        let hdc = unsafe { GetDC(Some(hwnd)) };
+        defer!(unsafe {
+            _ = ReleaseDC(Some(hwnd), hdc);
+        });
+
+        _ = unsafe { wglMakeCurrent(hdc, HGLRC(gl_data.hglrc as _)) };
+        drop(renderer);
+
         false
     });
 
@@ -156,6 +169,11 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
+    let hwnd = unsafe { WindowFromDC(hdc) };
+    if hwnd.is_invalid() {
+        return;
+    }
+
     if !gl::GetIntegerv::is_loaded() {
         debug!("setting up opengl");
         if let Err(err) = setup_gl() {
@@ -164,18 +182,12 @@ fn draw_overlay(hdc: HDC) {
         }
     }
 
-    let key = hdc.0 as u64;
-    let mut data = {
-        if let Some(r) = MAP.get_mut(&key) {
-            r
-        } else {
-            MAP.entry(key).or_insert(GlData {
-                hglrc: 0,
-                renderer: None,
-            })
-        }
+    let key = hwnd.0 as u64;
+    let mut data = if let Some(r) = MAP.get_mut(&key) {
+        r
+    } else {
+        MAP.entry(key).or_insert_with(|| setup_gl_data(hwnd))
     };
-    data.hglrc = unsafe { wglGetCurrentContext() }.0 as usize;
 
     let res = Surfaces::with(
         key,
@@ -204,6 +216,15 @@ fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
             gpu_id,
         },
     )
+}
+
+fn setup_gl_data(hwnd: HWND) -> GlData {
+    proc::install(hwnd);
+
+    GlData {
+        hglrc: unsafe { wglGetCurrentContext() }.0 as usize,
+        renderer: None,
+    }
 }
 
 #[tracing::instrument(level = Level::TRACE)]

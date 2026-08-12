@@ -172,7 +172,7 @@ impl GlInteropTexture {
         {
             Ok(Self::MemoryObject(memory_object))
         } else if wgl::DXOpenDeviceNV::is_loaded() {
-            Ok(Self::Wgl(NvInteropTexture::open(&device, surface)?))
+            Ok(Self::Wgl(NvInteropTexture::open(device, surface)?))
         } else {
             bail!("Opengl interop is not supported");
         }
