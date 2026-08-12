@@ -60,3 +60,5 @@ It will listen and block inputs from target process until process exit
 
 ## License
 This project is dual licensed under MIT or Apache-2.0 License
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fstorycraft%2Fasdf-overlay.svg?type=large&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2Fstorycraft%2Fasdf-overlay?ref=badge_large&issueType=license)
