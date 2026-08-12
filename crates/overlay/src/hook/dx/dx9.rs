@@ -219,7 +219,14 @@ fn cleanup_renderer(device: usize) {
 }
 
 fn reset_renderer(device: usize) {
-    RENDERERS.remove(&device);
+    debug!("dx9 renderer reset");
+    if RENDERERS.remove(&device).is_none() {
+        return;
+    };
+
+    Surfaces::state(device as _, |state| {
+        state.texture.invalidate();
+    });
 }
 
 fn setup_fn(
