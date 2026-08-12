@@ -29,7 +29,7 @@ use windows::Win32::{
 
 use crate::{
     Backends,
-    window::{ImeState, ListenInputFlags},
+    window::{ImeState, ListenInputFlags, get_client_size},
 };
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -66,11 +66,9 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
                 return None;
             }
 
-            let width = winpos.cx as u32;
-            let height = winpos.cy as u32;
+            let (width, height) = get_client_size(HWND(hwnd as _)).unwrap();
             Backends::get().window_state(hwnd, |state| {
                 state.set_size(width, height);
-
                 Backends::get().emit(Event::Window {
                     id: hwnd,
                     event: WindowEvent::Resized { width, height },
