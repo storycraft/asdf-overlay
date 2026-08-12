@@ -90,10 +90,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             renderer_cleanup = true;
         }
 
-        info!(
-            "gl renderer cleanup hdc: {key:x} hglrc: {:x}",
-            gl_data.hglrc
-        );
+        info!("gl renderer cleanup");
         Surfaces::cleanup_state(key);
         unsafe {
             _ = wglMakeCurrent(HDC(key as _), HGLRC(gl_data.hglrc as _));
