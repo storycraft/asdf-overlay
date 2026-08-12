@@ -29,7 +29,7 @@ use windows::Win32::{
 
 use crate::{
     Backends,
-    window::{ImeState, ListenInputFlags, get_client_size},
+    window::{ImeState, ListenInputFlags},
 };
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -39,7 +39,7 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    trace!("WndProc called");
+    trace!("WndProc window hook called");
 
     defer!({
         // cleanup backend
@@ -61,17 +61,20 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
 fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
     match msg {
         msg::WM_WINDOWPOSCHANGED => {
-            let (width, height) = get_client_size(HWND(hwnd as _)).unwrap();
+            let winpos = unsafe { *(lparam.0 as *const msg::WINDOWPOS) };
+            if winpos.flags.0 & msg::SWP_NOSIZE.0 != 0 {
+                return None;
+            }
 
+            let width = winpos.cx as u32;
+            let height = winpos.cy as u32;
             Backends::get().window_state(hwnd, |state| {
-                if state.size() != (width, height) {
-                    state.set_size(width, height);
+                state.set_size(width, height);
 
-                    Backends::get().emit(Event::Window {
-                        id: hwnd,
-                        event: WindowEvent::Resized { width, height },
-                    });
-                }
+                Backends::get().emit(Event::Window {
+                    id: hwnd,
+                    event: WindowEvent::Resized { width, height },
+                });
             });
         }
 
