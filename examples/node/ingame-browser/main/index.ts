@@ -24,7 +24,7 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  const [windowId, [surfaceId, surfaceInfo]] = await Promise.all([
+  let [windowId, [surfaceId, surfaceInfo]] = await Promise.all([
     new Promise<number>(resolve => overlay.event.once(
       'window_added',
       (id, _width, _height) => {
@@ -40,6 +40,11 @@ async function createOverlayWindow(pid: number) {
       }),
     )
   ]);
+
+  // If bound window is found, use it instead of the first window found.
+  if (surfaceInfo.windowId) {
+    windowId = surfaceInfo.windowId;
+  }
 
   const window: OverlayWindow = { id: windowId, overlay };
   const surface: OverlaySurface = { id: surfaceId, overlay, info: surfaceInfo };
