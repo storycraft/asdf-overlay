@@ -7,9 +7,8 @@ pub mod texture;
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use anyhow::Context;
-use asdf_overlay_event::{Event, SurfaceEvent};
+use asdf_overlay_event::{Event, SurfaceEvent, SurfaceInfo};
 use once_cell::sync::Lazy;
-use windows::Win32::Graphics::Dxgi::IDXGIAdapter;
 
 use crate::{
     event_sink::OverlayEventSink, interop::DxInterop, surface::texture::OverlayTextureSlot,
@@ -73,7 +72,7 @@ impl Surfaces {
                     event: SurfaceEvent::Added {
                         width,
                         height,
-                        gpu_id: state.interop.gpu_id(),
+                        info: state.info,
                     },
                 });
 
@@ -102,26 +101,21 @@ pub struct SurfaceState {
     size: (AtomicU32, AtomicU32),
 
     pub interop: DxInterop,
-    pub renderer: Renderer,
+    pub info: SurfaceInfo,
 
     #[doc(hidden)]
     pub texture: OverlayTextureSlot,
 }
 
 impl SurfaceState {
-    pub fn new(
-        adapter: Option<&IDXGIAdapter>,
-        size: (u32, u32),
-        renderer: Renderer,
-    ) -> anyhow::Result<Self> {
-        let interop = DxInterop::create(adapter).context("failed to create dx interop")?;
+    pub fn new(interop: DxInterop, size: (u32, u32), info: SurfaceInfo) -> anyhow::Result<Self> {
         let surface = OverlayTextureSlot::new();
 
         Ok(Self {
             position: (AtomicI32::new(0), AtomicI32::new(0)),
             size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
             interop,
-            renderer,
+            info,
             texture: surface,
         })
     }
@@ -166,14 +160,4 @@ impl SurfaceState {
         self.reposition(0, 0);
         _ = self.commit_overlay_texture(None);
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum Renderer {
-    Dx12,
-    Dx11,
-    Dx9,
-    Opengl,
-    Vulkan,
 }

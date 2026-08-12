@@ -1,3 +1,4 @@
+use asdf_overlay_event::{RenderApi, SurfaceInfo};
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
@@ -17,8 +18,9 @@ use windows::{
 
 use crate::{
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
+    interop::DxInterop,
     renderer::dx11::Dx11Renderer,
-    surface::{Renderer, SurfaceState, Surfaces},
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
 };
 
@@ -78,8 +80,8 @@ fn with_or_init_renderer_data<R>(
 }
 
 pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    if state.renderer != Renderer::Dx11 {
-        trace!("ignoring dx11 rendering");
+    if state.info.api != RenderApi::Direct3D11 {
+        trace!("ignoring Direct3D11 rendering");
         return;
     }
 
@@ -134,12 +136,21 @@ pub(super) fn setup_fn(
     swapchain: &IDXGISwapChain1,
 ) -> anyhow::Result<SurfaceState> {
     let adapter = unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() };
-    let desc = unsafe { swapchain.GetDesc() }?;
+    let desc = unsafe { swapchain.GetDesc1() }?;
+    let window_id = unsafe { swapchain.GetHwnd() }
+        .ok()
+        .map(|hwnd| hwnd.0 as u32);
 
+    let interop = DxInterop::new(adapter.as_ref())?;
+    let gpu_id = interop.gpu_id;
     SurfaceState::new(
-        adapter.as_ref(),
-        (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        Renderer::Dx11,
+        interop,
+        (desc.Width, desc.Height),
+        SurfaceInfo {
+            api: RenderApi::Direct3D11,
+            window_id,
+            gpu_id,
+        },
     )
 }
 

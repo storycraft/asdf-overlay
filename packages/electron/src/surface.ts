@@ -1,6 +1,6 @@
 import type { NativeImage, OffscreenSharedTexture, WebContents, WebContentsPaintEventParams } from 'electron';
 import EventEmitter from 'node:events';
-import { OverlaySurface as CoreOverlaySurface, type GpuLuid } from '@asdf-overlay/core';
+import { OverlaySurface as CoreOverlaySurface } from '@asdf-overlay/core';
 import type { OverlaySurface } from './index.js';
 
 type Emitter = EventEmitter<{
@@ -29,10 +29,9 @@ export class ElectronOverlaySurface {
 
   private constructor(
     private readonly surface: OverlaySurface,
-    luid: GpuLuid,
     private readonly contents: WebContents,
   ) {
-    this.inner = new CoreOverlaySurface(luid);
+    this.inner = new CoreOverlaySurface(surface.info.gpuId);
 
     this.handler = (e, rect, image) => {
       try {
@@ -56,10 +55,9 @@ export class ElectronOverlaySurface {
    */
   static connect(
     surface: OverlaySurface,
-    luid: GpuLuid,
     contents: WebContents,
   ): ElectronOverlaySurface {
-    return new ElectronOverlaySurface({ ...surface }, luid, contents);
+    return new ElectronOverlaySurface({ ...surface }, contents);
   }
 
   /**

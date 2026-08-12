@@ -1,4 +1,4 @@
-import type { Overlay } from '@asdf-overlay/core';
+import type { Overlay, SurfaceInfo } from '@asdf-overlay/core';
 
 /**
  * Describe a window in `Overlay`.
@@ -28,4 +28,9 @@ export type OverlaySurface = {
    * Surface id.
    */
   id: bigint,
+
+  /**
+   * Surface info.
+   */
+  info: SurfaceInfo,
 };

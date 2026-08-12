@@ -5,8 +5,8 @@
 //!
 //! A separated vulkan layer implementation is provided to selectively enable vulkan overlay rendering.
 
-pub mod device;
-pub mod instance;
+mod device;
+mod instance;
 mod map;
 mod renderer;
 

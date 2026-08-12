@@ -29,7 +29,7 @@ export declare type OverlayEventEmitter = EventEmitter<{
   /**
    * A surface has been added.
    */
-  surface_added: [id: bigint, width: number, height: number, luid: GpuLuid],
+  surface_added: [id: bigint, width: number, height: number, info: SurfaceInfo],
 
   /**
    * A surface has been resized.

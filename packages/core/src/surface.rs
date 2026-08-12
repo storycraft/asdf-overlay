@@ -8,7 +8,7 @@ use windows::Win32::{
     Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
 };
 
-use crate::GpuLuid;
+use crate::event::surface::GpuLuid;
 
 /// Represent a surface for overlay
 #[napi]

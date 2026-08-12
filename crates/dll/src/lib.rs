@@ -87,14 +87,13 @@ async fn run(
         for id in Surfaces::iter() {
             Surfaces::state(id, |state| {
                 let (width, height) = state.size();
-                let gpu_id = state.interop.gpu_id();
 
                 _ = emitter.emit(OverlayEvent::Surface {
                     id,
                     event: SurfaceEvent::Added {
                         width,
                         height,
-                        gpu_id,
+                        info: state.info,
                     },
                 });
             });

@@ -45,7 +45,7 @@ pub mod event_sink;
 pub mod surface;
 
 mod hook;
-mod interop;
+pub mod interop;
 mod renderer;
 mod texture;
 mod types;

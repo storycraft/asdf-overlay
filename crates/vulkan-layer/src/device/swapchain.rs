@@ -1,6 +1,6 @@
 use asdf_overlay::{event_sink::OverlayEventSink, surface::Surfaces};
 use asdf_overlay_event::{Event, SurfaceEvent};
-use ash::vk::{self, AllocationCallbacks, Handle};
+use ash::vk::{self, AllocationCallbacks, Handle, SurfaceKHR};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tracing::trace;
@@ -10,7 +10,7 @@ use crate::{device::DISPATCH_TABLE, map::IntDashMap, renderer::VulkanRenderer};
 /// Data associated with a [`vk::SwapchainKHR`].
 pub struct SwapchainData {
     /// Surface identifier
-    pub surface: u64,
+    pub surface: SurfaceKHR,
 
     /// Size of the swapchain images.
     pub image_size: (u32, u32),
@@ -64,7 +64,7 @@ pub(super) extern "system" fn create_swapchain(
     SWAPCHAIN_MAP.insert(
         swapchain,
         SwapchainData {
-            surface: info.surface.as_raw(),
+            surface: info.surface,
             image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
             renderer: Mutex::new(None),
@@ -107,7 +107,7 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
         return;
     };
 
-    Surfaces::with_get(data.surface, |state| {
+    Surfaces::with_get(data.surface.as_raw(), |state| {
         state.texture.invalidate();
     });
 }

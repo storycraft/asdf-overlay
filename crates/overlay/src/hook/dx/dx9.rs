@@ -1,7 +1,7 @@
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
-use asdf_overlay_event::{Event, SurfaceEvent};
+use asdf_overlay_event::{Event, RenderApi, SurfaceEvent, SurfaceInfo};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -25,8 +25,9 @@ use windows::{
 
 use crate::{
     event_sink::OverlayEventSink,
+    interop::DxInterop,
     renderer::dx9::Dx9Renderer,
-    surface::{Renderer, SurfaceState, Surfaces},
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
     util::find_adapter_by_luid,
 };
@@ -156,8 +157,8 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
         id,
         || setup_fn(device, swapchain),
         |state| {
-            if Renderer::Dx9 != state.renderer {
-                trace!("ignoring dx9 rendering");
+            if RenderApi::Direct3D9 != state.info.api {
+                trace!("ignoring Direct3D9 rendering");
                 return;
             }
 
@@ -232,10 +233,27 @@ fn setup_fn(
         back_buffer.GetDesc(&mut desc)?;
     }
 
+    let mut present_params = D3DPRESENT_PARAMETERS::default();
+    unsafe { swapchain.GetPresentParameters(&mut present_params) }?;
+
+    let window_id = if !present_params.hDeviceWindow.is_invalid() {
+        Some(present_params.hDeviceWindow.0 as u32)
+    } else {
+        let mut creation_params = D3DDEVICE_CREATION_PARAMETERS::default();
+        unsafe { device.GetCreationParameters(&mut creation_params) }?;
+        Some(creation_params.hFocusWindow.0 as u32)
+    };
+
+    let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
+    let gpu_id = interop.gpu_id;
     SurfaceState::new(
-        get_dxgi_adapter(device).as_ref(),
+        interop,
         (desc.Width, desc.Height),
-        Renderer::Dx9,
+        SurfaceInfo {
+            api: RenderApi::Direct3D9,
+            window_id,
+            gpu_id,
+        },
     )
 }
 

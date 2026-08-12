@@ -2,8 +2,10 @@ use core::{ptr, slice};
 
 use asdf_overlay::{
     event_sink::OverlayEventSink,
-    surface::{Renderer, SurfaceState, Surfaces},
+    interop::DxInterop,
+    surface::{SurfaceState, Surfaces},
 };
+use asdf_overlay_event::{RenderApi, SurfaceInfo};
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
 use windows::Win32::{
@@ -16,7 +18,10 @@ use crate::{
         DISPATCH_TABLE, DispatchTable, get_queue_data,
         swapchain::{SwapchainData, with_swapchain_data},
     },
-    instance::physical_device::{get_physical_device_luid, get_physical_device_memory_properties},
+    instance::{
+        physical_device::{get_physical_device_luid, get_physical_device_memory_properties},
+        surface::get_surface_hwnd,
+    },
     renderer::VulkanRenderer,
 };
 
@@ -46,7 +51,7 @@ pub(super) extern "system" fn present(
             _ = with_swapchain_data(swapchain, |data| {
                 let physical_device = table.physical_device;
                 if let Err(err) = Surfaces::with(
-                    data.surface,
+                    data.surface.as_raw(),
                     || setup_fn(physical_device, data),
                     |backend| {
                         let semaphore = draw_overlay(
@@ -88,10 +93,16 @@ fn setup_fn(
     physical_device: vk::PhysicalDevice,
     data: &SwapchainData,
 ) -> anyhow::Result<SurfaceState> {
+    let interop = DxInterop::new(get_dxgi_adapter(physical_device).as_ref())?;
+    let gpu_id = interop.gpu_id;
     SurfaceState::new(
-        get_dxgi_adapter(physical_device).as_ref(),
+        interop,
         data.image_size,
-        Renderer::Vulkan,
+        SurfaceInfo {
+            api: RenderApi::Vulkan,
+            window_id: get_surface_hwnd(data.surface),
+            gpu_id,
+        },
     )
 }
 
@@ -122,7 +133,7 @@ fn draw_overlay(
     state: &SurfaceState,
     wait_semaphores: &[vk::Semaphore],
 ) -> Option<vk::Semaphore> {
-    if state.renderer != Renderer::Vulkan {
+    if state.info.api != RenderApi::Vulkan {
         trace!("ignoring vulkan rendering");
         return None;
     }

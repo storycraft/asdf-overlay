@@ -19,6 +19,7 @@ use windows::{
 };
 
 /// Direct3D 11 device for storing and sharing overlay texture with other graphics backend.
+#[non_exhaustive]
 pub struct DxInterop {
     /// This is the GPU adapter used by the surface.
     /// Overlay surface texture must be created with this GPU.
@@ -36,7 +37,7 @@ impl DxInterop {
     /// Create new [`DxInterop`].
     /// * If `adapter` is provided, it will use provided GPU adapter.
     /// * If `adapter` it not provided, it will use system provided GPU adapter.
-    pub(super) fn create(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
+    pub fn new(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         unsafe {
             let mut device = None;
             let mut cx = None;
@@ -55,7 +56,7 @@ impl DxInterop {
                 None,
                 Some(&mut cx),
             )
-            .context("D3D11CreateDevice failed")?;
+            .context("failed to create D3D11 interop device")?;
             let device = device.unwrap();
             let cx = cx.unwrap();
 
@@ -73,10 +74,5 @@ impl DxInterop {
                 cx: Mutex::new(cx),
             })
         }
-    }
-
-    /// Get GPU id of interop device.
-    pub const fn gpu_id(&self) -> GpuLuid {
-        self.gpu_id
     }
 }

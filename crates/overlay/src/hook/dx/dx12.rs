@@ -1,6 +1,7 @@
 mod rtv;
 mod util;
 
+use asdf_overlay_event::{RenderApi, SurfaceInfo};
 pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
@@ -26,8 +27,9 @@ use crate::{
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
     },
+    interop::DxInterop,
     renderer::dx12::Dx12Renderer,
-    surface::{Renderer, SurfaceState, Surfaces},
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
 };
 
@@ -86,8 +88,8 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDX
         return;
     };
 
-    if state.renderer != Renderer::Dx12 {
-        trace!("ignoring dx12 rendering");
+    if state.info.api != RenderApi::Direct3D12 {
+        trace!("ignoring Direct3D12 rendering");
         return;
     }
 
@@ -134,12 +136,21 @@ pub(super) fn setup_fn(
     device: &ID3D12Device,
     swapchain: &IDXGISwapChain1,
 ) -> anyhow::Result<SurfaceState> {
-    let desc = unsafe { swapchain.GetDesc() }?;
+    let desc = unsafe { swapchain.GetDesc1() }?;
 
+    let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
+    let window_id = unsafe { swapchain.GetHwnd() }
+        .ok()
+        .map(|hwnd| hwnd.0 as u32);
+    let gpu_id = interop.gpu_id;
     SurfaceState::new(
-        get_dxgi_adapter(device).as_ref(),
-        (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        Renderer::Dx12,
+        interop,
+        (desc.Width, desc.Height),
+        SurfaceInfo {
+            api: RenderApi::Direct3D12,
+            window_id,
+            gpu_id,
+        },
     )
 }
 

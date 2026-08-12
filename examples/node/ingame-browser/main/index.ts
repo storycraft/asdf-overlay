@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { defaultDllDir, Overlay, type GpuLuid, type KeyInputState } from '@asdf-overlay/core';
+import { defaultDllDir, Overlay, type KeyInputState, type SurfaceInfo } from '@asdf-overlay/core';
 import find from 'find-process';
 import { type OverlaySurface, type OverlayWindow } from '@asdf-overlay/electron';
 import { ElectronOverlaySurface } from '@asdf-overlay/electron/surface';
@@ -24,23 +24,23 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
-  const [windowId, [surfaceId, luid]] = await Promise.all([
+  const [windowId, [surfaceId, surfaceInfo]] = await Promise.all([
     new Promise<number>(resolve => overlay.event.once(
       'window_added',
       (id, _width, _height) => {
         resolve(id);
       }),
     ),
-    new Promise<[bigint, GpuLuid]>(resolve => overlay.event.once(
+    new Promise<[bigint, SurfaceInfo]>(resolve => overlay.event.once(
       'surface_added',
-      (id, _width, _height, luid) => {
-        resolve([id, luid]);
+      (id, _width, _height, info) => {
+        resolve([id, info]);
       }),
     )
   ]);
 
   const window: OverlayWindow = { id: windowId, overlay };
-  const surface: OverlaySurface = { id: surfaceId, overlay };
+  const surface: OverlaySurface = { id: surfaceId, overlay, info: surfaceInfo };
 
   let electronSurface: ElectronOverlaySurface | null = null;
 
@@ -68,7 +68,7 @@ async function createOverlayWindow(pid: number) {
 
         if (block) {
           overlayInput = ElectronOverlayInput.connect(window, mainWindow.webContents);
-          electronSurface = ElectronOverlaySurface.connect(surface, luid, mainWindow.webContents);
+          electronSurface = ElectronOverlaySurface.connect(surface, mainWindow.webContents);
 
           // do full repaint
           mainWindow.webContents.startPainting();

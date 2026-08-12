@@ -1,5 +1,6 @@
 pub mod ime;
 pub mod input;
+pub mod surface;
 pub mod tracing;
 
 use anyhow::Context;
@@ -12,8 +13,8 @@ use napi::{
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},
 };
 
-use crate::GpuLuid;
 use crate::event::input::InputEvent;
+use crate::event::surface::SurfaceInfo;
 use crate::event::tracing::TracingMetadata;
 
 pub(crate) struct VarArgs(
@@ -97,9 +98,9 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
                 SurfaceEvent::Added {
                     width,
                     height,
-                    gpu_id,
+                    info,
                 } => {
-                    emitter.emit(("surface_added", id, width, height, GpuLuid::from(gpu_id)));
+                    emitter.emit(("surface_added", id, width, height, SurfaceInfo::from(info)));
                 }
 
                 SurfaceEvent::Resized { width, height } => {
