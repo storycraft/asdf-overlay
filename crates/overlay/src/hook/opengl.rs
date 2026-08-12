@@ -140,13 +140,8 @@ fn draw_overlay(hdc: HDC) {
             let position = state.position();
             let screen = state.size();
             if state.texture.take_update()
-                && let Err(err) = renderer.update_texture(
-                    state
-                        .texture
-                        .get()
-                        .as_ref()
-                        .map(|surface| surface.texture()),
-                )
+                && let Err(err) =
+                    renderer.update_texture(&state.interop.device, state.texture.get().as_ref())
             {
                 error!("failed to update opengl texture. err: {err:?}");
                 return;
