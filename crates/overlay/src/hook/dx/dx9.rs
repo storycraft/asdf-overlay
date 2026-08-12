@@ -162,15 +162,15 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
                 return;
             }
 
-            let surface_lock = state.texture.get();
-            let Some(surface) = surface_lock.as_ref() else {
-                return;
-            };
-
             let position = state.position();
             let screen = state.size();
             _ = with_or_init_renderer(device, |renderer| {
                 trace!("using dx9 renderer");
+
+                let surface_lock = state.texture.get();
+                let Some(surface) = surface_lock.as_ref() else {
+                    return Ok(());
+                };
 
                 let interop = &state.interop;
                 renderer
@@ -178,16 +178,15 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
                     .context("failed to update dx9 texture")?;
 
                 unsafe { device.BeginScene() }.context("BeginScene failed")?;
-                let res = renderer.draw(device, position, screen);
-                trace!("dx9 render: {:?}", res);
+                renderer.draw(device, position, screen)?;
                 unsafe { device.EndScene() }.context("EndScene failed")?;
-                Ok(res)
+                Ok(())
             });
         },
     );
 
     if let Err(_err) = res {
-        error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+        error!("Surfaces::with failed. err: {:?}", _err);
     }
 }
 
