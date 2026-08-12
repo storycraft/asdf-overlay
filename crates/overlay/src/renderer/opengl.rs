@@ -28,6 +28,7 @@ static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
     interop: Option<GlInteropTexture>,
+    vao: GLuint,
     program: GLuint,
     rect_loc: GLint,
     tex_loc: GLint,
@@ -37,6 +38,8 @@ impl OpenglRenderer {
     #[tracing::instrument(level = Level::DEBUG)]
     pub fn new() -> anyhow::Result<Self> {
         unsafe {
+            let mut vao = 0;
+            gl::GenVertexArrays(1, &mut vao);
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
             gl::ShaderSource(
                 vert_shader,
@@ -68,7 +71,7 @@ impl OpenglRenderer {
 
             Ok(Self {
                 interop: None,
-
+                vao,
                 program,
                 rect_loc,
                 tex_loc,
@@ -126,6 +129,7 @@ impl OpenglRenderer {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
+            gl::BindVertexArray(self.vao);
             gl::UseProgram(self.program);
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
@@ -145,6 +149,7 @@ impl Drop for OpenglRenderer {
     fn drop(&mut self) {
         self.interop.take();
         unsafe {
+            gl::DeleteVertexArrays(1, &self.vao);
             gl::DeleteProgram(self.program);
         }
         trace!("OpenGL resources freed");
