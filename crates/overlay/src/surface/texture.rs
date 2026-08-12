@@ -123,22 +123,7 @@ impl OverlayTextureSlot {
 
     #[inline]
     #[doc(hidden)]
-    pub fn take_update(&self) -> Option<Option<u32>> {
-        if !self.invalidate_update() {
-            return None;
-        }
-
-        Some(
-            self.inner
-                .read()
-                .as_ref()
-                .map(|surface| surface.shared_handle()),
-        )
-    }
-
-    #[inline]
-    #[doc(hidden)]
-    pub fn invalidate_update(&self) -> bool {
+    pub fn take_update(&self) -> bool {
         self.updated.swap(false, Ordering::Relaxed)
     }
 }

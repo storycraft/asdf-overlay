@@ -87,14 +87,19 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &ID
         return;
     };
 
-    let update = state.texture.take_update();
     let position = state.position();
     let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx11 renderer");
 
-        if let Some(update) = update {
-            data.renderer.update_texture(update);
+        if state.texture.take_update() {
+            data.renderer.update_texture(
+                state
+                    .texture
+                    .get()
+                    .as_ref()
+                    .map(|surface| surface.shared_handle()),
+            );
         }
 
         let cx = unsafe { device.GetImmediateContext1().unwrap() };

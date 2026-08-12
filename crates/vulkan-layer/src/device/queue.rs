@@ -164,7 +164,7 @@ fn draw_overlay(
 
     let size = state.texture_size()?;
 
-    if state.texture.invalidate_update() {
+    if state.texture.take_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         if let Err(err) = renderer.update_texture(
