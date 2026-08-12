@@ -106,6 +106,7 @@ impl OverlayTextureSlot {
         self.inner.read()
     }
 
+    #[inline]
     pub fn invalidate(&self) {
         self.updated.store(true, Ordering::Relaxed);
     }
@@ -122,7 +123,6 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
-    #[doc(hidden)]
     pub fn take_update(&self) -> bool {
         self.updated.swap(false, Ordering::Relaxed)
     }
