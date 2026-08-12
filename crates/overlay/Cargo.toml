@@ -44,5 +44,10 @@ features = [
 anyhow = "1.0.97"
 gl_generator = "0.14.0"
 
+[dev-dependencies]
+winit = "0.30.13"
+eframe = { version = "0.36.1", features = ["glow"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+
 [package.metadata.docs.rs]
 targets = ["x86_64-pc-windows-msvc"]

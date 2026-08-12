@@ -312,13 +312,16 @@ dependencies = [
  "asdf-overlay-event",
  "asdf-overlay-hook",
  "dashmap",
+ "eframe",
  "gl_generator",
  "nohash-hasher",
  "once_cell",
  "parking_lot",
  "scopeguard",
  "tracing",
+ "tracing-subscriber",
  "windows",
+ "winit",
 ]
 
 [[package]]
@@ -432,6 +435,13 @@ dependencies = [
  "scopeguard",
  "tracing",
  "windows",
+]
+
+[[package]]
+name = "asdf-overlay-webview2"
+version = "1.2.5"
+dependencies = [
+ "webview2-com",
 ]
 
 [[package]]
@@ -1187,6 +1197,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_glow",
+ "glow",
  "glutin",
  "glutin-winit",
  "image",
@@ -4384,6 +4395,40 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "url",
  "web-sys",
+]
+
+[[package]]
+name = "webview2-com"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f89fca7a704cee10dcb3654c1dbb8941d1783132f1917358af75bec37a7d7e6"
+dependencies = [
+ "webview2-com-macros",
+ "webview2-com-sys",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
+name = "webview2-com-macros"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67a921c1b6914c367b2b823cd4cde6f96beec77d30a939c8199bb377cf9b9b54"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "webview2-com-sys"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a07132775117d6065853d9d1178157b8c90e228de47129d6bce2c7edebedfb"
+dependencies = [
+ "thiserror 2.0.20",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]
