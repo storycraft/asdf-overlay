@@ -201,6 +201,7 @@ fn post_reset(device: &IDirect3DDevice9) {
         let mut desc = D3DSURFACE_DESC::default();
         unsafe { back_buffer.GetDesc(&mut desc) }.unwrap();
 
+        state.texture.invalidate();
         state.resize(desc.Width, desc.Height);
         OverlayEventSink::emit(Event::Surface {
             id: device.as_raw() as _,
