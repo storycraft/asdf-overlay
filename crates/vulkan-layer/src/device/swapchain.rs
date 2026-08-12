@@ -75,7 +75,7 @@ pub(super) extern "system" fn create_swapchain(
     Surfaces::with_get(id, |state| {
         let extent = info.image_extent;
 
-        state.set_size(extent.width, extent.height);
+        state.resize(extent.width, extent.height);
         OverlayEventSink::emit(Event::Surface {
             id,
             event: SurfaceEvent::Resized {
@@ -108,6 +108,6 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
     };
 
     Surfaces::with_get(data.surface, |state| {
-        state.texture.set_updated();
+        state.texture.invalidate();
     });
 }

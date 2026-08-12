@@ -186,7 +186,7 @@ fn handle_surface_request(
 ) -> anyhow::Result<()> {
     match req.kind {
         SurfaceRequestKind::SetPosition(cmd) => {
-            _ = Surfaces::state(req.id, |state| state.set_position(cmd.x, cmd.y));
+            _ = Surfaces::state(req.id, |state| state.reposition(cmd.x, cmd.y));
             conn.reply::<<SetPosition as SurfaceRequestable>::Response>(req_id, ())?;
         }
 
@@ -197,7 +197,7 @@ fn handle_surface_request(
                 }
             });
             Surfaces::state(req.id, |state| {
-                if let Err(err) = state.set_overlay_texture(shared.handle()) {
+                if let Err(err) = state.commit_overlay_texture(shared.handle()) {
                     error!("failed to open shared surface. err: {:?}", err);
                 }
             });

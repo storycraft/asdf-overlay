@@ -139,7 +139,7 @@ impl SurfaceState {
     }
 
     #[doc(hidden)]
-    pub fn set_size(&self, width: u32, height: u32) {
+    pub fn resize(&self, width: u32, height: u32) {
         self.size.0.store(width, Ordering::Relaxed);
         self.size.1.store(height, Ordering::Relaxed);
     }
@@ -151,20 +151,20 @@ impl SurfaceState {
         )
     }
 
-    pub fn set_position(&self, x: i32, y: i32) {
+    pub fn reposition(&self, x: i32, y: i32) {
         self.position.0.store(x, Ordering::Relaxed);
         self.position.1.store(y, Ordering::Relaxed);
     }
 
-    pub fn set_overlay_texture(&self, handle: Option<u32>) -> anyhow::Result<()> {
+    pub fn commit_overlay_texture(&self, handle: Option<u32>) -> anyhow::Result<()> {
         self.texture.update(&self.interop.device, handle)
     }
 
     /// Reset the surface state to its initial state.
     /// This will reset the position to (0, 0) and remove the overlay texture
     pub fn reset(&self) {
-        self.set_position(0, 0);
-        _ = self.set_overlay_texture(None);
+        self.reposition(0, 0);
+        _ = self.commit_overlay_texture(None);
     }
 }
 

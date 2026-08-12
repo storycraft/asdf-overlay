@@ -106,8 +106,7 @@ impl OverlayTextureSlot {
         self.inner.read()
     }
 
-    #[doc(hidden)]
-    pub fn set_updated(&self) {
+    pub fn invalidate(&self) {
         self.updated.store(true, Ordering::Relaxed);
     }
 

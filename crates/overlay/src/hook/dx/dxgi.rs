@@ -108,7 +108,7 @@ fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
     let id = swapchain.as_raw() as u64;
 
     Surfaces::state(id, |state| {
-        state.set_size(width, height);
+        state.resize(width, height);
 
         OverlayEventSink::emit(Event::Surface {
             id,
