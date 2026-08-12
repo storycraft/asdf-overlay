@@ -28,12 +28,14 @@ async function createOverlayWindow(pid: number) {
     new Promise<number>(resolve => overlay.event.once(
       'window_added',
       (id, _width, _height) => {
+        console.debug('window found id:', id);
         resolve(id);
       }),
     ),
     new Promise<[bigint, SurfaceInfo]>(resolve => overlay.event.once(
       'surface_added',
       (id, _width, _height, info) => {
+        console.debug('surface found id:', id, 'info:', info);
         resolve([id, info]);
       }),
     )
