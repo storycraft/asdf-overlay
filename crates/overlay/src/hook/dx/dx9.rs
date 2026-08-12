@@ -1,4 +1,5 @@
 use core::{ffi::c_void, ptr};
+use std::thread;
 
 use anyhow::Context;
 use asdf_overlay_event::{Event, RenderApi, SurfaceEvent, SurfaceInfo};
@@ -214,7 +215,11 @@ fn post_reset(device: &IDirect3DDevice9) {
 
 fn cleanup_renderer(device: usize) {
     info!("dx9 renderer cleanup");
-    Surfaces::cleanup_state(device as _);
+
+    // HACK:: workaround for recursive lock
+    thread::spawn(move || {
+        Surfaces::cleanup_state(device as _);
+    });
 }
 
 fn reset_renderer(device: usize) {
