@@ -66,10 +66,10 @@ pub enum CursorEvent {
 pub enum CursorInputState {
     /// Button is pressed down.
     Pressed {
-        /// Whether if this click should be treated as part of last click of double clicking.
+        /// Consecutive click count.
         ///
         /// The actual timing is platform and user setting dependent.
-        double_click: bool,
+        click_count: u32,
     },
 
     /// Button is released.
@@ -250,7 +250,6 @@ pub struct ImeCandidateList {
 bitflags::bitflags! {
     /// Describe IME conversion modes.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     pub struct ConversionMode: u16 {
         /// Composing in native language of the IME.
         const NATIVE = 1;
@@ -268,3 +267,28 @@ bitflags::bitflags! {
         const KATAKANA = 1 << 4;
     }
 }
+
+#[cfg(feature = "serde")]
+const _: () = {
+    use serde::{Deserialize, Serialize};
+
+    impl Serialize for ConversionMode {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_u16(self.bits())
+        }
+    }
+
+    impl<'de> Deserialize<'de> for ConversionMode {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            Ok(ConversionMode::from_bits_retain(u16::deserialize(
+                deserializer,
+            )?))
+        }
+    }
+};

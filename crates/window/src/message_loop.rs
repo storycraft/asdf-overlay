@@ -49,7 +49,7 @@ impl MessageLoopState {
                 return;
             };
 
-            ShowCursor(true);
+            ShowCursor(false);
             SetCursor(Some(HCURSOR(blocking_state.prev_cursor as _)));
         });
     }

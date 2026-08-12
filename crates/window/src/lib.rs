@@ -104,6 +104,10 @@ impl Backends {
         Self::get().set_blocking_cursor(cursor);
     }
 
+    pub fn reset(&self) {
+        Self::get().reset();
+    }
+
     #[inline]
     fn get() -> &'static GlobalState {
         GLOBAL.get().expect("Backends is not initialized")

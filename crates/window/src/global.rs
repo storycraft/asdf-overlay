@@ -178,6 +178,15 @@ impl GlobalState {
     pub(crate) fn emit(&self, event: Event) {
         _ = self.event_tx.send(event);
     }
+
+    pub(crate) fn reset(&self) {
+        self.unblock_input();
+        for state in self.windows.iter() {
+            state.reset();
+        }
+
+        self.set_blocking_cursor(Some(default_cursor()));
+    }
 }
 
 pub(crate) struct InputBlockingState {

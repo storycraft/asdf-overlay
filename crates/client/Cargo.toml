@@ -15,11 +15,11 @@ surface = ["dep:windows"]
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
-asdf-overlay-event = { workspace = true, features = ["bincode"] }
 tokio = { workspace = true, features = ["macros", "time", "net"] }
 
-bincode = "2.0.1"
-scc = "3.3.3"
+serde = "1.0.229"
+rmp-serde = "1.3.1"
+dashmap = "6.1.0"
 ntapi = "0.4.1"
 anyhow = "1.0.97"
 scopeguard = "1.2.0"

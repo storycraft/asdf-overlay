@@ -12,7 +12,7 @@ mod detours {
     include!("./pregenerated-x64.rs");
 }
 
-use tracing::debug;
+use tracing::{Level, debug};
 
 use core::{
     error::Error,
@@ -31,7 +31,7 @@ impl<F: Copy> DetourHook<F> {
     ///
     /// # Safety
     /// func and detour should be valid function pointers with same signature.
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::TRACE)]
     pub unsafe fn attach(mut func: F, mut detour: F) -> DetourResult<Self>
     where
         F: Debug,

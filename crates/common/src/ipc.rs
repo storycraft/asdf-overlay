@@ -1,10 +1,11 @@
 //! Common types and utilities for IPC communication between the overlay client and server.
 
-use asdf_overlay_event::OverlayEvent;
-use bincode::{Decode, Encode};
+use core::error::Error;
+
+use serde::{Deserialize, Serialize};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::request::Request;
+use crate::{event::OverlayEvent, request::Request};
 
 /// Creates a unique IPC address for the given process ID and module handle.
 /// Because there can be multiple overlays in the same process, we need to distinguish with the module handle.
@@ -15,7 +16,7 @@ pub fn create_ipc_addr(pid: u32, module_handle: u32) -> String {
 }
 
 /// Describes a request sent from the client to the server.
-#[derive(Encode, Decode)]
+#[derive(Serialize, Deserialize)]
 pub struct ClientRequest {
     /// Unique identifier for matching responses.
     pub id: u32,
@@ -24,21 +25,24 @@ pub struct ClientRequest {
     pub req: Request,
 }
 
-/// Describes a response sent from server to client.
-#[derive(Encode, Decode)]
-pub struct ServerResponse {
-    /// Unique identifier matching the request.
-    pub id: u32,
+/// Common ipc result type.
+#[derive(Serialize, Deserialize)]
+pub enum ResponseResult<T> {
+    Ok(T),
+    Err(String),
+}
 
-    /// The raw response data.
-    pub data: Vec<u8>,
+impl<E: Error, T> From<E> for ResponseResult<T> {
+    fn from(err: E) -> Self {
+        ResponseResult::Err(err.to_string())
+    }
 }
 
 /// Describes a packet sent from server to client.
-#[derive(Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ServerToClientPacket {
     /// The packet is a response to a specific request.
-    Response(ServerResponse),
+    Response { id: u32, payload: Vec<u8> },
 
     /// The packet is an event notification.
     Event(OverlayEvent),

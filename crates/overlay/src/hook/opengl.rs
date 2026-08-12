@@ -4,15 +4,15 @@ use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
+use asdf_overlay_event::{RenderApi, SurfaceInfo};
 use asdf_overlay_hook::DetourHook;
-use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, error, trace};
+use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND, LUID},
         Graphics::{
-            Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
+            Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
             Gdi::{HDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
@@ -24,13 +24,14 @@ use windows::{
 };
 
 use crate::{
-    backend::{Backends, WindowBackend, render::Renderer},
     event_sink::OverlayEventSink,
     gl,
     hook::opengl::data::with_renderer_gl_data,
+    interop::DxInterop,
     renderer::opengl::OpenglRenderer,
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
-    util::find_adapter_by_luid,
+    util::{find_adapter_by_luid, get_client_size},
     wgl,
 };
 
@@ -42,14 +43,13 @@ struct Hook {
 static HOOK: OnceCell<Hook> = OnceCell::new();
 
 struct GlData {
-    hglrc: u32,
-    hwnd: u32,
+    hglrc: usize,
     renderer: Option<OpenglRenderer>,
 }
-// HDC -> GlData
-static MAP: Lazy<IntDashMap<u32, GlData>> = Lazy::new(IntDashMap::default);
+// hdc -> GlData
+static MAP: Lazy<IntDashMap<u64, GlData>> = Lazy::new(IntDashMap::default);
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 pub fn hook(dummy_hwnd: HWND) {
     fn inner() -> anyhow::Result<()> {
         let addrs = get_wgl_addrs().context("failed to load opengl addrs")?;
@@ -77,30 +77,29 @@ pub fn hook(dummy_hwnd: HWND) {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
     trace!("wglDeleteContext called");
 
     let current_hdc = unsafe { wglGetCurrentDC() };
     let current_hglrc = unsafe { wglGetCurrentContext() };
     let mut renderer_cleanup = false;
-    MAP.retain(|&hdc, gl_data| {
-        if gl_data.hglrc != hglrc.0 as u32 {
+    MAP.retain(|&key, gl_data| {
+        if gl_data.hglrc != hglrc.0 as usize {
             return true;
         }
         if !renderer_cleanup {
             renderer_cleanup = true;
         }
 
-        debug!(
-            "gl renderer cleanup hdc: {hdc:x} hwnd: {:x} hglrc: {:x}",
-            gl_data.hwnd, gl_data.hglrc
-        );
+        info!("gl renderer cleanup");
+        Surfaces::cleanup_state(key);
         unsafe {
-            _ = wglMakeCurrent(HDC(hdc as _), HGLRC(gl_data.hglrc as _));
+            _ = wglMakeCurrent(HDC(key as _), HGLRC(gl_data.hglrc as _));
         }
         false
     });
+
     if renderer_cleanup {
         unsafe {
             _ = wglMakeCurrent(current_hdc, current_hglrc);
@@ -112,20 +111,10 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
 fn draw_overlay(hdc: HDC) {
     #[inline]
-    fn inner(backend: &WindowBackend, renderer: &mut Option<OpenglRenderer>) {
-        let mut render = backend.render.lock();
-        match render.renderer {
-            Some(Renderer::Opengl) => {}
-            Some(_) => {
-                trace!("ignoring opengl rendering");
-                return;
-            }
-            None => {
-                debug!("Found opengl window");
-                render.renderer = Some(Renderer::Opengl);
-                // wait next swap for possible dxgi swapchain check
-                return;
-            }
+    fn inner(state: &SurfaceState, renderer: &mut Option<OpenglRenderer>) {
+        if state.info.api != RenderApi::Opengl {
+            trace!("ignoring opengl rendering");
+            return;
         }
 
         trace!("using opengl renderer");
@@ -133,7 +122,7 @@ fn draw_overlay(hdc: HDC) {
             let renderer = match renderer {
                 Some(renderer) => renderer,
                 None => {
-                    debug!("initializing opengl renderer");
+                    info!("initializing opengl renderer");
                     renderer.insert(match OpenglRenderer::new() {
                         Ok(renderer) => renderer,
                         Err(err) => {
@@ -144,22 +133,21 @@ fn draw_overlay(hdc: HDC) {
                 }
             };
 
-            let Some(surface) = render.surface.get() else {
+            let Some(surface_size) = state.texture_size() else {
                 return;
             };
 
-            let size = surface.size();
-            let position = render.position;
-            let screen = render.window_size;
-            if render.surface.invalidate_update()
+            let position = state.position();
+            let screen = state.size();
+            if state.texture.take_update()
                 && let Err(err) =
-                    renderer.update_texture(render.surface.get().map(|surface| surface.texture()))
+                    renderer.update_texture(&state.interop.device, state.texture.get().as_ref())
             {
                 error!("failed to update opengl texture. err: {err:?}");
                 return;
             }
 
-            let _res = renderer.draw(position, size, screen);
+            let _res = renderer.draw(position, surface_size, screen);
             trace!("opengl render: {:?}", _res);
         })
     }
@@ -176,45 +164,24 @@ fn draw_overlay(hdc: HDC) {
         }
     }
 
-    let data = &mut *match MAP.entry(hdc.0 as u32) {
-        Entry::Occupied(entry) => entry.into_ref(),
-        Entry::Vacant(entry) => {
-            let hglrc = unsafe { wglGetCurrentContext() };
-            if hglrc.is_invalid() {
-                return;
-            }
-
-            let hwnd = unsafe { WindowFromDC(hdc) };
-            if hwnd.is_invalid() {
-                return;
-            }
-
-            entry.insert(GlData {
-                hglrc: hglrc.0 as _,
-                hwnd: hwnd.0 as _,
+    let key = hdc.0 as u64;
+    let mut data = {
+        if let Some(r) = MAP.get_mut(&key) {
+            r
+        } else {
+            MAP.entry(key).or_insert(GlData {
+                hglrc: 0,
                 renderer: None,
             })
         }
     };
+    data.hglrc = unsafe { wglGetCurrentContext() }.0 as usize;
 
-    let res = Backends::with_or_init_backend(
-        data.hwnd,
-        || {
-            let mut luid = LUID::default();
-            unsafe {
-                _ = gl::GetError();
-                gl::GetUnsignedBytevEXT(gl::DEVICE_LUID_EXT, &mut luid as *mut _ as _);
-                if gl::GetError() != gl::NO_ERROR {
-                    return None;
-                }
-            }
-
-            let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>().ok()? };
-            find_adapter_by_luid(&factory, luid)
-        },
+    let res = Surfaces::with(
+        key,
+        || setup_fn(unsafe { WindowFromDC(hdc) }),
         |backend| inner(backend, &mut data.renderer),
     );
-
     match res {
         Ok(_) => {}
         Err(_err) => {
@@ -223,7 +190,23 @@ fn draw_overlay(hdc: HDC) {
     }
 }
 
-#[tracing::instrument]
+fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
+    let size = get_client_size(hwnd).unwrap_or_default();
+    let interop = DxInterop::new(get_dxgi_adapter().as_ref())?;
+    let gpu_id = interop.gpu_id;
+
+    SurfaceState::new(
+        interop,
+        size,
+        SurfaceInfo {
+            api: RenderApi::Opengl,
+            window_id: Some(hwnd.0 as _),
+            gpu_id,
+        },
+    )
+}
+
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_wgl_swap_buffers(hdc: HDC) -> BOOL {
     trace!("WglSwapBuffers called");
 
@@ -240,7 +223,7 @@ struct WglAddrs {
     swap_buffers: WglSwapBuffersFn,
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     // Grab a handle to opengl32.dll
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
@@ -266,11 +249,11 @@ fn get_wgl_addrs() -> anyhow::Result<WglAddrs> {
     })
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn setup_gl() -> anyhow::Result<()> {
     let opengl32module = unsafe { GetModuleHandleA(s!("opengl32.dll"))? };
 
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::TRACE)]
     fn loader(module: HMODULE, s: &str) -> *const c_void {
         let name = CString::new(s).unwrap();
 
@@ -292,4 +275,18 @@ fn setup_gl() -> anyhow::Result<()> {
     gl::load_with(|s| loader(opengl32module, s));
 
     Ok(())
+}
+
+fn get_dxgi_adapter() -> Option<IDXGIAdapter> {
+    let mut luid = LUID::default();
+    unsafe {
+        _ = gl::GetError();
+        gl::GetUnsignedBytevEXT(gl::DEVICE_LUID_EXT, &mut luid as *mut _ as _);
+        if gl::GetError() != gl::NO_ERROR {
+            return None;
+        }
+    }
+
+    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>().ok()? };
+    find_adapter_by_luid(&factory, luid)
 }

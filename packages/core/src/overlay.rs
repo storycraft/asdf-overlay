@@ -1,23 +1,22 @@
 use core::time::Duration;
 use std::path::PathBuf;
 
-use crate::PercentLength;
 use crate::event::input::Cursor;
 use crate::event::{create_emit_tsfn, event_task};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
-use asdf_overlay_client::common::request::WindowRequestItem;
-use asdf_overlay_client::common::{self, request};
+use asdf_overlay_client::common;
+use asdf_overlay_client::common::request::Requestable;
+use asdf_overlay_client::common::request::surface::{self, SetPosition, SurfaceRequestable};
+use asdf_overlay_client::common::request::window::WindowRequestable;
 use asdf_overlay_client::{
     OverlayDll,
     client::IpcClientConn,
-    common::request::{
-        BlockInput, ListenInput, SetAnchor, SetBlockingCursor, SetMargin, SetPosition,
-    },
+    common::request::{BlockInput, SetBlockingCursor, window::ListenInput},
     inject,
 };
 use napi::bindgen_prelude::{
-    Function, JsObjectValue, Object, ObjectFinalize, ObjectRef, PromiseRaw, This,
+    BigInt, Function, JsObjectValue, Object, ObjectFinalize, ObjectRef, PromiseRaw, This,
 };
 use napi::{Env, JsValue};
 use napi_derive::napi;
@@ -82,99 +81,79 @@ impl Overlay {
         Ok(self.emitter_ref.lock().get_value(env)?)
     }
 
-    async fn window_request(&self, id: u32, request: impl WindowRequestItem) -> anyhow::Result<()> {
-        self.ipc().await?.window(id).request(request).await?;
-        Ok(())
+    async fn request<T: Requestable>(&self, request: T) -> anyhow::Result<T::Response> {
+        self.ipc().await?.request(request).await
+    }
+
+    async fn window_request<T: WindowRequestable>(
+        &self,
+        id: u32,
+        request: T,
+    ) -> anyhow::Result<T::Response> {
+        self.ipc().await?.window(id).request(request).await
+    }
+
+    async fn surface_request<T: SurfaceRequestable>(
+        &self,
+        id: BigInt,
+        request: T,
+    ) -> anyhow::Result<T::Response> {
+        self.ipc()
+            .await?
+            .surface(id.get_u64().1)
+            .request(request)
+            .await
     }
 
     /// Update overlay surface.
     #[napi]
-    pub async fn update_handle(&self, id: u32, update: UpdateSharedHandle) -> anyhow::Result<()> {
-        self.window_request(id, Into::<request::UpdateSharedHandle>::into(update))
-            .await
+    pub async fn update_handle(
+        &self,
+        id: BigInt,
+        update: UpdateSharedHandle,
+    ) -> anyhow::Result<()> {
+        self.surface_request(id, Into::<surface::UpdateSharedHandle>::into(update))
+            .await?;
+
+        Ok(())
     }
 
     /// Update overlay position relative to window
     #[napi]
-    pub async fn set_position(
-        &self,
-        id: u32,
-        x: PercentLength,
-        y: PercentLength,
-    ) -> anyhow::Result<()> {
-        self.window_request(
-            id,
-            SetPosition {
-                x: x.into(),
-                y: y.into(),
-            },
-        )
-        .await
-    }
+    pub async fn set_position(&self, id: BigInt, x: i32, y: i32) -> anyhow::Result<()> {
+        self.surface_request(id, SetPosition { x, y }).await?;
 
-    /// Update overlay anchor
-    #[napi]
-    pub async fn set_anchor(
-        &self,
-        id: u32,
-        x: PercentLength,
-        y: PercentLength,
-    ) -> anyhow::Result<()> {
-        self.window_request(
-            id,
-            SetAnchor {
-                x: x.into(),
-                y: y.into(),
-            },
-        )
-        .await
-    }
-
-    /// Update overlay margin
-    #[napi]
-    pub async fn set_margin(
-        &self,
-        id: u32,
-        top: PercentLength,
-        right: PercentLength,
-        bottom: PercentLength,
-        left: PercentLength,
-    ) -> anyhow::Result<()> {
-        self.window_request(
-            id,
-            SetMargin {
-                top: top.into(),
-                right: right.into(),
-                bottom: bottom.into(),
-                left: left.into(),
-            },
-        )
-        .await
+        Ok(())
     }
 
     /// Set blocking cursor.
     #[napi]
-    pub async fn set_blocking_cursor(&self, id: u32, cursor: Option<Cursor>) -> anyhow::Result<()> {
+    pub async fn set_blocking_cursor(&self, cursor: Option<Cursor>) -> anyhow::Result<()> {
         let cursor = cursor
             .map(|cursor| {
                 common::cursor::Cursor::from_u32(cursor as _).context("invalid cursor value")
             })
             .transpose()?;
 
-        self.window_request(id, SetBlockingCursor { cursor }).await
+        self.request(SetBlockingCursor { cursor }).await?;
+        Ok(())
     }
 
     /// Listen to window input without blocking
     #[napi]
     pub async fn listen_input(&self, id: u32, cursor: bool, keyboard: bool) -> anyhow::Result<()> {
         self.window_request(id, ListenInput { cursor, keyboard })
-            .await
+            .await?;
+
+        Ok(())
     }
 
     /// Block window input and listen them.
     #[napi]
-    pub async fn block_input(&self, id: u32, block: bool) -> anyhow::Result<()> {
-        self.window_request(id, BlockInput { block }).await
+    pub async fn block_input(&self, block: bool) -> anyhow::Result<()> {
+        self.request(BlockInput { block }).await?;
+
+        Ok(())
     }
 
     /// Detach and destroy overlay

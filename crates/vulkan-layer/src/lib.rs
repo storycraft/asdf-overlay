@@ -5,8 +5,8 @@
 //!
 //! A separated vulkan layer implementation is provided to selectively enable vulkan overlay rendering.
 
-pub mod device;
-pub mod instance;
+mod device;
+mod instance;
 mod map;
 mod renderer;
 
@@ -14,7 +14,7 @@ use core::ffi::c_void;
 
 use ash::vk::{self, PFN_vkGetDeviceProcAddr, PFN_vkGetInstanceProcAddr, StructureType};
 
-use tracing::{debug, trace};
+use tracing::{Level, debug, trace};
 
 /// Vulkan layer interface structure for negotiating the layer interface version and getting function pointers.
 #[repr(C)]
@@ -41,7 +41,7 @@ struct VkNegotiateLayerInterface {
 }
 
 /// Entry point for the Vulkan loader to negotiate the layer interface version and get function pointers.
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 #[unsafe(export_name = "vkNegotiateLoaderLayerInterfaceVersion")]
 extern "system" fn layer_negotiate_loader_layer_interface_version(
     version: *mut VkNegotiateLayerInterface,

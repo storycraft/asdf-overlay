@@ -3,9 +3,10 @@ pub mod callback;
 use core::{ffi::c_void, ptr};
 
 use anyhow::Context;
+use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
-use tracing::{debug, error, trace};
+use tracing::{Level, debug, error, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND},
@@ -21,8 +22,7 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIFactory4, IDXGISwapChain1,
-                IDXGISwapChain3,
+                IDXGIFactory1, IDXGISwapChain1, IDXGISwapChain3,
             },
         },
     },
@@ -30,25 +30,20 @@ use windows::{
 };
 
 use crate::{
-    backend::Backends,
     event_sink::OverlayEventSink,
     hook::dx::{dx11, dx12},
+    surface::Surfaces,
 };
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn draw_overlay(swapchain: &IDXGISwapChain1) {
-    let Ok(hwnd) = (unsafe { swapchain.GetHwnd() }) else {
-        return;
-    };
+    // use swapchain pointer as unique identifier
+    let id = swapchain.as_raw() as u64;
 
     if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
-        if let Err(_err) = Backends::with_or_init_backend(
-            hwnd.0 as _,
-            || {
-                let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
-                let luid = unsafe { device.GetAdapterLuid() };
-                unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
-            },
+        if let Err(_err) = Surfaces::with(
+            id,
+            || dx12::setup_fn(&device, swapchain),
             |backend| {
                 dx12::draw_overlay(
                     backend,
@@ -60,9 +55,9 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
             error!("Backends::with_or_init_backend failed. err: {:?}", _err);
         }
     } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() }
-        && let Err(_err) = Backends::with_or_init_backend(
-            hwnd.0 as _,
-            || unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() },
+        && let Err(_err) = Surfaces::with(
+            id,
+            || dx11::setup_fn(&device, swapchain),
             |backend| {
                 dx11::draw_overlay(backend, &device, swapchain);
             },
@@ -72,7 +67,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain1) {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present(
     this: *mut c_void,
     sync_interval: u32,
@@ -88,7 +83,7 @@ extern "system" fn hooked_present(
     unsafe { HOOK.present.wait().original_fn()(this, sync_interval, flags) }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_present1(
     this: *mut c_void,
     sync_interval: u32,
@@ -109,7 +104,20 @@ fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     dx12::resize_swapchain(swapchain);
 }
 
-#[tracing::instrument]
+fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
+    let id = swapchain.as_raw() as u64;
+
+    Surfaces::state(id, |state| {
+        state.resize(width, height);
+
+        OverlayEventSink::emit(Event::Surface {
+            id,
+            event: SurfaceEvent::Resized { width, height },
+        });
+    });
+}
+
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_resize_buffers(
     this: *mut c_void,
     buffer_count: u32,
@@ -123,12 +131,18 @@ extern "system" fn hooked_resize_buffers(
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
     resize_swapchain(swapchain);
 
-    unsafe {
+    let res = unsafe {
         HOOK.resize_buffers.wait().original_fn()(this, buffer_count, width, height, format, flags)
+    };
+    if res.is_err() {
+        return res;
     }
+
+    post_resize_swapchain(swapchain, width, height);
+    res
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_resize_buffers1(
     this: *mut c_void,
     buffer_count: u32,
@@ -144,7 +158,7 @@ extern "system" fn hooked_resize_buffers1(
     let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
     resize_swapchain(swapchain);
 
-    unsafe {
+    let res = unsafe {
         HOOK.resize_buffers1.wait().original_fn()(
             this,
             buffer_count,
@@ -155,7 +169,13 @@ extern "system" fn hooked_resize_buffers1(
             creation_node_mask,
             present_queue,
         )
+    };
+    if res.is_err() {
+        return res;
     }
+
+    post_resize_swapchain(swapchain, width, height);
+    res
 }
 
 pub type PresentFn = unsafe extern "system" fn(*mut c_void, u32, DXGI_PRESENT) -> HRESULT;
@@ -229,7 +249,7 @@ pub struct DxgiFunctions {
 }
 
 /// Get pointer to dxgi functions
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 pub fn get_addr(dummy_hwnd: HWND) -> anyhow::Result<DxgiFunctions> {
     unsafe {
         let factory = CreateDXGIFactory1::<IDXGIFactory1>()?;

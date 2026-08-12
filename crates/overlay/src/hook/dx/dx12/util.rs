@@ -1,3 +1,4 @@
+use tracing::Level;
 use windows::{
     Win32::Graphics::Direct3D12::{ID3D12CommandList, ID3D12CommandQueue},
     core::Interface,
@@ -5,7 +6,7 @@ use windows::{
 
 use crate::hook::dx::dx12::HOOK;
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 pub unsafe fn original_execute_command_lists(
     queue: &ID3D12CommandQueue,
     command_lists: &[Option<ID3D12CommandList>],

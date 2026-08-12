@@ -1,15 +1,21 @@
 pub mod ime;
 pub mod input;
+pub mod surface;
+pub mod tracing;
 
 use anyhow::Context;
 use asdf_overlay_client::client::IpcClientEventStream;
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
+use asdf_overlay_client::common::event::surface::SurfaceEvent;
+use asdf_overlay_client::common::event::tracing::TracingEvent;
+use asdf_overlay_client::common::event::{OverlayEvent, window::WindowEvent};
 use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},
 };
 
-use crate::{GpuLuid, event::input::InputEvent};
+use crate::event::input::InputEvent;
+use crate::event::surface::SurfaceInfo;
+use crate::event::tracing::TracingMetadata;
 
 pub(crate) struct VarArgs(
     Box<dyn FnOnce(napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>>>,
@@ -63,32 +69,58 @@ pub(crate) async fn event_task(mut stream: IpcClientEventStream, emit_tsfn: Emit
     while let Some(event) = stream.recv().await {
         match event {
             OverlayEvent::Window { id, event } => match event {
-                WindowEvent::Added {
-                    width,
-                    height,
-                    gpu_id,
-                } => {
-                    emitter.emit(("added", id, width, height, GpuLuid::from(gpu_id)));
+                WindowEvent::Added { width, height } => {
+                    emitter.emit(("window_added", id, width, height));
                 }
 
                 WindowEvent::Resized { width, height } => {
-                    emitter.emit(("resized", id, width, height));
+                    emitter.emit(("window_resized", id, width, height));
                 }
                 WindowEvent::Input(input) => match InputEvent::from(input) {
                     InputEvent::Cursor { event } => {
-                        emitter.emit(("cursor_input", id, event));
+                        emitter.emit(("window_cursor_input", id, event));
                     }
                     InputEvent::Keyboard { event } => {
-                        emitter.emit(("keyboard_input", id, event));
+                        emitter.emit(("window_keyboard_input", id, event));
                     }
                 },
 
-                WindowEvent::InputBlockingEnded => {
-                    emitter.emit(("input_blocking_ended", id));
+                WindowEvent::Destroyed => {
+                    emitter.emit(("window_destroyed", id));
+                }
+            },
+
+            OverlayEvent::InputBlockingEnded => {
+                emitter.emit(("input_blocking_ended",));
+            }
+
+            OverlayEvent::Surface { id, event } => match event {
+                SurfaceEvent::Added {
+                    width,
+                    height,
+                    info,
+                } => {
+                    emitter.emit(("surface_added", id, width, height, SurfaceInfo::from(info)));
                 }
 
-                WindowEvent::Destroyed => {
-                    emitter.emit(("destroyed", id));
+                SurfaceEvent::Resized { width, height } => {
+                    emitter.emit(("surface_resized", id, width, height));
+                }
+
+                SurfaceEvent::Destroyed => {
+                    emitter.emit(("surface_destroyed", id));
+                }
+            },
+
+            OverlayEvent::Tracing(event) => match event {
+                TracingEvent::Enter(metadata) => {
+                    emitter.emit(("tracing_enter", TracingMetadata::from(metadata)));
+                }
+                TracingEvent::Event { metadata, message } => {
+                    emitter.emit(("tracing_event", TracingMetadata::from(metadata), message));
+                }
+                TracingEvent::Exit => {
+                    emitter.emit(("tracing_exit",));
                 }
             },
         }

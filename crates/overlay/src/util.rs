@@ -1,20 +1,21 @@
 //! Common utilies used in many modules internally.
 
 use core::mem::{self, ManuallyDrop};
-use std::ffi::CString;
 
-use anyhow::bail;
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, LUID, RECT, WPARAM},
+        Foundation::{HWND, LPARAM, LUID, RECT},
         Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
-        UI::WindowsAndMessaging::{
-            CS_OWNDC, CreateWindowExA, DefWindowProcW, DestroyWindow, GetClientRect, HWND_MESSAGE,
-            RegisterClassA, UnregisterClassA, WINDOW_EX_STYLE, WNDCLASSA, WS_POPUP,
+        UI::{
+            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, SetThreadDpiAwarenessContext},
+            WindowsAndMessaging::{
+                CreateDialogIndirectParamA, DLGITEMTEMPLATE, DLGTEMPLATE, DestroyWindow,
+                GetClientRect,
+            },
         },
     },
-    core::{Interface, PCSTR, s},
+    core::Interface,
 };
 
 // Cloning COM objects for ManuallyDrop<Option<T>> never decrease ref count and leak wtf
@@ -23,60 +24,32 @@ pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Opti
     unsafe { mem::transmute_copy(inf) }
 }
 
-/// Get Client area size of the window.
-pub fn get_client_size(win: HWND) -> anyhow::Result<(u32, u32)> {
-    let mut rect = RECT::default();
-    unsafe { GetClientRect(win, &mut rect)? };
+/// Get DPI aware client area size of the window.
+pub fn get_client_size(hwnd: HWND) -> anyhow::Result<(u32, u32)> {
+    unsafe {
+        let old_context = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+        defer!({
+            SetThreadDpiAwarenessContext(old_context);
+        });
 
-    Ok((rect.right as u32, rect.bottom as u32))
+        let mut rect = RECT::default();
+        GetClientRect(hwnd, &mut rect)?;
+        Ok((rect.right as u32, rect.bottom as u32))
+    }
 }
 
 /// Create dummy class and window for various operation.
 ///
 /// Creating another dummy windows in closures fail.
-pub fn with_dummy_hwnd<R>(hinstance: HINSTANCE, f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
-    extern "system" fn window_proc(
-        hwnd: HWND,
-        msg: u32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> LRESULT {
-        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-    }
-
+pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
+    let template = (DLGTEMPLATE::default(), [DLGITEMTEMPLATE::default(); 3]);
     unsafe {
-        let class_name = CString::new(format!(
-            "asdf-overlay-{} dummy window class",
-            hinstance.0 as usize
-        ))
-        .unwrap();
-        if RegisterClassA(&WNDCLASSA {
-            style: CS_OWNDC,
-            hInstance: hinstance,
-            lpszClassName: PCSTR(class_name.as_ptr() as _),
-            lpfnWndProc: Some(window_proc),
-            ..Default::default()
-        }) == 0
-        {
-            bail!("RegisterClassA call failed");
-        }
-        defer!({
-            _ = UnregisterClassA(PCSTR(class_name.as_ptr() as _), Some(hinstance));
-        });
-
-        let hwnd = CreateWindowExA(
-            WINDOW_EX_STYLE(0),
-            PCSTR(class_name.as_ptr() as _),
-            s!("asdf-overlay dummy window"),
-            WS_POPUP,
-            0,
-            0,
-            2,
-            2,
-            Some(HWND_MESSAGE),
+        let hwnd = CreateDialogIndirectParamA(
+            None,
+            (&raw const template).cast::<DLGTEMPLATE>(),
             None,
             None,
-            None,
+            LPARAM(0),
         )?;
         defer!({
             _ = DestroyWindow(hwnd);

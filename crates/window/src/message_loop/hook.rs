@@ -10,7 +10,7 @@ use asdf_overlay_window_event::{
     },
 };
 use once_cell::sync::OnceCell;
-use tracing::{debug, trace};
+use tracing::{Level, debug, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
@@ -23,8 +23,8 @@ use windows::{
                 TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
-                self as msg, CallWindowProcA, CallWindowProcW, GA_ROOT, GetAncestor, MSG,
-                PEEK_MESSAGE_REMOVE_TYPE, PM_REMOVE, TranslateMessage,
+                self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
+                PM_REMOVE, TranslateMessage,
             },
         },
     },
@@ -174,7 +174,7 @@ fn peek_message<const UNICODE: bool>(
     original_read
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_a(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -185,7 +185,7 @@ extern "system" fn hooked_get_message_a(
     get_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_w(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -196,7 +196,7 @@ extern "system" fn hooked_get_message_w(
     get_message::<true>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_message_pos() -> u32 {
     trace!("GetMessagePos called");
     if !Backends::get().input_blocked() {
@@ -206,7 +206,7 @@ extern "system" fn hooked_get_message_pos() -> u32 {
     0
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_peek_message_a(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -218,7 +218,7 @@ extern "system" fn hooked_peek_message_a(
     peek_message::<false>(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax, wremovemsg)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_peek_message_w(
     lpmsg: *mut MSG,
     hwnd: HWND,
@@ -241,9 +241,8 @@ fn read_message<const UNICODE: bool>(msg: &MSG) {
     }
 
     backends.message_loop_state(id, move |msg_loop_state| {
-        let root_hwnd = unsafe { GetAncestor(msg.hwnd, GA_ROOT) };
-        if !root_hwnd.is_invalid() {
-            let window_id = root_hwnd.0 as _;
+        if !msg.hwnd.is_invalid() {
+            let window_id = msg.hwnd.0 as _;
 
             let input_blocked = backends.input_blocked();
             let input_flags = backends.window_state(window_id, |state| state.input_flags());
@@ -276,7 +275,7 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
         // Call Default WndProc so non client area works.
         if UNICODE {
             CallWindowProcW(
-                Some(DefWindowProcA),
+                Some(DefWindowProcW),
                 msg.hwnd,
                 msg.message,
                 msg.wParam,
@@ -284,7 +283,7 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
             );
         } else {
             CallWindowProcA(
-                Some(DefWindowProcW),
+                Some(DefWindowProcA),
                 msg.hwnd,
                 msg.message,
                 msg.wParam,
@@ -396,11 +395,11 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
     };
 
     let state = if pressed {
-        let double_click = Backends::get().window_state(hwnd, |state| {
-            state.check_double_click(index, Instant::now())
+        let click_count = Backends::get().window_state(hwnd, |state| {
+            state.get_click_count(pos.x, pos.y, index, Instant::now())
         });
 
-        CursorInputState::Pressed { double_click }
+        CursorInputState::Pressed { click_count }
     } else {
         CursorInputState::Released
     };

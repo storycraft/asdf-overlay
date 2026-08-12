@@ -1,12 +1,12 @@
 mod sync;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
 use core::{
     mem::ManuallyDrop,
     slice::{self},
 };
 use sync::RendererFence;
+use tracing::Level;
 use windows::{
     Win32::{
         Foundation::{HANDLE, RECT},
@@ -21,7 +21,7 @@ use windows::{
 
 use crate::{
     hook::util::original_execute_command_lists, renderer::dx::shaders,
-    texture::OverlayTextureState, util::wrap_com_manually_drop,
+    surface::SharedTextureHandle, texture::OverlayTextureState, util::wrap_com_manually_drop,
 };
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
@@ -124,7 +124,7 @@ pub struct Dx12Renderer {
 }
 
 impl Dx12Renderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new(device: &ID3D12Device, swapchain: &IDXGISwapChain) -> anyhow::Result<Self> {
         unsafe {
             let swapchain_desc = swapchain.GetDesc()?;
@@ -205,12 +205,12 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
+    pub fn update_texture(&mut self, shared: Option<SharedTextureHandle>) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -232,12 +232,14 @@ impl Dx12Renderer {
             .get_or_create(|handle| {
                 let mut texture = None;
                 unsafe {
-                    device.OpenSharedHandle::<ID3D12Resource>(
-                        HANDLE(handle.get() as _),
-                        &mut texture,
-                    )?;
+                    device
+                        .OpenSharedHandle::<ID3D12Resource>(
+                            HANDLE(handle.as_raw() as _),
+                            &mut texture,
+                        )
+                        .context("cannot open shared texture")?;
                 }
-                let texture = texture.context("cannot open shared texture")?;
+                let texture = texture.unwrap();
 
                 let desc = unsafe { texture.GetDesc() };
                 if desc.Width == 0 || desc.Height == 0 {

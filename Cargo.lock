@@ -309,20 +309,15 @@ dependencies = [
  "anyhow",
  "arc-swap",
  "array-util",
- "asdf-overlay-common",
  "asdf-overlay-event",
  "asdf-overlay-hook",
- "bitflags 2.13.1",
- "bytemuck",
  "dashmap",
  "gl_generator",
  "nohash-hasher",
  "once_cell",
  "parking_lot",
  "scopeguard",
- "sync_wrapper",
  "tracing",
- "utf16string",
  "windows",
 ]
 
@@ -332,13 +327,13 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
- "asdf-overlay-event",
- "bincode",
  "bytemuck",
+ "dashmap",
  "goblin",
  "ntapi",
- "scc",
+ "rmp-serde",
  "scopeguard",
+ "serde",
  "tokio",
  "windows",
 ]
@@ -349,14 +344,16 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-event",
+ "asdf-overlay-window-event",
  "async-stream",
- "bincode",
  "derive_more",
  "num-derive",
  "num-traits",
  "parking_lot",
+ "rmp-serde",
  "rustc-hash 2.1.3",
  "scopeguard",
+ "serde",
  "tokio",
  "winapi",
 ]
@@ -366,13 +363,15 @@ name = "asdf-overlay-dll"
 version = "1.2.5"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "asdf-overlay",
  "asdf-overlay-common",
- "asdf-overlay-event",
  "asdf-overlay-vulkan-layer",
- "bincode",
+ "asdf-overlay-window",
  "parking_lot",
+ "rmp-serde",
  "scopeguard",
+ "serde",
  "static_vcruntime",
  "tokio",
  "tracing",
@@ -385,8 +384,7 @@ dependencies = [
 name = "asdf-overlay-event"
 version = "1.2.5"
 dependencies = [
- "bincode",
- "bitflags 2.13.1",
+ "serde",
 ]
 
 [[package]]
@@ -404,7 +402,6 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
- "asdf-overlay-event",
  "bytemuck",
  "futures",
  "mimalloc",
@@ -425,6 +422,7 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay",
+ "asdf-overlay-event",
  "ash",
  "bytemuck",
  "dashmap",
@@ -679,26 +677,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "bincode"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
-dependencies = [
- "bincode_derive",
- "serde",
- "unty",
-]
-
-[[package]]
-name = "bincode_derive"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
-dependencies = [
- "virtue",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -724,9 +702,6 @@ name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "block2"
@@ -3333,6 +3308,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "rmp"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f81bee8c8ef9b577d1681a70ebbc962c232461e397b22c208c43c04b67a155"
+dependencies = [
+ "rmp",
+ "serde",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3386,28 +3380,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
-name = "saa"
-version = "5.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68f5acb362a0e75c2a963532fa7fabf13dff81626dc494df16488d30befcbea0"
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "scc"
-version = "3.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8af0b99483d1c3e59471d4f0cb58b244169436a8979c889a91a3f697075ea01"
-dependencies = [
- "saa",
- "sdd",
 ]
 
 [[package]]
@@ -3453,15 +3431,6 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit 0.19.2",
  "tiny-skia",
-]
-
-[[package]]
-name = "sdd"
-version = "4.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1836bad8bdc9c6d665b63202da3d9c6d60ed1e597cae63620e21ebf89a3595a9"
-dependencies = [
- "saa",
 ]
 
 [[package]]
@@ -3771,12 +3740,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sync_wrapper"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
-
-[[package]]
 name = "synstructure"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4025,6 +3988,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
  "nu-ansi-term",
+ "parking_lot",
  "sharded-slab",
  "smallvec",
  "thread_local",
@@ -4087,12 +4051,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "unty"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "url"
@@ -4176,12 +4134,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "virtue"
-version = "0.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "walkdir"

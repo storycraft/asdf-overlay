@@ -3,11 +3,11 @@
 //! * Using [`IpcClientEventEmitter`] one can emit events to the client.
 
 use asdf_overlay_common::{
-    ipc::{ClientRequest, Frame, ServerResponse, ServerToClientPacket},
+    event::OverlayEvent,
+    ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::Request,
 };
-use asdf_overlay_event::OverlayEvent;
-use bincode::Encode;
+use serde::Serialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, split},
     net::windows::named_pipe::NamedPipeServer,
@@ -29,9 +29,10 @@ impl IpcServerConn {
 
         tokio::spawn({
             async move {
-                let mut buf = Vec::new();
+                let mut buf = vec![];
                 while let Some(packet) = chan_rx.recv().await {
-                    bincode::encode_into_std_write(packet, &mut buf, bincode::config::standard())?;
+                    buf.clear();
+                    rmp_serde::encode::write(&mut buf, &packet)?;
 
                     Frame {
                         size: buf.len() as u32,
@@ -41,8 +42,6 @@ impl IpcServerConn {
                     tx.write_all(&buf).await?;
 
                     tx.flush().await?;
-
-                    buf.clear();
                 }
 
                 Ok::<_, anyhow::Error>(())
@@ -51,7 +50,7 @@ impl IpcServerConn {
 
         Ok(Self {
             rx,
-            buf: Vec::new(),
+            buf: vec![],
             chan: chan_tx,
         })
     }
@@ -69,19 +68,16 @@ impl IpcServerConn {
         self.buf.resize(frame.size as usize, 0_u8);
         self.rx.read_exact(&mut self.buf).await?;
 
-        let packet: ClientRequest =
-            bincode::decode_from_slice(&self.buf, bincode::config::standard())?.0;
+        let packet: ClientRequest = rmp_serde::from_slice(&self.buf)?;
         Ok((packet.id, packet.req))
     }
 
     /// Reply to the client with the given request ID and data.
-    pub fn reply(&mut self, id: u32, data: impl Encode) -> anyhow::Result<()> {
-        _ = self
-            .chan
-            .send(ServerToClientPacket::Response(ServerResponse {
-                id,
-                data: bincode::encode_to_vec(data, bincode::config::standard())?,
-            }));
+    pub fn reply<T: Serialize>(&mut self, id: u32, response: T) -> anyhow::Result<()> {
+        _ = self.chan.send(ServerToClientPacket::Response {
+            id,
+            payload: rmp_serde::to_vec(&response)?,
+        });
 
         Ok(())
     }

@@ -3,10 +3,10 @@
 //! Uses Direct3D11 to manage overlay surfaces
 //! and provide convenient methods to update them from bitmaps or other shared texture.
 
-use core::{num::NonZeroU32, ptr};
+use core::ptr;
 
 use anyhow::{Context, bail};
-use asdf_overlay_common::request::UpdateSharedHandle;
+use asdf_overlay_common::request::surface::UpdateSharedHandle;
 use scopeguard::defer;
 use windows::{
     Win32::{
@@ -157,11 +157,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     copy_to_surface(&self.cx, width, height, &surface, src_texture, rect)?;
                 }
 
-                let update = UpdateSharedHandle {
-                    handle: NonZeroU32::new(
-                        unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as u32,
-                    ),
-                };
+                let update = UpdateSharedHandle::Kmt(
+                    unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as u32,
+                );
                 *slot = Some((surface, mutex));
                 Ok(Some(update))
             }
@@ -179,7 +177,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         data: &[u8],
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         if width == 0 || data.is_empty() {
-            return Ok(Some(UpdateSharedHandle { handle: None }));
+            return Ok(Some(UpdateSharedHandle::None));
         }
 
         let size = (width, (data.len() / width as usize / 4) as u32);
@@ -223,11 +221,9 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                         _ = mutex.ReleaseSync(0);
                     });
 
-                    Ok(Some(UpdateSharedHandle {
-                        handle: NonZeroU32::new(
-                            texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as u32,
-                        ),
-                    }))
+                    Ok(Some(UpdateSharedHandle::Kmt(
+                        texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as u32,
+                    )))
                 }
             }
         }

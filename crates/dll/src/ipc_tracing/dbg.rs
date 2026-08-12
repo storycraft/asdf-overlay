@@ -6,17 +6,28 @@
 
 use parking_lot::{Mutex, MutexGuard};
 use std::io::{self, Write};
-use tracing_subscriber::fmt::MakeWriter;
+use tracing::Subscriber;
+use tracing_subscriber::{Layer, fmt::MakeWriter, registry::LookupSpan};
 use windows::{Win32::System::Diagnostics::Debug::OutputDebugStringW, core::PCWSTR};
 
+pub fn layer<S>() -> impl Layer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_thread_ids(true)
+        .with_writer(WinDbgMakeWriter::new())
+}
+
 /// A `tracing` writer that outputs to the Windows debugger output (OutputDebugString).
-pub struct WinDbgMakeWriter {
+struct WinDbgMakeWriter {
     buf: Mutex<Vec<u16>>,
 }
 
 impl WinDbgMakeWriter {
     /// Create a new [`WinDbgMakeWriter`].
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             buf: Mutex::new(Vec::new()),
         }
@@ -33,7 +44,7 @@ impl<'a> MakeWriter<'a> for WinDbgMakeWriter {
     }
 }
 
-pub struct WinDbgWriter<'a> {
+struct WinDbgWriter<'a> {
     buf: MutexGuard<'a, Vec<u16>>,
 }
 

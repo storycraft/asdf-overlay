@@ -37,7 +37,6 @@ pub mod surface;
 pub mod ty;
 
 pub use asdf_overlay_common as common;
-pub use asdf_overlay_event as event;
 
 use core::time::Duration;
 use std::path::Path;

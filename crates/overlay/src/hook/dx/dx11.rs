@@ -1,7 +1,8 @@
+use asdf_overlay_event::{RenderApi, SurfaceInfo};
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
-use tracing::{debug, trace};
+use tracing::{Level, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -10,15 +11,16 @@ use windows::{
             D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1, ID3D11Texture2D,
             ID3DDeviceContextState,
         },
-        Dxgi::IDXGISwapChain1,
+        Dxgi::{IDXGIDevice, IDXGISwapChain1},
     },
     core::Interface,
 };
 
 use crate::{
-    backend::{WindowBackend, render::Renderer},
     hook::dx::dxgi::callback::register_swapchain_destruction_callback,
+    interop::DxInterop,
     renderer::dx11::Dx11Renderer,
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
 };
 
@@ -38,7 +40,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            debug!("initializing dx11 renderer");
+            info!("initializing dx11 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D11Device1>()? };
 
             let state = unsafe {
@@ -77,44 +79,29 @@ fn with_or_init_renderer_data<R>(
     f(&mut data)
 }
 
-pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    let mut render = backend.render.lock();
-    match render.renderer {
-        Some(Renderer::Dx11) => {}
+pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
+    if state.info.api != RenderApi::Direct3D11 {
+        trace!("ignoring Direct3D11 rendering");
+        return;
+    }
 
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx11);
-            debug!("switching from opengl to dx11 render");
-            // skip drawing on render changes
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx11 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx11);
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let Some(surface) = render.surface.get() else {
+    let Some(size) = state.texture_size() else {
         return;
     };
 
-    let size = surface.size();
-    let update = render.surface.take_update();
-    let position = render.position;
-    let screen = render.window_size;
-    drop(render);
-
+    let position = state.position();
+    let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx11 renderer");
 
-        if let Some(update) = update {
-            data.renderer.update_texture(update);
+        if state.texture.take_update() {
+            data.renderer.update_texture(
+                state
+                    .texture
+                    .get()
+                    .as_ref()
+                    .map(|surface| surface.shared_handle()),
+            );
         }
 
         let cx = unsafe { device.GetImmediateContext1().unwrap() };
@@ -144,10 +131,35 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D11Device1, swapchain: 
     });
 }
 
-#[tracing::instrument]
+pub(super) fn setup_fn(
+    device: &ID3D11Device1,
+    swapchain: &IDXGISwapChain1,
+) -> anyhow::Result<SurfaceState> {
+    let adapter = unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() };
+    let desc = unsafe { swapchain.GetDesc1() }?;
+    let window_id = unsafe { swapchain.GetHwnd() }
+        .ok()
+        .map(|hwnd| hwnd.0 as u32);
+
+    let interop = DxInterop::new(adapter.as_ref())?;
+    let gpu_id = interop.gpu_id;
+    SurfaceState::new(
+        interop,
+        (desc.Width, desc.Height),
+        SurfaceInfo {
+            api: RenderApi::Direct3D11,
+            window_id,
+            gpu_id,
+        },
+    )
+}
+
+#[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    debug!("dx11 renderer cleanup");
+    info!("dx11 renderer cleanup");
+
+    Surfaces::cleanup_state(swapchain as _);
 }

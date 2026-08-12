@@ -2,7 +2,7 @@ use core::ffi::c_void;
 
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
-use tracing::debug;
+use tracing::{Level, debug};
 use windows::{
     Win32::{
         Foundation::{POINT, RECT},
@@ -111,7 +111,7 @@ pub(crate) fn install() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
     let mut lock = Backends::get().blocking_state.write();
     let Some(state) = lock.as_mut() else {
@@ -123,7 +123,7 @@ extern "system" fn hooked_clip_cursor(lprect: *const RECT) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().set_cursor_pos.original_fn()(x, y) };
@@ -132,7 +132,7 @@ extern "system" fn hooked_set_cursor_pos(x: i32, y: i32) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
     let lock = Backends::get().blocking_state.read();
     let Some(clip_cursor) = lock.as_ref().and_then(|state| state.clip_cursor) else {
@@ -144,7 +144,7 @@ extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_cursor_pos.original_fn()(lppoint) };
@@ -157,7 +157,7 @@ extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_physical_cursor_pos.original_fn()(lppoint) };
@@ -170,7 +170,7 @@ extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_async_key_state(vkey: i32) -> i16 {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_async_key_state.original_fn()(vkey) };
@@ -179,7 +179,7 @@ extern "system" fn hooked_get_async_key_state(vkey: i32) -> i16 {
     0
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_key_state.original_fn()(vkey) };
@@ -188,7 +188,7 @@ extern "system" fn hooked_get_key_state(vkey: i32) -> i16 {
     0
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_keyboard_state.original_fn()(buf) };
@@ -201,7 +201,7 @@ extern "system" fn hooked_get_keyboard_state(buf: *mut u8) -> BOOL {
     BOOL(1)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_raw_input_buffer(
     pdata: *mut RAWINPUT,
     pcbsize: *mut u32,

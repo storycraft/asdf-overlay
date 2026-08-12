@@ -21,7 +21,7 @@ export class ElectronOverlayInput {
     this.window = { ...window };
 
     this.window.overlay.event.on(
-      'cursor_input',
+      'window_cursor_input',
       this.cursorInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -31,7 +31,7 @@ export class ElectronOverlayInput {
       },
     );
     this.window.overlay.event.on(
-      'keyboard_input',
+      'window_keyboard_input',
       this.keyboardInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -43,7 +43,7 @@ export class ElectronOverlayInput {
     this.contents.on(
       'cursor-changed',
       this.cursorChangedHandler = (_, type) => {
-        void this.window.overlay.setBlockingCursor(this.window.id, mapCssCursor(type));
+        void this.window.overlay.setBlockingCursor(mapCssCursor(type));
       },
     );
   }
@@ -59,12 +59,12 @@ export class ElectronOverlayInput {
    * Disconnect overlay inputs.
    */
   async disconnect() {
-    this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
-    this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);
+    this.window.overlay.event.off('window_cursor_input', this.cursorInputHandler);
+    this.window.overlay.event.off('window_keyboard_input', this.keyboardInputHandler);
     this.contents.off('cursor-changed', this.cursorChangedHandler);
 
     try {
-      await this.window.overlay.setBlockingCursor(this.window.id, Cursor.Default);
+      await this.window.overlay.setBlockingCursor(Cursor.Default);
     } catch {
       //
     }
@@ -105,7 +105,7 @@ export class ElectronOverlayInput {
     }
 
     if (input_kind.state.type === 'Pressed') {
-      const clickCount = 1 + ~~input_kind.state.doubleClick;
+      const clickCount = input_kind.state.clickCount;
       this.clickCounts.push(clickCount);
       this.contents.sendInputEvent({
         type: 'mouseDown',
@@ -120,7 +120,7 @@ export class ElectronOverlayInput {
         modifiers: this.modifiers,
       });
     } else {
-      const clickCount = this.clickCounts.pop() ?? 1;
+      const clickCount = this.clickCounts.pop() ?? 0;
       this.contents.sendInputEvent({
         type: 'mouseUp',
         button,
@@ -142,10 +142,10 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX / this.scaleFactor;
-    const y = input.clientY / this.scaleFactor;
-    const globalX = input.windowX / this.scaleFactor;
-    const globalY = input.windowY / this.scaleFactor;
+    const x = input.x / this.scaleFactor;
+    const y = input.y / this.scaleFactor;
+    const globalX = input.x / this.scaleFactor;
+    const globalY = input.y / this.scaleFactor;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;

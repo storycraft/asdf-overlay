@@ -1,18 +1,16 @@
-use asdf_overlay::backend::Backends;
-use ash::vk::{self, AllocationCallbacks, Handle};
+use asdf_overlay::{event_sink::OverlayEventSink, surface::Surfaces};
+use asdf_overlay_event::{Event, SurfaceEvent};
+use ash::vk::{self, AllocationCallbacks, Handle, SurfaceKHR};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use tracing::{debug, trace};
+use tracing::trace;
 
-use crate::{
-    device::DISPATCH_TABLE, instance::surface::get_surface_hwnd, map::IntDashMap,
-    renderer::VulkanRenderer,
-};
+use crate::{device::DISPATCH_TABLE, map::IntDashMap, renderer::VulkanRenderer};
 
 /// Data associated with a [`vk::SwapchainKHR`].
 pub struct SwapchainData {
-    /// HWND of the surface the swapchain is tied to.
-    pub hwnd: u32,
+    /// Surface identifier
+    pub surface: SurfaceKHR,
 
     /// Size of the swapchain images.
     pub image_size: (u32, u32),
@@ -61,18 +59,31 @@ pub(super) extern "system" fn create_swapchain(
         return res;
     }
 
-    debug!("initializing swapchain data");
     let swapchain = unsafe { *swapchain }.as_raw();
-    let hwnd = get_surface_hwnd(info.surface).unwrap();
+
     SWAPCHAIN_MAP.insert(
         swapchain,
         SwapchainData {
-            hwnd,
+            surface: info.surface,
             image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
             renderer: Mutex::new(None),
         },
     );
+
+    let id = info.surface.as_raw();
+    Surfaces::state(id, |state| {
+        let extent = info.image_extent;
+
+        state.resize(extent.width, extent.height);
+        OverlayEventSink::emit(Event::Surface {
+            id,
+            event: SurfaceEvent::Resized {
+                width: extent.width,
+                height: extent.height,
+            },
+        });
+    });
 
     vk::Result::SUCCESS
 }
@@ -92,13 +103,11 @@ pub(super) extern "system" fn destroy_swapchain(
 }
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
-    _ = with_swapchain_data(swapchain, |data| {
-        debug!("vulkan renderer cleanup");
-        data.renderer.lock().take();
+    let Some((_, data)) = SWAPCHAIN_MAP.remove(&swapchain.as_raw()) else {
+        return;
+    };
 
-        _ = Backends::with_backend(data.hwnd, |backend| {
-            let mut render = backend.render.lock();
-            render.invalidate_surface();
-        });
+    Surfaces::state(data.surface.as_raw(), |state| {
+        state.texture.invalidate();
     });
 }

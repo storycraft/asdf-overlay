@@ -1,88 +1,178 @@
-//! Provides abstraction for overlay surface.
-//!
-//! The surface texture must be Direct3D 11 texture created with shared flags.
-//! Direct3D 11 was chosen, because it is well supported on almost every gpus nowadays.
-//!
-//! If you create surface texture with keyed mutex, it will uses it for synchronization.
-//! You must keep mutex key to `0` otherwise, it will wait indefinitely when rendering overlay.
-//! You can still have surface texture without keyed mutex,
-//! however you must flush it manually on changes and will have worse performance.
+//! Manage window states for rendering overlays.
+//! You can access states for specific window using [`Backends::with_backend`].
+//! This allows you to interact with the overlay state of a window, including its layout and rendering data.
 
-use core::num::NonZeroU32;
+pub mod texture;
+
+use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use anyhow::Context;
-use windows::{
-    Win32::{
-        Foundation::HANDLE,
-        Graphics::{
-            Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
-            Dxgi::{Common::DXGI_FORMAT, IDXGIKeyedMutex, IDXGIResource},
-        },
-    },
-    core::Interface,
+use asdf_overlay_event::{Event, SurfaceEvent, SurfaceInfo};
+use once_cell::sync::Lazy;
+
+use crate::{
+    event_sink::OverlayEventSink, interop::DxInterop, surface::texture::OverlayTextureSlot,
+    types::IntDashMap,
 };
 
-/// The overlay surface texture.
-pub struct OverlaySurface {
-    texture: ID3D11Texture2D,
-    resource: IDXGIResource,
-    mutex: Option<IDXGIKeyedMutex>,
-    size: (u32, u32),
-    format: DXGI_FORMAT,
+static SURFACES: Lazy<Surfaces> = Lazy::new(|| Surfaces {
+    map: IntDashMap::default(),
+});
+
+/// Global store for surface states.
+pub struct Surfaces {
+    map: IntDashMap<u64, SurfaceState>,
 }
 
-impl OverlaySurface {
-    /// Open Direct3D 11 shared texture using `handle`, with given `device`.
-    pub(crate) fn open_shared(device: &ID3D11Device, handle: u32) -> anyhow::Result<Self> {
-        unsafe {
-            let mut texture = None::<ID3D11Texture2D>;
-            device
-                .OpenSharedResource(HANDLE(handle as _), &mut texture)
-                .context("failed to open shared resource")?;
-            let texture = texture.unwrap();
+impl Surfaces {
+    /// Iterate over all surfaces.
+    pub fn iter() -> impl Iterator<Item = u64> {
+        SURFACES.map.iter().map(|r| *r.key())
+    }
 
-            let mut desc = D3D11_TEXTURE2D_DESC::default();
-            texture.GetDesc(&mut desc);
+    /// Run closure with the specified surface, if it exists.
+    pub fn state<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
+        SURFACES.map.get(&id).map(|r| f(&r))
+    }
 
-            let resource = texture.cast::<IDXGIResource>().unwrap();
-            let mutex = texture.cast::<IDXGIKeyedMutex>().ok();
-            Ok(Self {
-                texture,
-                resource,
-                mutex,
-                size: (desc.Width, desc.Height),
-                format: desc.Format,
-            })
+    pub fn contains(id: u64) -> bool {
+        SURFACES.map.contains_key(&id)
+    }
+
+    pub fn reset() {
+        for state in SURFACES.map.iter() {
+            state.reset();
         }
     }
 
-    #[inline]
-    /// [`IDXGIKeyedMutex`] of the surface texture.
-    pub const fn mutex(&self) -> Option<&IDXGIKeyedMutex> {
-        self.mutex.as_ref()
+    #[doc(hidden)]
+    pub fn with<R>(
+        id: u64,
+        setup_fn: impl FnOnce() -> anyhow::Result<SurfaceState>,
+        f: impl FnOnce(&SurfaceState) -> R,
+    ) -> anyhow::Result<R> {
+        if let Some(backend) = SURFACES.map.get(&id) {
+            return Ok(f(&backend));
+        }
+
+        let backend = SURFACES
+            .map
+            .entry(id)
+            .or_try_insert_with(|| {
+                let state = setup_fn().context("failed to setup surface state")?;
+
+                let (width, height) = state.size();
+                OverlayEventSink::emit(Event::Surface {
+                    id,
+                    event: SurfaceEvent::Added {
+                        width,
+                        height,
+                        info: state.info,
+                    },
+                });
+
+                Ok::<_, anyhow::Error>(state)
+            })?
+            .downgrade();
+
+        Ok(f(backend.value()))
     }
 
-    #[inline]
-    /// Size of the overlay surface in phyiscal pixel units.
-    pub const fn size(&self) -> (u32, u32) {
-        self.size
+    #[doc(hidden)]
+    pub fn cleanup_state(id: u64) {
+        SURFACES.map.remove(&id);
+
+        OverlayEventSink::emit(Event::Surface {
+            id,
+            event: SurfaceEvent::Destroyed,
+        });
+    }
+}
+
+/// Data associated to a specific window for overlay rendering.
+#[non_exhaustive]
+pub struct SurfaceState {
+    position: (AtomicI32, AtomicI32),
+    size: (AtomicU32, AtomicU32),
+
+    pub interop: DxInterop,
+    pub info: SurfaceInfo,
+
+    #[doc(hidden)]
+    pub texture: OverlayTextureSlot,
+}
+
+impl SurfaceState {
+    pub fn new(interop: DxInterop, size: (u32, u32), info: SurfaceInfo) -> anyhow::Result<Self> {
+        let surface = OverlayTextureSlot::new();
+
+        Ok(Self {
+            position: (AtomicI32::new(0), AtomicI32::new(0)),
+            size: (AtomicU32::new(size.0), AtomicU32::new(size.1)),
+            interop,
+            info,
+            texture: surface,
+        })
     }
 
-    #[inline]
-    /// Format of the overlay surface.
-    pub const fn format(&self) -> DXGI_FORMAT {
-        self.format
+    #[doc(hidden)]
+    pub fn texture_size(&self) -> Option<(u32, u32)> {
+        self.texture.get().as_ref().map(|surface| surface.size())
     }
 
-    #[inline]
-    /// [`ID3D11Texture2D`] of the surface texture.
-    pub const fn texture(&self) -> &ID3D11Texture2D {
-        &self.texture
+    pub fn size(&self) -> (u32, u32) {
+        (
+            self.size.0.load(Ordering::Relaxed),
+            self.size.1.load(Ordering::Relaxed),
+        )
     }
 
-    #[inline]
-    /// Shared handle of the surface texture.
-    pub fn shared_handle(&self) -> NonZeroU32 {
-        NonZeroU32::new(unsafe { self.resource.GetSharedHandle().unwrap().0 as _ }).unwrap()
+    #[doc(hidden)]
+    pub fn resize(&self, width: u32, height: u32) {
+        self.size.0.store(width, Ordering::Relaxed);
+        self.size.1.store(height, Ordering::Relaxed);
+    }
+
+    pub fn position(&self) -> (i32, i32) {
+        (
+            self.position.0.load(Ordering::Relaxed),
+            self.position.1.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn reposition(&self, x: i32, y: i32) {
+        self.position.0.store(x, Ordering::Relaxed);
+        self.position.1.store(y, Ordering::Relaxed);
+    }
+
+    pub fn commit_overlay_texture(
+        &self,
+        handle: Option<SharedTextureHandle>,
+    ) -> anyhow::Result<()> {
+        self.texture.update(&self.interop.device, handle)
+    }
+
+    /// Reset the surface state to its initial state.
+    /// This will reset the position to (0, 0) and remove the overlay texture
+    pub fn reset(&self) {
+        self.reposition(0, 0);
+        _ = self.commit_overlay_texture(None);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedTextureHandle {
+    /// KMT handle.
+    Kmt(u32),
+
+    /// Owned NT handle.
+    Nt(u32),
+}
+
+impl SharedTextureHandle {
+    pub fn as_raw(&self) -> u32 {
+        match self {
+            Self::Kmt(handle) | Self::Nt(handle) => *handle,
+        }
     }
 }
