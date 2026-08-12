@@ -21,7 +21,7 @@ use windows::{
 
 use crate::{
     hook::util::original_execute_command_lists, renderer::dx::shaders,
-    texture::OverlayTextureState, util::wrap_com_manually_drop,
+    surface::SharedTextureHandle, texture::OverlayTextureState, util::wrap_com_manually_drop,
 };
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
@@ -205,7 +205,7 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: Option<u32>) {
+    pub fn update_texture(&mut self, shared: Option<SharedTextureHandle>) {
         _ = self.fence.wait_pending();
         self.texture.update(shared);
     }
@@ -232,9 +232,14 @@ impl Dx12Renderer {
             .get_or_create(|handle| {
                 let mut texture = None;
                 unsafe {
-                    device.OpenSharedHandle::<ID3D12Resource>(HANDLE(handle as _), &mut texture)?;
+                    device
+                        .OpenSharedHandle::<ID3D12Resource>(
+                            HANDLE(handle.as_raw() as _),
+                            &mut texture,
+                        )
+                        .context("cannot open shared texture")?;
                 }
-                let texture = texture.context("cannot open shared texture")?;
+                let texture = texture.unwrap();
 
                 let desc = unsafe { texture.GetDesc() };
                 if desc.Width == 0 || desc.Height == 0 {

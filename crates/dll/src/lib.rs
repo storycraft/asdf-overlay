@@ -13,7 +13,11 @@ mod server;
 extern crate asdf_overlay_vulkan_layer;
 
 use anyhow::Context;
-use asdf_overlay::{event_sink::OverlayEventSink, initialize, surface::Surfaces};
+use asdf_overlay::{
+    event_sink::OverlayEventSink,
+    initialize,
+    surface::{SharedTextureHandle, Surfaces},
+};
 use asdf_overlay_common::{
     event::{OverlayEvent, surface::SurfaceEvent, window::WindowEvent},
     ipc::create_ipc_addr,
@@ -37,7 +41,7 @@ use tokio::{
 use tracing::{Level, debug, error, trace, warn};
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE, HINSTANCE},
+        Foundation::{GENERIC_READ, GENERIC_WRITE, HINSTANCE},
         Security::{
             ACL, AllocateAndInitializeSid,
             Authorization::{
@@ -190,13 +194,8 @@ fn handle_surface_request(
         }
 
         SurfaceRequestKind::UpdateSharedHandle(shared) => {
-            defer!({
-                if let UpdateSharedHandle::Nt(handle) = shared {
-                    _ = unsafe { CloseHandle(HANDLE(handle as _)) };
-                }
-            });
             Surfaces::state(req.id, |state| {
-                if let Err(err) = state.commit_overlay_texture(shared.handle()) {
+                if let Err(err) = state.commit_overlay_texture(map_ipc_shtex_update(shared)) {
                     error!("failed to open shared surface. err: {:?}", err);
                 }
             });
@@ -206,6 +205,14 @@ fn handle_surface_request(
     }
 
     Ok(())
+}
+
+fn map_ipc_shtex_update(shared: UpdateSharedHandle) -> Option<SharedTextureHandle> {
+    match shared {
+        UpdateSharedHandle::Kmt(handle) => Some(SharedTextureHandle::Kmt(handle)),
+        UpdateSharedHandle::Nt(handle) => Some(SharedTextureHandle::Nt(handle)),
+        UpdateSharedHandle::None => None,
+    }
 }
 
 /// IPC server listener.

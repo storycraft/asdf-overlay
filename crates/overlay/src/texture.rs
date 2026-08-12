@@ -1,7 +1,9 @@
+use crate::surface::SharedTextureHandle;
+
 #[derive(Debug)]
 pub enum OverlayTextureState<T> {
     None,
-    Handle(u32),
+    Handle(SharedTextureHandle),
     Created(T),
 }
 
@@ -10,7 +12,7 @@ impl<T> OverlayTextureState<T> {
         Self::None
     }
 
-    pub fn update(&mut self, handle: Option<u32>) {
+    pub fn update(&mut self, handle: Option<SharedTextureHandle>) {
         *self = match handle {
             Some(handle) => Self::Handle(handle),
             None => Self::None,
@@ -19,7 +21,7 @@ impl<T> OverlayTextureState<T> {
 
     pub fn get_or_create(
         &mut self,
-        f: impl FnOnce(u32) -> anyhow::Result<Option<T>>,
+        f: impl FnOnce(SharedTextureHandle) -> anyhow::Result<Option<T>>,
     ) -> anyhow::Result<Option<&mut T>> {
         Ok(match *self {
             Self::None => None,

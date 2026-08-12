@@ -145,7 +145,10 @@ impl SurfaceState {
         self.position.1.store(y, Ordering::Relaxed);
     }
 
-    pub fn commit_overlay_texture(&self, handle: Option<u32>) -> anyhow::Result<()> {
+    pub fn commit_overlay_texture(
+        &self,
+        handle: Option<SharedTextureHandle>,
+    ) -> anyhow::Result<()> {
         self.texture.update(&self.interop.device, handle)
     }
 
@@ -154,5 +157,22 @@ impl SurfaceState {
     pub fn reset(&self) {
         self.reposition(0, 0);
         _ = self.commit_overlay_texture(None);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedTextureHandle {
+    /// KMT handle.
+    Kmt(u32),
+
+    /// Owned NT handle.
+    Nt(u32),
+}
+
+impl SharedTextureHandle {
+    pub fn as_raw(&self) -> u32 {
+        match self {
+            Self::Kmt(handle) | Self::Nt(handle) => *handle,
+        }
     }
 }

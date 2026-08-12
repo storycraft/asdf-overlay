@@ -61,13 +61,4 @@ pub enum UpdateSharedHandle {
     None,
 }
 
-impl UpdateSharedHandle {
-    pub fn handle(&self) -> Option<u32> {
-        match self {
-            UpdateSharedHandle::Kmt(handle) | UpdateSharedHandle::Nt(handle) => Some(*handle),
-            UpdateSharedHandle::None => None,
-        }
-    }
-}
-
 impl_SurfaceRequestable!(UpdateSharedHandle, ());
