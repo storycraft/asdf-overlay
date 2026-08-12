@@ -32,7 +32,7 @@ impl Surfaces {
 
     /// Run closure with the specified surface, if it exists.
     pub fn state<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
-        Some(f(&*SURFACES.map.get(&id)?))
+        SURFACES.map.get(&id).map(|r| f(&r))
     }
 
     pub fn contains(id: u64) -> bool {
@@ -43,11 +43,6 @@ impl Surfaces {
         for state in SURFACES.map.iter() {
             state.reset();
         }
-    }
-
-    #[doc(hidden)]
-    pub fn with_get<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
-        SURFACES.map.get(&id).map(|r| f(&r))
     }
 
     #[doc(hidden)]

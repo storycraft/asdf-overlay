@@ -72,7 +72,7 @@ pub(super) extern "system" fn create_swapchain(
     );
 
     let id = info.surface.as_raw();
-    Surfaces::with_get(id, |state| {
+    Surfaces::state(id, |state| {
         let extent = info.image_extent;
 
         state.resize(extent.width, extent.height);
@@ -107,7 +107,7 @@ fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
         return;
     };
 
-    Surfaces::with_get(data.surface.as_raw(), |state| {
+    Surfaces::state(data.surface.as_raw(), |state| {
         state.texture.invalidate();
     });
 }
