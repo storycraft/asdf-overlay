@@ -47,6 +47,11 @@ impl Surfaces {
     }
 
     #[doc(hidden)]
+    pub fn with_get<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
+        SURFACES.map.get(&id).map(|r| f(&r))
+    }
+
+    #[doc(hidden)]
     pub fn with<R>(
         id: u64,
         setup_fn: impl FnOnce() -> anyhow::Result<SurfaceState>,

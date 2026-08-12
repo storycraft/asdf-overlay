@@ -20,8 +20,9 @@ impl OverlayEventSink {
     }
 
     #[inline]
+    #[doc(hidden)]
     /// Emit [`Event`] to event sink. If one exists.
-    pub(crate) fn emit(event: Event) {
+    pub fn emit(event: Event) {
         if let Some(ref this) = *CURRENT.load() {
             (this.sink)(event);
         }

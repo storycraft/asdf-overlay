@@ -106,6 +106,11 @@ impl OverlayTextureSlot {
         self.inner.read()
     }
 
+    #[doc(hidden)]
+    pub fn set_updated(&self) {
+        self.updated.store(true, Ordering::Relaxed);
+    }
+
     pub(super) fn update(&self, device: &ID3D11Device, handle: Option<u32>) -> anyhow::Result<()> {
         self.updated.store(true, Ordering::Relaxed);
         let Some(handle) = handle else {

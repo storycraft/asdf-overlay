@@ -1,13 +1,17 @@
-use asdf_overlay::surface::Surfaces;
+use asdf_overlay::{event_sink::OverlayEventSink, surface::Surfaces};
+use asdf_overlay_event::{Event, SurfaceEvent};
 use ash::vk::{self, AllocationCallbacks, Handle};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use tracing::{info, trace};
+use tracing::trace;
 
 use crate::{device::DISPATCH_TABLE, map::IntDashMap, renderer::VulkanRenderer};
 
 /// Data associated with a [`vk::SwapchainKHR`].
 pub struct SwapchainData {
+    /// Surface identifier
+    pub surface: u64,
+
     /// Size of the swapchain images.
     pub image_size: (u32, u32),
 
@@ -55,16 +59,31 @@ pub(super) extern "system" fn create_swapchain(
         return res;
     }
 
-    info!("initializing vk swapchain data");
     let swapchain = unsafe { *swapchain }.as_raw();
+
     SWAPCHAIN_MAP.insert(
         swapchain,
         SwapchainData {
+            surface: info.surface.as_raw(),
             image_size: (info.image_extent.width, info.image_extent.height),
             format: info.image_format,
             renderer: Mutex::new(None),
         },
     );
+
+    let id = info.surface.as_raw();
+    Surfaces::with_get(id, |state| {
+        let extent = info.image_extent;
+
+        state.set_size(extent.width, extent.height);
+        OverlayEventSink::emit(Event::Surface {
+            id,
+            event: SurfaceEvent::Resized {
+                width: extent.width,
+                height: extent.height,
+            },
+        });
+    });
 
     vk::Result::SUCCESS
 }
@@ -84,10 +103,11 @@ pub(super) extern "system" fn destroy_swapchain(
 }
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
-    _ = with_swapchain_data(swapchain, |data| {
-        info!("vulkan renderer cleanup");
-        data.renderer.lock().take();
+    let Some((_, data)) = SWAPCHAIN_MAP.remove(&swapchain.as_raw()) else {
+        return;
+    };
 
-        Surfaces::cleanup_state(swapchain.as_raw());
+    Surfaces::with_get(data.surface, |state| {
+        state.texture.set_updated();
     });
 }

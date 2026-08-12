@@ -422,6 +422,7 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay",
+ "asdf-overlay-event",
  "ash",
  "bytemuck",
  "dashmap",
