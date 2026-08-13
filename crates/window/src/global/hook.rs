@@ -34,19 +34,19 @@ windows::core::link!(
 );
 windows::core::link!("user32.dll" "system" fn GetRawInputBuffer(pdata: *mut RAWINPUT, pcbsize: *mut u32, cbsizeheader: u32) -> u32);
 
-pub(crate) struct Hook {
-    pub(crate) clip_cursor: DetourHook<ClipCursorFn>,
-    pub(crate) set_cursor_pos: DetourHook<SetCursorPosFn>,
+pub struct Hook {
+    pub clip_cursor: DetourHook<ClipCursorFn>,
+    pub set_cursor_pos: DetourHook<SetCursorPosFn>,
 
-    pub(crate) get_clip_cursor: DetourHook<GetClipCursorFn>,
-    pub(crate) get_cursor_pos: DetourHook<GetCursorPos>,
-    pub(crate) get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
-    pub(crate) get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
-    pub(crate) get_key_state: DetourHook<GetKeyStateFn>,
-    pub(crate) get_keyboard_state: DetourHook<GetKeyboardStateFn>,
-    pub(crate) get_raw_input_buffer: DetourHook<GetRawInputBufferFn>,
+    pub get_clip_cursor: DetourHook<GetClipCursorFn>,
+    pub get_cursor_pos: DetourHook<GetCursorPos>,
+    pub get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
+    pub get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
+    pub get_key_state: DetourHook<GetKeyStateFn>,
+    pub get_keyboard_state: DetourHook<GetKeyboardStateFn>,
+    pub get_raw_input_buffer: DetourHook<GetRawInputBufferFn>,
 }
-pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
+pub static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type ClipCursorFn = unsafe extern "system" fn(*const RECT) -> BOOL;
 type SetCursorPosFn = unsafe extern "system" fn(i32, i32) -> BOOL;
@@ -59,7 +59,7 @@ type GetKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyboardStateFn = unsafe extern "system" fn(*mut u8) -> BOOL;
 type GetRawInputBufferFn = unsafe extern "system" fn(*mut RAWINPUT, *mut u32, u32) -> u32;
 
-pub(crate) fn install() -> anyhow::Result<()> {
+pub fn install() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking ClipCursor");
         let clip_cursor = DetourHook::attach(ClipCursor as _, hooked_clip_cursor as _)?;

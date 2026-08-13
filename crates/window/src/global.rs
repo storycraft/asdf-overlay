@@ -16,18 +16,18 @@ use windows::Win32::{
 
 use crate::{message_loop::MessageLoopState, types::IntDashMap, window::WindowProcState};
 
-pub(crate) struct GlobalState {
+pub struct GlobalState {
     event_tx: flume::Sender<Event>,
 
-    pub(crate) message_loops: IntDashMap<u32, MessageLoopState>,
-    pub(crate) windows: IntDashMap<u32, WindowProcState>,
+    pub message_loops: IntDashMap<u32, MessageLoopState>,
+    pub windows: IntDashMap<u32, WindowProcState>,
 
     blocking_cursor: AtomicUsize,
-    pub(crate) blocking_state: RwLock<Option<InputBlockingState>>,
+    pub blocking_state: RwLock<Option<InputBlockingState>>,
 }
 
 impl GlobalState {
-    pub(crate) fn new(event_tx: flume::Sender<Event>) -> Self {
+    pub fn new(event_tx: flume::Sender<Event>) -> Self {
         Self {
             event_tx,
             message_loops: IntDashMap::default(),
@@ -38,12 +38,12 @@ impl GlobalState {
     }
 
     #[inline]
-    pub(crate) fn blocking_cursor(&self) -> Option<HCURSOR> {
+    pub fn blocking_cursor(&self) -> Option<HCURSOR> {
         let v = self.blocking_cursor.load(Ordering::Relaxed);
         if v == 0 { None } else { Some(HCURSOR(v as _)) }
     }
 
-    pub(crate) fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
+    pub fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
         self.blocking_cursor
             .store(cursor.unwrap_or_default().0 as _, Ordering::Relaxed);
     }
@@ -102,7 +102,7 @@ impl GlobalState {
     /// Get or initialize the message loop state for the given thread ID.
     ///
     /// NOTE: The thread id is windows system thread id, not rust thread id.
-    pub(crate) fn message_loop_state<R>(
+    pub fn message_loop_state<R>(
         &self,
         thread_id: u32,
         f: impl FnOnce(&MessageLoopState) -> R,
@@ -126,15 +126,11 @@ impl GlobalState {
         f(state.value())
     }
 
-    pub(crate) fn cleanup_message_loop(&self, thread_id: u32) {
+    pub fn cleanup_message_loop(&self, thread_id: u32) {
         self.message_loops.remove(&thread_id);
     }
 
-    pub(crate) fn window_state<R>(
-        &self,
-        window_id: u32,
-        f: impl FnOnce(&WindowProcState) -> R,
-    ) -> R {
+    pub fn window_state<R>(&self, window_id: u32, f: impl FnOnce(&WindowProcState) -> R) -> R {
         if let Some(state) = self.windows.get(&window_id) {
             return f(state.value());
         }
@@ -162,7 +158,7 @@ impl GlobalState {
         f(state.value())
     }
 
-    pub(crate) fn cleanup_window(&self, window_id: u32) {
+    pub fn cleanup_window(&self, window_id: u32) {
         if self.windows.remove(&window_id).is_none() {
             return;
         }
@@ -175,11 +171,11 @@ impl GlobalState {
 
     /// Emit [`BackendEvent`] to event sink. If one exists.
     #[inline]
-    pub(crate) fn emit(&self, event: Event) {
+    pub fn emit(&self, event: Event) {
         _ = self.event_tx.send(event);
     }
 
-    pub(crate) fn reset(&self) {
+    pub fn reset(&self) {
         self.unblock_input();
         for state in self.windows.iter() {
             state.reset();
@@ -189,9 +185,9 @@ impl GlobalState {
     }
 }
 
-pub(crate) struct InputBlockingState {
+pub struct InputBlockingState {
     // Old cursor clipping rectangle, if any.
-    pub(crate) clip_cursor: Option<RECT>,
+    pub clip_cursor: Option<RECT>,
 }
 
 fn default_cursor() -> HCURSOR {

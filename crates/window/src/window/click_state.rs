@@ -3,16 +3,16 @@ use std::time::Instant;
 
 use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 
-pub(crate) struct ClickState {
+pub struct ClickState {
     inner: Option<Inner>,
 }
 
 impl ClickState {
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { inner: None }
     }
 
-    pub(crate) fn get_click_count(&mut self, x: i32, y: i32, button: u32, time: Instant) -> u32 {
+    pub fn get_click_count(&mut self, x: i32, y: i32, button: u32, time: Instant) -> u32 {
         fn is_consecutive(inner: &Inner, x: i32, y: i32, button: u32, time: Instant) -> bool {
             const MAX_DISTANCE: u32 = 4;
 

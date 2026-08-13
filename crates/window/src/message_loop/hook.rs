@@ -55,17 +55,17 @@ windows::core::link!("user32.dll" "system" fn PeekMessageW(
 windows::core::link!("user32.dll" "system" fn DefWindowProcA(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 windows::core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 
-pub(crate) struct Hook {
-    pub(crate) get_message_a: DetourHook<GetMessageFn>,
-    pub(crate) get_message_w: DetourHook<GetMessageFn>,
+pub struct Hook {
+    pub get_message_a: DetourHook<GetMessageFn>,
+    pub get_message_w: DetourHook<GetMessageFn>,
 
-    pub(crate) get_message_pos: DetourHook<GetMessagePosFn>,
+    pub get_message_pos: DetourHook<GetMessagePosFn>,
 
-    pub(crate) peek_message_a: DetourHook<PeekMessageFn>,
-    pub(crate) peek_message_w: DetourHook<PeekMessageFn>,
+    pub peek_message_a: DetourHook<PeekMessageFn>,
+    pub peek_message_w: DetourHook<PeekMessageFn>,
 }
 
-pub(crate) static HOOK: OnceCell<Hook> = OnceCell::new();
+pub static HOOK: OnceCell<Hook> = OnceCell::new();
 
 type GetMessageFn = unsafe extern "system" fn(*mut MSG, HWND, u32, u32) -> BOOL;
 type PeekMessageFn =
@@ -73,7 +73,7 @@ type PeekMessageFn =
 
 type GetMessagePosFn = unsafe extern "system" fn() -> u32;
 
-pub(crate) fn install() -> anyhow::Result<()> {
+pub fn install() -> anyhow::Result<()> {
     HOOK.get_or_try_init(|| unsafe {
         debug!("hooking GetMessageA");
         let get_message_a = DetourHook::attach(GetMessageA as _, hooked_get_message_a as _)?;

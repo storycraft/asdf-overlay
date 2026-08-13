@@ -15,7 +15,7 @@ use windows::{
 };
 
 /// Load [`HCURSOR`] resource from `cursor` if exists.
-pub(crate) fn load(hinstance: usize, cursor: Cursor) -> Option<HCURSOR> {
+pub fn load(hinstance: usize, cursor: Cursor) -> Option<HCURSOR> {
     #[inline]
     fn system_cursor(res: PCWSTR) -> Option<HCURSOR> {
         unsafe { LoadCursorW(None, res) }.ok()
