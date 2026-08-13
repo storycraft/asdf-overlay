@@ -1,3 +1,5 @@
+use core::error::Error;
+
 use asdf_overlay::{
     event_sink::OverlayEventSink,
     surface::{SharedTextureHandle, Surfaces},
@@ -20,7 +22,7 @@ use windows::{
 
 // egui example from https://github.com/emilk/egui/blob/main/examples/hello_world/src/main.rs
 
-fn main() -> eframe::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     asdf_overlay::initialize().expect("Overlay initialization");
@@ -45,7 +47,8 @@ fn main() -> eframe::Result<()> {
                 age: 42,
             }))
         }),
-    )
+    )?;
+    Ok(())
 }
 
 fn show_overlay() -> anyhow::Result<()> {

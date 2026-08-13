@@ -1,3 +1,4 @@
+use core::error::Error;
 use std::{sync::Arc, thread};
 
 use asdf_overlay_window::Backends;
@@ -5,7 +6,7 @@ use eframe::egui;
 
 // egui example from https://github.com/emilk/egui/blob/main/examples/hello_world/src/main.rs
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     let backends = Arc::new(Backends::new()?);
