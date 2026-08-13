@@ -1,11 +1,12 @@
 use core::{ptr, slice};
 
+use anyhow::Context;
 use asdf_overlay::{
     event_sink::OverlayEventSink,
     interop::DxInterop,
     surface::{SurfaceState, Surfaces},
 };
-use asdf_overlay_event::{RenderApi, SurfaceInfo};
+use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
 use windows::Win32::{
@@ -93,14 +94,15 @@ fn setup_fn(
     physical_device: vk::PhysicalDevice,
     data: &SwapchainData,
 ) -> anyhow::Result<SurfaceState> {
+    let window_id = get_surface_hwnd(data.surface).context("invalid surface handle")?;
     let interop = DxInterop::new(get_dxgi_adapter(physical_device).as_ref())?;
     let gpu_id = interop.gpu_id;
+
     SurfaceState::new(
         interop,
         data.image_size,
         SurfaceInfo {
-            api: RenderApi::Vulkan,
-            window_id: get_surface_hwnd(data.surface),
+            api: SurfaceType::Vulkan { window_id },
             gpu_id,
         },
     )
@@ -133,11 +135,6 @@ fn draw_overlay(
     state: &SurfaceState,
     wait_semaphores: &[vk::Semaphore],
 ) -> Option<vk::Semaphore> {
-    if state.info.api != RenderApi::Vulkan {
-        trace!("ignoring vulkan rendering");
-        return None;
-    }
-
     let mut renderer = data.renderer.lock();
     let renderer = renderer.get_or_insert_with(|| {
         debug!("initializing vulkan renderer");

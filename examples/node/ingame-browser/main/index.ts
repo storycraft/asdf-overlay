@@ -42,8 +42,9 @@ async function createOverlayWindow(pid: number) {
   ]);
 
   // If bound window is found, use it instead of the first window found.
-  if (surfaceInfo.windowId) {
-    windowId = surfaceInfo.windowId;
+  if (surfaceInfo.ty.windowId) {
+    console.debug('surface window found id:', surfaceInfo.ty.windowId);
+    windowId = surfaceInfo.ty.windowId;
   }
 
   const window: OverlayWindow = { id: windowId, overlay };

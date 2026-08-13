@@ -5,7 +5,7 @@ use core::{ffi::c_void, mem};
 use std::ffi::CString;
 
 use anyhow::Context;
-use asdf_overlay_event::{RenderApi, SurfaceInfo};
+use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::{Lazy, OnceCell};
 use scopeguard::defer;
@@ -125,11 +125,6 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 fn draw_overlay(hdc: HDC) {
     #[inline]
     fn inner(state: &SurfaceState, renderer: &mut Option<OpenglRenderer>) {
-        if state.info.api != RenderApi::Opengl {
-            trace!("ignoring opengl rendering");
-            return;
-        }
-
         trace!("using opengl renderer");
         with_renderer_gl_data(|| {
             let renderer = match renderer {
@@ -211,8 +206,9 @@ fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
         interop,
         size,
         SurfaceInfo {
-            api: RenderApi::Opengl,
-            window_id: Some(hwnd.0 as _),
+            api: SurfaceType::Opengl {
+                window_id: hwnd.0 as _,
+            },
             gpu_id,
         },
     )

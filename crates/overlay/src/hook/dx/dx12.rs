@@ -1,7 +1,7 @@
 mod rtv;
 mod util;
 
-use asdf_overlay_event::{RenderApi, SurfaceInfo};
+use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
@@ -85,13 +85,9 @@ fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
 
 pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
     let Some(queue) = get_queue_for(device) else {
+        debug!("Queue is not found for Direct3D12 device");
         return;
     };
-
-    if state.info.api != RenderApi::Direct3D12 {
-        trace!("ignoring Direct3D12 rendering");
-        return;
-    }
 
     let Some(size) = state.texture_size() else {
         return;
@@ -147,8 +143,7 @@ pub(super) fn setup_fn(
         interop,
         (desc.Width, desc.Height),
         SurfaceInfo {
-            api: RenderApi::Direct3D12,
-            window_id,
+            api: SurfaceType::Direct3D12 { window_id },
             gpu_id,
         },
     )

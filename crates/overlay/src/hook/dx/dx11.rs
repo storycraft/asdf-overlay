@@ -1,4 +1,4 @@
-use asdf_overlay_event::{RenderApi, SurfaceInfo};
+use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
@@ -80,11 +80,6 @@ fn with_or_init_renderer_data<R>(
 }
 
 pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
-    if state.info.api != RenderApi::Direct3D11 {
-        trace!("ignoring Direct3D11 rendering");
-        return;
-    }
-
     let Some(size) = state.texture_size() else {
         return;
     };
@@ -147,8 +142,7 @@ pub(super) fn setup_fn(
         interop,
         (desc.Width, desc.Height),
         SurfaceInfo {
-            api: RenderApi::Direct3D11,
-            window_id,
+            api: SurfaceType::Direct3D11 { window_id },
             gpu_id,
         },
     )

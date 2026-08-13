@@ -38,11 +38,8 @@ pub enum SurfaceEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceInfo {
-    /// The render api used by the surface.
-    pub api: RenderApi,
-
-    /// The window id of the surface, if any.
-    pub window_id: Option<u32>,
+    /// Surface type and type specific informations.
+    pub api: SurfaceType,
 
     /// The LUID of the GPU adapter which the window used to present to surface.
     ///
@@ -66,10 +63,38 @@ pub struct GpuLuid {
 /// Describes the render api used by a surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum RenderApi {
-    Opengl,
-    Direct3D9,
-    Direct3D11,
-    Direct3D12,
-    Vulkan,
+pub enum SurfaceType {
+    /// Surface is OpenGL default framebuffer.
+    Opengl {
+        /// Window id of the OpenGL surface
+        window_id: u32,
+    },
+
+    /// Surface is Direct3D9 swapchain.
+    Direct3D9 {
+        /// Window id of the Direct3D9 surface
+        window_id: u32,
+    },
+
+    /// Surface is Direct3D11 swapchain.
+    Direct3D11 {
+        /// Window id of the Direct3D11 surface
+        ///
+        /// If the surface is directcomposition swapchain, the window id will be None.
+        window_id: Option<u32>,
+    },
+
+    /// Surface is Direct3D12 swapchain.
+    Direct3D12 {
+        /// Window id of the Direct3D12 surface
+        ///
+        /// If the surface is directcomposition swapchain, the window id will be None.
+        window_id: Option<u32>,
+    },
+
+    /// Surface is Vulkan win32 surface.
+    Vulkan {
+        /// Window id of the Vulkan surface.
+        window_id: u32,
+    },
 }

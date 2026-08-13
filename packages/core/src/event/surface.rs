@@ -3,11 +3,8 @@ use napi_derive::napi;
 
 #[napi(object)]
 pub struct SurfaceInfo {
-    /// Graphics API used by the surface.
-    pub api: RenderApi,
-
-    /// Window id of the surface, if any.
-    pub window_id: Option<u32>,
+    /// Surface type.
+    pub ty: SurfaceType,
 
     /// GPU LUID of the surface.
     pub gpu_id: GpuLuid,
@@ -16,30 +13,35 @@ pub struct SurfaceInfo {
 impl From<common::event::surface::SurfaceInfo> for SurfaceInfo {
     fn from(v: common::event::surface::SurfaceInfo) -> Self {
         Self {
-            api: RenderApi::from(v.api),
-            window_id: v.window_id,
+            ty: SurfaceType::from(v.api),
             gpu_id: GpuLuid::from(v.gpu_id),
         }
     }
 }
 
-#[napi(string_enum)]
-pub enum RenderApi {
-    Opengl,
-    Direct3D9,
-    Direct3D11,
-    Direct3D12,
-    Vulkan,
+#[napi]
+pub enum SurfaceType {
+    Opengl { window_id: u32 },
+    Direct3D9 { window_id: u32 },
+    Direct3D11 { window_id: Option<u32> },
+    Direct3D12 { window_id: Option<u32> },
+    Vulkan { window_id: u32 },
 }
 
-impl From<common::event::surface::RenderApi> for RenderApi {
-    fn from(v: common::event::surface::RenderApi) -> Self {
+impl From<common::event::surface::SurfaceType> for SurfaceType {
+    fn from(v: common::event::surface::SurfaceType) -> Self {
         match v {
-            common::event::surface::RenderApi::Opengl => Self::Opengl,
-            common::event::surface::RenderApi::Direct3D9 => Self::Direct3D9,
-            common::event::surface::RenderApi::Direct3D11 => Self::Direct3D11,
-            common::event::surface::RenderApi::Direct3D12 => Self::Direct3D12,
-            common::event::surface::RenderApi::Vulkan => Self::Vulkan,
+            common::event::surface::SurfaceType::Opengl { window_id } => Self::Opengl { window_id },
+            common::event::surface::SurfaceType::Direct3D9 { window_id } => {
+                Self::Direct3D9 { window_id }
+            }
+            common::event::surface::SurfaceType::Direct3D11 { window_id } => {
+                Self::Direct3D11 { window_id }
+            }
+            common::event::surface::SurfaceType::Direct3D12 { window_id } => {
+                Self::Direct3D12 { window_id }
+            }
+            common::event::surface::SurfaceType::Vulkan { window_id } => Self::Vulkan { window_id },
         }
     }
 }
