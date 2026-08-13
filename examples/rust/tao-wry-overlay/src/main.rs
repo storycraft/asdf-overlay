@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
         d3d11_cx,
     )));
 
-    let view_size = (800, 600);
+    let view_size = (1280, 720);
 
     // Setup winrt dispatcher
     let _dispatcher_controller = unsafe {
@@ -177,6 +177,7 @@ async fn main() -> anyhow::Result<()> {
     // Setup composition webview
     let webview = WebViewBuilder::new()
         .with_url("https://v2.tauri.app/")
+        .with_transparent(true)
         .with_composition_visual_target(unsafe {
             mem::transmute::<IUnknown, _>(visual.cast::<IUnknown>()?)
         })
