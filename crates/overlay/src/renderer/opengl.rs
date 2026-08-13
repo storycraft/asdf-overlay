@@ -89,6 +89,11 @@ impl OpenglRenderer {
             return Ok(());
         };
 
+        let size = surface.size();
+        if size.0 == 0 || size.1 == 0 {
+            return Ok(());
+        }
+
         self.interop = Some(GlInteropTexture::new(device, surface)?);
         Ok(())
     }
