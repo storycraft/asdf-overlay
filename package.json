@@ -3,7 +3,7 @@
   "description": "Asdf overlay",
   "private": true,
   "type": "module",
-  "author": "storycraft <storycraft@pancake.sh>",
+  "author": "storycraft <me@pancake.sh>",
   "license": "MIT OR Apache-2.0",
   "homepage": "https://github.com/storycraft/asdf-overlay#readme",
   "bugs": {

@@ -5,7 +5,7 @@
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "type": "module",
-  "author": "storycraft <storycraft@pancake.sh>",
+  "author": "storycraft <me@pancake.sh>",
   "homepage": "https://github.com/storycraft/asdf-overlay#readme",
   "license": "MIT OR Apache-2.0",
   "bugs": {

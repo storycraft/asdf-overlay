@@ -3,7 +3,7 @@ name = "noise-rectangle"
 publish = false
 edition.workspace = true
 license.workspace = true
-authors = ["storycraft <storycraft@pancake.sh>"]
+authors = ["storycraft <me@pancake.sh>"]
 
 [dependencies]
 asdf-overlay-client = { workspace = true }
