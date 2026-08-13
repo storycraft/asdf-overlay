@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Setup GraphicsCaptureItem and Direct3D11CaptureFramePool
     let capture_item = GraphicsCaptureItem::CreateFromVisual(&visual)?;
-    let pool = Direct3D11CaptureFramePool::Create(
+    let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
         &unsafe { CreateDirect3D11DeviceFromDXGIDevice(&d3d11_device.cast::<IDXGIDevice>()?)? }
             .cast::<IDirect3DDevice>()?,
         DirectXPixelFormat::B8G8R8A8UIntNormalized,
