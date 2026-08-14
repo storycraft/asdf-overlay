@@ -1,4 +1,4 @@
-//! Screen capture utility for overlay surface using Windows.Graphics.Capture. 
+//! Screen capture utility for overlay surface using Windows.Graphics.Capture.
 
 use core::ptr;
 use std::sync::Mutex;

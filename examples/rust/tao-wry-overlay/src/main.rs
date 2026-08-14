@@ -117,6 +117,8 @@ async fn main() -> anyhow::Result<()> {
         .with_url("https://v2.tauri.app/")
         .with_transparent(true)
         .with_composition_visual_target(unsafe {
+            // SAFETY: Due to windows version mismatch. They are same type and noop
+            #[warn(clippy::missing_transmute_annotations)]
             mem::transmute::<IUnknown, _>(visual.cast::<IUnknown>()?)
         })
         .build(&window)?;
