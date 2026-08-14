@@ -1,8 +1,5 @@
-use core::{mem, ptr};
-use std::{
-    env,
-    sync::{Arc, Mutex},
-};
+use core::mem;
+use std::{env, sync::Arc};
 
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
@@ -12,37 +9,20 @@ use asdf_overlay_client::{
         event::{OverlayEvent, surface::SurfaceEvent},
         request::surface::UpdateSharedHandle,
     },
-    surface::OverlaySurface,
 };
-use scopeguard::defer;
+use asdf_overlay_surface_util::capture::D3DCapturePool;
 use tao::{
     event_loop::{ControlFlow, DeviceEventFilter, EventLoop},
     window::WindowBuilder,
 };
 use windows::{
-    Foundation::TypedEventHandler,
-    Graphics::{
-        Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem},
-        DirectX::{Direct3D11::IDirect3DDevice, DirectXPixelFormat},
-    },
+    Graphics::Capture::GraphicsCaptureItem,
     UI::Composition::Compositor,
-    Win32::{
-        Foundation::HMODULE,
-        Graphics::{
-            Direct3D::D3D_DRIVER_TYPE_HARDWARE,
-            Direct3D11::{
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
-                ID3D11Texture2D,
-            },
-            Dxgi::IDXGIDevice,
-        },
-        System::WinRT::{
-            CreateDispatcherQueueController, DQTAT_COM_NONE, DQTYPE_THREAD_CURRENT,
-            Direct3D11::{CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess},
-            DispatcherQueueOptions,
-        },
+    Win32::System::WinRT::{
+        CreateDispatcherQueueController, DQTAT_COM_NONE, DQTYPE_THREAD_CURRENT,
+        DispatcherQueueOptions,
     },
-    core::{IUnknown, Interface, Ref},
+    core::{IUnknown, Interface},
 };
 use windows_numerics::Vector2;
 use wry::{
@@ -64,30 +44,6 @@ async fn main() -> anyhow::Result<()> {
     let surface_id = fetch_main_surface_id(&mut event).await?;
     eprintln!("main surface id: {surface_id}");
 
-    let (d3d11_device, d3d11_cx) = unsafe {
-        let mut device = None;
-        let mut cx = None;
-        D3D11CreateDevice(
-            None,
-            D3D_DRIVER_TYPE_HARDWARE,
-            HMODULE(ptr::null_mut()),
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            None,
-            D3D11_SDK_VERSION,
-            Some(&mut device),
-            None,
-            Some(&mut cx),
-        )?;
-
-        (device.unwrap(), cx.unwrap())
-    };
-
-    // Setup overlay surface
-    let overlay_surface = Arc::new(Mutex::new(OverlaySurface::<2>::new_with_device(
-        d3d11_device.clone(),
-        d3d11_cx,
-    )));
-
     let view_size = (1280, 720);
 
     // Setup winrt dispatcher
@@ -107,46 +63,13 @@ async fn main() -> anyhow::Result<()> {
         Y: view_size.1 as f32,
     })?;
 
-    // Setup GraphicsCaptureItem and Direct3D11CaptureFramePool
+    // Setup GraphicsCaptureItem
     let capture_item = GraphicsCaptureItem::CreateFromVisual(&visual)?;
-    let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-        &unsafe { CreateDirect3D11DeviceFromDXGIDevice(&d3d11_device.cast::<IDXGIDevice>()?)? }
-            .cast::<IDirect3DDevice>()?,
-        DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
-        capture_item.Size()?,
-    )?;
 
     // Setup channel for frame updates
     let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<UpdateSharedHandle>();
 
     // Handle frames
-    let handler_overlay_surface = overlay_surface.clone();
-    pool.FrameArrived(&TypedEventHandler::new(
-        move |sender: Ref<Direct3D11CaptureFramePool>, _| {
-            let pool: &Direct3D11CaptureFramePool = sender.ok()?;
-            let next_frame = pool.TryGetNextFrame()?;
-            defer!({
-                _ = next_frame.Close();
-            });
-
-            let surface = next_frame.Surface()?;
-            let desc = surface.Description()?;
-            let interop = surface.cast::<IDirect3DDxgiInterfaceAccess>()?;
-            let tex = unsafe { interop.GetInterface::<ID3D11Texture2D>()? };
-
-            if let Some(update) = handler_overlay_surface
-                .lock()
-                .unwrap()
-                .update_from_texture(desc.Width as _, desc.Height as _, &tex, None)
-                .unwrap()
-            {
-                _ = update_tx.send(update);
-            }
-
-            Ok(())
-        },
-    ))?;
 
     // Setup frame update task
     tokio::spawn(async move {
@@ -161,9 +84,12 @@ async fn main() -> anyhow::Result<()> {
         Ok::<_, anyhow::Error>(())
     });
 
-    // Create capture session
-    let capture_session = pool.CreateCaptureSession(&capture_item)?;
-    capture_session.StartCapture()?;
+    let mut capture_pool = D3DCapturePool::new(None, capture_item, move |update| {
+        _ = update_tx.send(update);
+
+        Ok(())
+    })?;
+    capture_pool.start()?;
 
     let event_loop = EventLoop::new();
     event_loop.set_device_event_filter(DeviceEventFilter::Never);
@@ -171,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
     // Setup invisible window for webview
     let window = WindowBuilder::new()
         .with_inner_size(tao::dpi::LogicalSize::new(0.0, 0.0))
+        .with_always_on_top(true)
         .with_visible(false)
         .build(&event_loop)?;
 

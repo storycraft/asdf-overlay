@@ -9,8 +9,8 @@ use asdf_overlay_client::{
         request::surface::SetPosition,
     },
     inject,
-    surface::OverlaySurface,
 };
+use asdf_overlay_surface_util::surface::OverlaySurface;
 use tokio::time::sleep;
 
 #[tokio::main]

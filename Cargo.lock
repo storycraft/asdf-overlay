@@ -405,6 +405,7 @@ version = "1.2.5"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
+ "asdf-overlay-surface-util",
  "bytemuck",
  "futures",
  "mimalloc",
@@ -417,6 +418,17 @@ dependencies = [
  "static_vcruntime",
  "tokio",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "asdf-overlay-surface-util"
+version = "1.2.5"
+dependencies = [
+ "anyhow",
+ "asdf-overlay-common",
+ "scopeguard",
+ "windows 0.62.2",
+ "windows-numerics 0.3.1",
 ]
 
 [[package]]
@@ -3100,6 +3112,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
+ "asdf-overlay-surface-util",
  "rand",
  "tokio",
 ]
@@ -4804,8 +4817,8 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
+ "asdf-overlay-surface-util",
  "rand",
- "scopeguard",
  "tao",
  "tokio",
  "windows 0.62.2",

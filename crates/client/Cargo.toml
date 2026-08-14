@@ -44,11 +44,6 @@ features = [
     "Win32_System_SystemServices",
     "Win32_System_SystemInformation",
     "Win32_System_Memory",
-    "Win32_Graphics",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_Graphics_Direct3D",
-    "Win32_Graphics_Direct3D11",
 ]
 
 [package.metadata.docs.rs]
