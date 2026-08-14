@@ -123,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .build(&window)?;
 
+    #[cfg(debug_assertions)]
     webview.open_devtools();
 
     // Set webview size
