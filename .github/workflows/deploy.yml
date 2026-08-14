@@ -111,6 +111,8 @@ jobs:
           path: |
             packages/core/index.js
             packages/core/index.d.ts
+            packages/core/native.js
+            packages/core/native.d.ts
 
       - name: Sign artifacts
         if: ${{ inputs.signing-policy != '' }}
