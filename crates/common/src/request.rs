@@ -5,6 +5,8 @@
 pub mod surface;
 pub mod window;
 
+use core::fmt;
+
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -26,6 +28,32 @@ pub enum Request {
 
     /// Request to a specific surface.
     Surface(SurfaceRequest),
+}
+
+/// Result type for IPC requests.
+pub type Result<T> = core::result::Result<T, Error>;
+
+/// Serializable error type for IPC requests.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Error(serde_error::Error);
+
+impl Error {
+    pub fn new(error: &(impl ?Sized + core::error::Error)) -> Self {
+        Self(serde_error::Error::new(error))
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
 }
 
 /// Trait implemented for request types.

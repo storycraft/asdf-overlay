@@ -1,5 +1,6 @@
 mod io;
 
+use anyhow::Context;
 use asdf_overlay::{
     event_sink::OverlayEventSink,
     surface::{SharedTextureHandle, Surfaces},
@@ -18,7 +19,7 @@ use asdf_overlay_window::{Backends, window::ListenInputFlags};
 use scopeguard::defer;
 use std::sync::Arc;
 use tokio::net::windows::named_pipe::NamedPipeServer;
-use tracing::{Level, debug, error, trace};
+use tracing::{Level, debug, trace};
 
 use crate::{cursors, event_sink::EventSink, ipc::io::IpcServerConn};
 
@@ -95,21 +96,25 @@ pub async fn run(
             }
 
             Request::BlockInput(BlockInput { block }) => {
-                if block {
-                    backends.block_input();
-                } else {
-                    backends.unblock_input();
-                }
+                conn.reply_with::<<BlockInput as Requestable>::Response>(req_id, || {
+                    if block {
+                        backends.block_input();
+                    } else {
+                        backends.unblock_input();
+                    }
 
-                conn.reply::<<BlockInput as Requestable>::Response>(req_id, ())?;
+                    Ok(())
+                })?;
             }
 
             Request::SetBlockingCursor(SetBlockingCursor { cursor }) => {
-                backends.set_blocking_cursor(
-                    cursor.and_then(|cursor| cursors::load(hinstance, cursor)),
-                );
+                conn.reply_with::<<SetBlockingCursor as Requestable>::Response>(req_id, || {
+                    backends.set_blocking_cursor(
+                        cursor.and_then(|cursor| cursors::load(hinstance, cursor)),
+                    );
 
-                conn.reply::<<SetBlockingCursor as Requestable>::Response>(req_id, ())?;
+                    Ok(())
+                })?;
             }
 
             Request::Surface(surface) => {
@@ -128,12 +133,15 @@ fn handle_window_request(
 ) -> anyhow::Result<()> {
     match req.kind {
         WindowRequestKind::ListenInput(cmd) => {
-            let mut flags = ListenInputFlags::empty();
-            flags.set(ListenInputFlags::CURSOR, cmd.cursor);
-            flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+            conn.reply_with::<<ListenInput as WindowRequestable>::Response>(req_id, || {
+                let mut flags = ListenInputFlags::empty();
+                flags.set(ListenInputFlags::CURSOR, cmd.cursor);
+                flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
 
-            backends.window(req.id, |state| state.set_input_flags(flags));
-            conn.reply::<<ListenInput as WindowRequestable>::Response>(req_id, ())?;
+                backends.window(req.id, |state| state.set_input_flags(flags));
+
+                Ok(())
+            })?;
         }
     }
 
@@ -147,18 +155,27 @@ fn handle_surface_request(
 ) -> anyhow::Result<()> {
     match req.kind {
         SurfaceRequestKind::SetPosition(cmd) => {
-            _ = Surfaces::state(req.id, |state| state.reposition(cmd.x, cmd.y));
-            conn.reply::<<SetPosition as SurfaceRequestable>::Response>(req_id, ())?;
+            conn.reply_with::<<SetPosition as SurfaceRequestable>::Response>(req_id, || {
+                Surfaces::state(req.id, |state| state.reposition(cmd.x, cmd.y))
+                    .context("Surface not found")?;
+                Ok(())
+            })?;
         }
 
         SurfaceRequestKind::UpdateSharedHandle(shared) => {
-            Surfaces::state(req.id, |state| {
-                if let Err(err) = state.commit_overlay_texture(map_ipc_shtex_update(shared)) {
-                    error!("failed to open shared surface. err: {:?}", err);
-                }
-            });
+            conn.reply_with::<<UpdateSharedHandle as SurfaceRequestable>::Response>(
+                req_id,
+                || {
+                    Surfaces::state(req.id, |state| {
+                        state
+                            .commit_overlay_texture(map_ipc_shtex_update(shared))
+                            .context("Failed to commit overlay texture")
+                    })
+                    .context("Surface not found")??;
 
-            conn.reply::<<UpdateSharedHandle as SurfaceRequestable>::Response>(req_id, ())?;
+                    Ok(())
+                },
+            )?;
         }
     }
 
