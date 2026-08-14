@@ -26,7 +26,6 @@ parking_lot = { version = "0.12.3", features = ["hardware-lock-elision"] }
 scopeguard = "1.2.0"
 tracing-subscriber = { version = "0.3", features = ["parking_lot"] }
 arc-swap = "1.7.1"
-spin = { version = "0.12.2", features = ["mutex"] }
 
 [dependencies.windows]
 workspace = true
