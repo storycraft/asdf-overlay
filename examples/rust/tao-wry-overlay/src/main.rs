@@ -12,7 +12,8 @@ use asdf_overlay_client::{
 };
 use asdf_overlay_surface_util::capture::D3DCapturePool;
 use tao::{
-    event_loop::{ControlFlow, DeviceEventFilter, EventLoop},
+    event::Event,
+    event_loop::{ControlFlow, DeviceEventFilter, EventLoopBuilder},
     window::WindowBuilder,
 };
 use windows::{
@@ -69,8 +70,6 @@ async fn main() -> anyhow::Result<()> {
     // Setup channel for frame updates
     let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<UpdateSharedHandle>();
 
-    // Handle frames
-
     // Setup frame update task
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
@@ -91,8 +90,20 @@ async fn main() -> anyhow::Result<()> {
     })?;
     capture_pool.start()?;
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoopBuilder::<Option<OverlayEvent>>::with_user_event().build();
     event_loop.set_device_event_filter(DeviceEventFilter::Never);
+
+    // Setup overlay event sink
+    tokio::spawn({
+        let proxy = event_loop.create_proxy();
+        async move {
+            while let Some(event) = event.recv().await {
+                _ = proxy.send_event(Some(event));
+            }
+
+            _ = proxy.send_event(None);
+        }
+    });
 
     // Setup invisible window for webview
     let window = WindowBuilder::new()
@@ -118,8 +129,23 @@ async fn main() -> anyhow::Result<()> {
         size: Size::Physical(PhysicalSize::new(view_size.0, view_size.1)),
     })?;
 
-    event_loop.run(move |_event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        let Event::UserEvent(overlay_event) = event else {
+            return;
+        };
+
+        let overlay_event = match overlay_event {
+            None => {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
+
+            Some(overlay_event) => overlay_event,
+        };
+
+        eprintln!("Overlay event: {overlay_event:?}");
     });
 }
 
