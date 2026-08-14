@@ -50,17 +50,22 @@ fn main() -> anyhow::Result<()> {
 
 fn build_node(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
     create_dir_all(dir)?;
-    let [x64_path, aarch64_path] = cargo_artifacts(
+    let [x64_path, x86_path, aarch64_path] = cargo_artifacts(
         cargo_args,
         "asdf-overlay-node",
-        ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
+        [
+            "x86_64-pc-windows-msvc",
+            "i686-pc-windows-msvc",
+            "aarch64-pc-windows-msvc",
+        ],
     );
     let x64_path = x64_path.context("x86_64 build has no output")?;
+    let x86_path = x86_path.context("i686 build has no output")?;
     let aarch64_path = aarch64_path.context("aarch64 build has no output")?;
 
-    fs::copy(x64_path, dir.join("addon-x64.node"))?;
-    fs::copy(aarch64_path, dir.join("addon-aarch64.node"))?;
-
+    fs::copy(x64_path, dir.join("addon.win32-x64-msvc.node"))?;
+    fs::copy(x86_path, dir.join("addon.win32-ia32-msvc.node"))?;
+    fs::copy(aarch64_path, dir.join("addon.win32-arm64-msvc.node"))?;
     Ok(())
 }
 
@@ -82,7 +87,6 @@ fn build_dlls(dir: &Path, cargo_args: &[String]) -> anyhow::Result<()> {
     fs::copy(x64_path, dir.join("asdf_overlay-x64.dll"))?;
     fs::copy(x86_path, dir.join("asdf_overlay-x86.dll"))?;
     fs::copy(aarch64_path, dir.join("asdf_overlay-aarch64.dll"))?;
-
     Ok(())
 }
 

@@ -41,42 +41,23 @@ mod wgl {
     include!(concat!(env!("OUT_DIR"), "/wgl_bindings.rs"));
 }
 
-pub mod backend;
 pub mod event_sink;
-pub mod layout;
 pub mod surface;
 
 mod hook;
-mod interop;
+pub mod interop;
 mod renderer;
-mod resources;
 mod texture;
 mod types;
 mod util;
 
-use anyhow::{Context, bail};
-use once_cell::sync::OnceCell;
-use windows::Win32::Foundation::HINSTANCE;
-
-/// Module handle of the overlay.
-static INSTANCE: OnceCell<usize> = OnceCell::new();
-
-#[inline]
-/// Get overlay [`HINSTANCE`]
-pub(crate) fn instance() -> HINSTANCE {
-    HINSTANCE(*INSTANCE.get().unwrap() as _)
-}
+use anyhow::Context;
 
 /// Initialize overlay, hooks.
 ///
 /// * Calling more than once will fail.
 /// * Calling with holding loader lock (DllMain) will fail.
-/// * If given `hinstance` is invalid, some resources may not appear correctly.
-pub fn initialize(hinstance: usize) -> anyhow::Result<()> {
-    if INSTANCE.set(hinstance).is_err() {
-        bail!("Already initialized");
-    }
-
-    hook::install(HINSTANCE(hinstance as _)).context("hook initialization failed")?;
+pub fn initialize() -> anyhow::Result<()> {
+    hook::install().context("hook initialization failed")?;
     Ok(())
 }

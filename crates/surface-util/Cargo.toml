@@ -1,0 +1,36 @@
+[package]
+name = "asdf-overlay-surface-util"
+description = "Asdf Overlay surface utility"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["capture"]
+capture = []
+
+[dependencies]
+asdf-overlay-common = { workspace = true }
+
+anyhow = "1.0.97"
+scopeguard = "1.2.0"
+windows-numerics = "0.3.1"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "System",
+    "Win32_Security",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Graphics_Direct3D11",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Graphics_Capture",
+    "UI_Composition"
+]

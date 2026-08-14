@@ -3,7 +3,7 @@ members = [
     "./crates/*",
     "./xtask",
     "./examples/rust/*",
-    "./packages/core/native",
+    "./packages/core",
 ]
 resolver = "2"
 
@@ -18,19 +18,22 @@ version = "1.2.5"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
-authors = ["storycraft <storycraft@pancake.sh>"]
+authors = ["storycraft <me@pancake.sh>"]
 rust-version = "1.88"
 
 [workspace.dependencies]
 asdf-overlay = { version = "1.2.5", path = "./crates/overlay" }
+asdf-overlay-event = { version = "1.2.5", path = "./crates/event" }
 asdf-overlay-dll = { version = "1.2.5", path = "./crates/dll" }
 asdf-overlay-hook = { version = "1.2.5", path = "./crates/hook" }
 asdf-overlay-client = { version = "1.2.5", path = "./crates/client" }
 asdf-overlay-common = { version = "1.2.5", path = "./crates/common" }
-asdf-overlay-event = { version = "1.2.5", path = "./crates/event" }
 asdf-overlay-vulkan-layer = { version = "1.2.5", path = "./crates/vulkan-layer" }
+asdf-overlay-window = { version = "1.2.5", path = "./crates/window" }
+asdf-overlay-window-event = { version = "1.2.5", path = "./crates/window-event" }
+asdf-overlay-surface-util = { version = "1.2.5", path = "./crates/surface-util" }
 
-tokio = "1.47.1"
+tokio = "1.53.1"
 
 [workspace.dependencies.windows]
 version = "0.62.2"

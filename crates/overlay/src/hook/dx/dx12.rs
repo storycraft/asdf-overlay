@@ -1,6 +1,7 @@
 mod rtv;
 mod util;
 
+use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
@@ -9,7 +10,7 @@ use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{debug, trace};
+use tracing::{Level, debug, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -17,17 +18,18 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
         },
-        Dxgi::{IDXGISwapChain1, IDXGISwapChain3},
+        Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4, IDXGISwapChain1, IDXGISwapChain3},
     },
     core::Interface,
 };
 
 use crate::{
-    backend::{WindowBackend, render::Renderer},
     hook::dx::{
         dx12::rtv::RtvDescriptors, dxgi::callback::register_swapchain_destruction_callback,
     },
+    interop::DxInterop,
     renderer::dx12::Dx12Renderer,
+    surface::{SurfaceState, Surfaces},
     types::IntDashMap,
 };
 
@@ -53,7 +55,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            debug!("initializing dx12 renderer");
+            info!("initializing dx12 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
             let ref_mut = entry.insert(RendererData {
@@ -72,7 +74,7 @@ fn with_or_init_renderer_data<R>(
     f(&mut data)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     Some(unsafe {
         ID3D12CommandQueue::from_raw_borrowed(&QUEUE_MAP.remove(&(device.as_raw() as _))?.1.0)
@@ -81,53 +83,28 @@ fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     })
 }
 
-pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
+pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
     let Some(queue) = get_queue_for(device) else {
+        debug!("Queue is not found for Direct3D12 device");
         return;
     };
 
-    let mut render = backend.render.lock();
-    match render.renderer {
-        Some(Renderer::Dx12) => {}
-
-        // drawing on opengl with dxgi swapchain can cause deadlock
-        Some(Renderer::Opengl) => {
-            render.renderer = Some(Renderer::Dx12);
-            debug!("switching from opengl to dx12 render");
-            // skip drawing on render changes
-            return;
-        }
-        // use dxgi swapchain instead
-        Some(Renderer::Vulkan) => {
-            render.renderer = Some(Renderer::Dx12);
-            debug!("switching from vulkan to dx12 render");
-            return;
-        }
-        Some(_) => {
-            trace!("ignoring dx12 rendering");
-            return;
-        }
-        None => {
-            render.renderer = Some(Renderer::Dx12);
-            // skip drawing on renderer check
-            return;
-        }
-    };
-
-    let Some(surface) = render.surface.get() else {
+    let Some(size) = state.texture_size() else {
         return;
     };
 
-    let size = surface.size();
-    let update = render.surface.take_update();
-    let position = render.position;
-    let screen = render.window_size;
-    drop(render);
-
+    let position = state.position();
+    let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx12 renderer");
-        if let Some(update) = update {
-            data.renderer.update_texture(update);
+        if state.texture.take_update() {
+            data.renderer.update_texture(
+                state
+                    .texture
+                    .get()
+                    .as_ref()
+                    .map(|surface| surface.shared_handle()),
+            );
         }
 
         let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
@@ -151,6 +128,33 @@ pub fn draw_overlay(backend: &WindowBackend, device: &ID3D12Device, swapchain: &
     });
 }
 
+pub(super) fn setup_fn(
+    device: &ID3D12Device,
+    swapchain: &IDXGISwapChain1,
+) -> anyhow::Result<SurfaceState> {
+    let desc = unsafe { swapchain.GetDesc1() }?;
+
+    let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
+    let window_id = unsafe { swapchain.GetHwnd() }
+        .ok()
+        .map(|hwnd| hwnd.0 as u32);
+    let gpu_id = interop.gpu_id;
+    SurfaceState::new(
+        interop,
+        (desc.Width, desc.Height),
+        SurfaceInfo {
+            api: SurfaceType::Direct3D12 { window_id },
+            gpu_id,
+        },
+    )
+}
+
+fn get_dxgi_adapter(device: &ID3D12Device) -> Option<IDXGIAdapter> {
+    let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory4>() }.ok()?;
+    let luid = unsafe { device.GetAdapterLuid() };
+    unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
+}
+
 pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     let Some(mut data) = RENDERERS.get_mut(&(swapchain.as_raw() as _)) else {
         return;
@@ -160,17 +164,18 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     data.rtv.reset();
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize, device: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    debug!("dx12 renderer cleanup");
+    info!("dx12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
+    Surfaces::cleanup_state(swapchain as _);
 }
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_execute_command_lists(
     this: *mut c_void,
     num_command_lists: u32,
@@ -219,7 +224,7 @@ pub fn hook() -> anyhow::Result<()> {
 }
 
 /// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT type by creating dummy device
-#[tracing::instrument]
+#[tracing::instrument(level = Level::TRACE)]
 fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
     unsafe {
         let mut device = None;

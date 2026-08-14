@@ -1,6 +1,6 @@
-import { screen, type MouseInputEvent, type MouseWheelInputEvent, type WebContents } from 'electron';
+import { type MouseInputEvent, type MouseWheelInputEvent, type WebContents } from 'electron';
 import type { OverlayWindow } from './index.js';
-import type { CursorInput, KeyboardInput } from '@asdf-overlay/core/input';
+import type { CursorInput, CursorInputKind, KeyboardInput } from '@asdf-overlay/core';
 import { mapCssCursor, mapKeycode } from './input/conv.js';
 import { Cursor } from '@asdf-overlay/core';
 
@@ -21,7 +21,7 @@ export class ElectronOverlayInput {
     this.window = { ...window };
 
     this.window.overlay.event.on(
-      'cursor_input',
+      'window_cursor_input',
       this.cursorInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -31,7 +31,7 @@ export class ElectronOverlayInput {
       },
     );
     this.window.overlay.event.on(
-      'keyboard_input',
+      'window_keyboard_input',
       this.keyboardInputHandler = (id, input) => {
         if (id !== window.id) {
           return;
@@ -43,7 +43,7 @@ export class ElectronOverlayInput {
     this.contents.on(
       'cursor-changed',
       this.cursorChangedHandler = (_, type) => {
-        void this.window.overlay.setBlockingCursor(this.window.id, mapCssCursor(type));
+        void this.window.overlay.setBlockingCursor(mapCssCursor(type));
       },
     );
   }
@@ -59,12 +59,12 @@ export class ElectronOverlayInput {
    * Disconnect overlay inputs.
    */
   async disconnect() {
-    this.window.overlay.event.off('cursor_input', this.cursorInputHandler);
-    this.window.overlay.event.off('keyboard_input', this.keyboardInputHandler);
+    this.window.overlay.event.off('window_cursor_input', this.cursorInputHandler);
+    this.window.overlay.event.off('window_keyboard_input', this.keyboardInputHandler);
     this.contents.off('cursor-changed', this.cursorChangedHandler);
 
     try {
-      await this.window.overlay.setBlockingCursor(this.window.id, Cursor.Default);
+      await this.window.overlay.setBlockingCursor(Cursor.Default);
     } catch {
       //
     }
@@ -72,7 +72,7 @@ export class ElectronOverlayInput {
 
   private readonly clickCounts: number[] = [];
   private processCursorAction(
-    input: CursorInput & { kind: 'Action', },
+    input_kind: CursorInputKind & { type: 'Action' },
     x: number,
     y: number,
     globalX: number,
@@ -81,7 +81,7 @@ export class ElectronOverlayInput {
     movementY: number,
   ) {
     let button: MouseInputEvent['button'];
-    switch (input.action) {
+    switch (input_kind.action) {
       case 'Left': {
         button = 'left';
         break;
@@ -104,8 +104,8 @@ export class ElectronOverlayInput {
       }
     }
 
-    if (input.state === 'Pressed') {
-      const clickCount = 1 + ~~input.doubleClick;
+    if (input_kind.state.type === 'Pressed') {
+      const clickCount = input_kind.state.clickCount;
       this.clickCounts.push(clickCount);
       this.contents.sendInputEvent({
         type: 'mouseDown',
@@ -120,7 +120,7 @@ export class ElectronOverlayInput {
         modifiers: this.modifiers,
       });
     } else {
-      const clickCount = this.clickCounts.pop() ?? 1;
+      const clickCount = this.clickCounts.pop() ?? 0;
       this.contents.sendInputEvent({
         type: 'mouseUp',
         button,
@@ -142,15 +142,15 @@ export class ElectronOverlayInput {
   };
 
   sendCursorInput(input: CursorInput) {
-    const x = input.clientX / this.scaleFactor;
-    const y = input.clientY / this.scaleFactor;
-    const globalX = input.windowX / this.scaleFactor;
-    const globalY = input.windowY / this.scaleFactor;
+    const x = input.x / this.scaleFactor;
+    const y = input.y / this.scaleFactor;
+    const globalX = input.x / this.scaleFactor;
+    const globalY = input.y / this.scaleFactor;
 
     const movementX = globalX - this.lastWindowCursor.x;
     const movementY = globalY - this.lastWindowCursor.y;
 
-    switch (input.kind) {
+    switch (input.kind.type) {
       case 'Enter': {
         this.contents.sendInputEvent({
           type: 'mouseEnter',
@@ -195,10 +195,10 @@ export class ElectronOverlayInput {
 
       case 'Scroll': {
         let scroll: MouseWheelInputEvent;
-        if (input.axis === 'Y') {
+        if (input.kind.axis === 'Y') {
           scroll = {
             type: 'mouseWheel',
-            deltaY: input.delta,
+            deltaY: input.kind.delta,
             x,
             y,
             globalX,
@@ -210,7 +210,7 @@ export class ElectronOverlayInput {
         } else {
           scroll = {
             type: 'mouseWheel',
-            deltaX: input.delta,
+            deltaX: input.kind.delta,
             x,
             y,
             globalX,
@@ -226,7 +226,7 @@ export class ElectronOverlayInput {
 
       case 'Action': {
         this.processCursorAction(
-          input,
+          input.kind,
           x,
           y,
           globalX,
@@ -306,7 +306,7 @@ export class ElectronOverlayInput {
   }
 
   sendKeyboardInput(input: KeyboardInput) {
-    switch (input.kind) {
+    switch (input.type) {
       case 'Key': {
         const keyCode = mapKeycode(input.key.code);
         if (!keyCode) {
@@ -339,8 +339,8 @@ export class ElectronOverlayInput {
     }
   }
 
-  private processIme(input: KeyboardInput & { kind: 'Ime', }) {
-    if (input.ime.kind !== 'Commit') {
+  private processIme(input: KeyboardInput & { type: 'Ime' }) {
+    if (input.ime.type !== 'Commit') {
       return;
     }
 

@@ -5,179 +5,86 @@
 //!
 //! Injection can be done using `asdf-overlay-client` crate.
 
-#[cfg(debug_assertions)]
-mod dbg;
-
+mod cursors;
+mod event_sink;
+mod ipc;
+mod ipc_tracing;
 mod server;
 
 extern crate asdf_overlay_vulkan_layer;
 
 use anyhow::Context;
-use asdf_overlay::{
-    backend::{Backends, window::ListenInputFlags},
-    event_sink::OverlayEventSink,
-    initialize,
-};
-use asdf_overlay_common::{
-    ipc::create_ipc_addr,
-    request::{Request, WindowRequest},
-};
-use asdf_overlay_event::{OverlayEvent, WindowEvent};
+use asdf_overlay::initialize;
+use asdf_overlay_common::event::OverlayEvent;
+use asdf_overlay_window::Backends;
 use core::time::Duration;
-use scopeguard::defer;
-use std::{ffi::OsStr, thread};
-use tokio::{
-    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
-    runtime::Runtime,
-    time::sleep,
-};
-use tracing::{debug, error, trace, warn};
-use windows::{
-    Win32::{
-        Foundation::{GENERIC_READ, GENERIC_WRITE, HINSTANCE},
-        Security::{
-            ACL, AllocateAndInitializeSid,
-            Authorization::{
-                EXPLICIT_ACCESS_A, SET_ACCESS, SetEntriesInAclA, TRUSTEE_A, TRUSTEE_IS_SID,
-                TRUSTEE_IS_USER,
-            },
-            FreeSid, InitializeSecurityDescriptor, NO_INHERITANCE, PSECURITY_DESCRIPTOR, PSID,
-            SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, SECURITY_WORLD_SID_AUTHORITY,
-            SetSecurityDescriptorDacl,
-        },
-        System::{
-            SystemServices::{
-                DLL_PROCESS_ATTACH, SECURITY_DESCRIPTOR_REVISION, SECURITY_WORLD_RID,
-            },
-            Threading::GetCurrentProcessId,
-        },
-    },
-    core::{BOOL, PSTR},
+use std::{sync::Arc, thread};
+use tokio::{net::windows::named_pipe::NamedPipeServer, runtime::Builder, time::sleep};
+use tracing::{debug, error, warn};
+use windows::Win32::{
+    Foundation::HINSTANCE,
+    System::{SystemServices::DLL_PROCESS_ATTACH, Threading::GetCurrentProcessId},
 };
 
-use crate::server::IpcServerConn;
+use crate::event_sink::EventSink;
 
-/// IPC server main loop.
-#[tracing::instrument(skip(server))]
-async fn run(server: NamedPipeServer) -> anyhow::Result<()> {
-    fn handle_window_event(hwnd: u32, req: WindowRequest) -> anyhow::Result<bool> {
-        let res = Backends::with_backend(hwnd, |backend| {
-            match req {
-                WindowRequest::SetPosition(position) => {
-                    backend.update_layout(|layout| {
-                        layout.position = (position.x, position.y);
-                    });
-                }
+async fn main(module_handle: usize) -> anyhow::Result<()> {
+    // initialize overlay
+    initialize().context("overlay initialization")?;
+    debug!("Overlay initialized.");
 
-                WindowRequest::SetAnchor(anchor) => {
-                    backend.update_layout(|layout| {
-                        layout.anchor = (anchor.x, anchor.y);
-                    });
-                }
+    // initialize windows
+    let backends = Arc::new(Backends::new().context("window initialization")?);
+    debug!("Window backend initialized.");
 
-                WindowRequest::SetMargin(margin) => {
-                    backend.update_layout(|layout| {
-                        layout.margin = (margin.top, margin.right, margin.bottom, margin.left);
-                    });
-                }
+    // setup window event sink
+    tokio::spawn({
+        use asdf_overlay_common::event::window::Event;
 
-                WindowRequest::ListenInput(cmd) => {
-                    let mut flags = ListenInputFlags::empty();
-                    flags.set(ListenInputFlags::CURSOR, cmd.cursor);
-                    flags.set(ListenInputFlags::KEYBOARD, cmd.keyboard);
+        let backends = backends.clone();
 
-                    backend.listen_input(flags);
-                }
-
-                WindowRequest::BlockInput(cmd) => {
-                    backend.block_input(cmd.block);
-                }
-
-                WindowRequest::SetBlockingCursor(cmd) => {
-                    backend.set_blocking_cursor(cmd.cursor);
-                }
-
-                WindowRequest::UpdateSharedHandle(shared) => {
-                    if let Err(err) = backend.update_surface(shared.handle) {
-                        error!("failed to open shared surface. err: {:?}", err);
-                        return false;
-                    }
-                }
+        async move {
+            while let Some(event) = backends.recv_async().await {
+                EventSink::emit(match event {
+                    Event::Window { id, event } => OverlayEvent::Window { id, event },
+                    Event::InputBlockingEnded => OverlayEvent::InputBlockingEnded,
+                });
             }
-
-            true
-        });
-
-        Ok(res.unwrap_or(false))
-    }
-
-    let mut conn = IpcServerConn::new(server).await?;
-    let emitter = conn.create_emitter();
-    {
-        debug!("sending initial data");
-        // send existing windows
-        for backend in Backends::iter() {
-            let render = backend.render.lock();
-            let gpu_id = render.interop.gpu_id();
-            let size = render.window_size;
-            _ = emitter.emit(OverlayEvent::Window {
-                id: *backend.key() as _,
-                event: WindowEvent::Added {
-                    width: size.0,
-                    height: size.1,
-                    gpu_id,
-                },
-            });
         }
-    }
-
-    OverlayEventSink::set(move |event| _ = emitter.emit(event));
-    defer!({
-        debug!("cleanup start");
-        OverlayEventSink::clear();
-        Backends::cleanup_backends();
     });
 
-    while let Ok((req_id, req)) = conn.recv().await {
-        trace!("recv id: {req_id} req: {req:?}");
+    let pid = unsafe { GetCurrentProcessId() };
 
-        match req {
-            Request::Window { id, request } => {
-                conn.reply(req_id, handle_window_event(id, request)?)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// IPC server listener.
-#[tracing::instrument(skip(create_server))]
-async fn run_server(
-    mut server: NamedPipeServer,
-    mut create_server: impl FnMut() -> anyhow::Result<NamedPipeServer>,
-) {
+    // setup first ipc server
+    let mut server = open_ipc_server::<true>(pid, module_handle as u32).await;
     loop {
-        debug!("waiting ipc client...");
+        debug!("Waiting ipc client...");
         match server.connect().await {
             Ok(_) => {
-                if let Err(err) = run(server).await {
-                    warn!("client connection ended unexpectedly. err: {:?}", err);
+                if let Err(err) = ipc::run(module_handle, backends.clone(), server).await {
+                    warn!(error = ?err, "Client connection ended unexpectedly.");
                 }
             }
+
             Err(err) => {
-                error!("failed to connect to client. err: {err:?}");
+                error!(error = ?err, "Failed to connect to client.");
             }
         }
 
-        server = loop {
-            match create_server() {
-                Ok(server) => break server,
-                Err(err) => {
-                    error!("failed to create server. retrying after 5 seconds. err: {err:?}");
-                    sleep(Duration::from_secs(5)).await;
-                }
+        server = open_ipc_server::<false>(pid, module_handle as u32).await;
+    }
+}
+
+async fn open_ipc_server<const FIRST: bool>(pid: u32, module_handle: u32) -> NamedPipeServer {
+    loop {
+        match server::open::<true>(pid, module_handle) {
+            Ok(server) => return server,
+
+            Err(err) => {
+                error!(error = ?err, "Failed to create server. retrying after 5 seconds.");
+                sleep(Duration::from_secs(5)).await;
             }
-        };
+        }
     }
 }
 
@@ -188,129 +95,27 @@ async fn run_server(
 #[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
-    #[cfg(debug_assertions)]
-    fn setup_tracing() {
-        use tracing::level_filters::LevelFilter;
-
-        use crate::dbg::WinDbgMakeWriter;
-
-        tracing_subscriber::fmt::fmt()
-            .with_ansi(false)
-            .with_thread_ids(true)
-            .with_max_level(LevelFilter::TRACE)
-            .with_writer(WinDbgMakeWriter::new())
-            .init();
-    }
-
     if fdw_reason != DLL_PROCESS_ATTACH {
         return true;
     }
 
-    // setup tracing first
-    #[cfg(debug_assertions)]
-    setup_tracing();
+    // setup tracing
+    tracing::subscriber::set_global_default(ipc_tracing::subscriber()).unwrap();
 
-    // setup tokio runtime
-    let Ok(rt) = Runtime::new() else {
-        error!("cannot create tokio runtime");
-        return false;
-    };
-    let _guard = rt.enter();
-
-    let pid = unsafe { GetCurrentProcessId() };
     let module_handle = dll_module.0 as usize;
-    // setup first ipc server
-    let server = match create_ipc_server(create_ipc_addr(pid, module_handle as u32), true) {
-        Ok(server) => server,
-        Err(err) => {
-            error!("cannot open ipc server. err: {err:?}");
-            return false;
-        }
-    };
-    let create_server =
-        move || create_ipc_server(create_ipc_addr(pid, module_handle as u32), false);
-
     thread::spawn(move || {
-        // initialize overlay
-        initialize(module_handle as _).expect("initialization failed");
-        debug!("hook installed");
+        // Setup tokio runtime
+        let rt = match Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(err) => {
+                error!(error = ?err, "Cannot setup tokio runtime");
+                return;
+            }
+        };
 
-        rt.block_on(run_server(server, create_server))
+        if let Err(err) = rt.block_on(main(module_handle)) {
+            error!(error = ?err, "Error occurred while running main");
+        }
     });
     true
-}
-
-/// Create a new IPC server using the given address.
-fn create_ipc_server(addr: impl AsRef<OsStr>, first: bool) -> anyhow::Result<NamedPipeServer> {
-    Ok(unsafe {
-        ServerOptions::new()
-            .first_pipe_instance(first)
-            .create_with_security_attributes_raw(
-                addr,
-                &mut SECURITY_ATTRIBUTES {
-                    nLength: 1,
-                    lpSecurityDescriptor: &mut create_everyone_security_desc()
-                        .context("failed to create Everyone security desc")?
-                        as *mut _ as _,
-                    bInheritHandle: BOOL(0),
-                } as *mut _ as _,
-            )?
-    })
-}
-
-/// Create Windows security descriptor allowing read/write permission to Everyone.
-fn create_everyone_security_desc() -> anyhow::Result<SECURITY_DESCRIPTOR> {
-    let mut everyone_sid = PSID::default();
-    unsafe {
-        AllocateAndInitializeSid(
-            &SECURITY_WORLD_SID_AUTHORITY,
-            1,
-            SECURITY_WORLD_RID as _,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            &mut everyone_sid,
-        )?;
-    }
-    defer!(unsafe {
-        FreeSid(everyone_sid);
-    });
-
-    let access = EXPLICIT_ACCESS_A {
-        grfAccessPermissions: GENERIC_READ.0 | GENERIC_WRITE.0,
-        grfAccessMode: SET_ACCESS,
-        grfInheritance: NO_INHERITANCE,
-        Trustee: TRUSTEE_A {
-            TrusteeForm: TRUSTEE_IS_SID,
-            TrusteeType: TRUSTEE_IS_USER,
-            ptstrName: PSTR(everyone_sid.0.cast()),
-            ..Default::default()
-        },
-    };
-
-    let mut pacl: *mut ACL = 0 as _;
-    unsafe {
-        SetEntriesInAclA(Some(&[access]), None, &mut pacl).ok()?;
-    }
-
-    let mut security_desc = SECURITY_DESCRIPTOR::default();
-    unsafe {
-        InitializeSecurityDescriptor(
-            PSECURITY_DESCRIPTOR(&mut security_desc as *mut _ as _),
-            SECURITY_DESCRIPTOR_REVISION,
-        )?;
-
-        SetSecurityDescriptorDacl(
-            PSECURITY_DESCRIPTOR(&mut security_desc as *mut _ as _),
-            true,
-            Some(pacl),
-            false,
-        )?;
-    }
-
-    Ok(security_desc)
 }

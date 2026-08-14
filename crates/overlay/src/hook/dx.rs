@@ -5,10 +5,10 @@ mod dxgi;
 
 pub use dx12::original_execute_command_lists;
 
-use tracing::error;
+use tracing::{Level, error};
 use windows::Win32::Foundation::HWND;
 
-#[tracing::instrument]
+#[tracing::instrument(level = Level::DEBUG)]
 pub fn hook(dummy_hwnd: HWND) {
     if let Err(err) = dx12::hook() {
         error!("failed to hook dx12. err: {err:?}");

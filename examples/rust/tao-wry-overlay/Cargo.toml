@@ -1,0 +1,25 @@
+[package]
+name = "tao-wry-overlay"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors = ["storycraft <me@pancake.sh>"]
+
+[dependencies]
+asdf-overlay-client = { workspace = true, features = ["surface"] }
+asdf-overlay-surface-util = { workspace = true }
+
+tokio = { workspace = true, features = ["full"] }
+
+anyhow = "1.0.97"
+rand = "0.9.3"
+tao = "0.36.0"
+wry = { git = 'https://github.com/jerryoh512/wry.git', branch = "feat/webview2-composition-hosting" }
+windows-numerics = "0.3.1"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "System",
+    "UI_Composition"
+]

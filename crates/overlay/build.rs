@@ -3,7 +3,6 @@ use gl_generator::{Api, Fallbacks, GlobalGenerator, Profile, Registry};
 use std::env;
 use std::fs::File;
 use std::path::Path;
-use winres::WindowsResource;
 
 /// Create gl, wgl bindings with extensions.
 fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
@@ -40,24 +39,10 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Create Windows cursor resources.
-fn create_rc() -> anyhow::Result<()> {
-    println!("cargo:rerun-if-changed=resources");
-    let mut res = WindowsResource::new();
-    res.append_rc_content(include_str!("./resources/cursors.rc"));
-    res.compile()?;
-    Ok(())
-}
-
 fn main() -> anyhow::Result<()> {
     let dest = env::var("OUT_DIR")?;
 
     create_gl_bindings(&dest)?;
-
-    if env::var("DOCS_RS").is_ok() {
-        return Ok(());
-    }
-    create_rc()?;
 
     Ok(())
 }

@@ -1,14 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "declaration": true,
-    "rootDir": "src",
-    "outDir": "lib",
+    "allowJs": true,
+    "noEmit": true,
     "types": [
       "node"
     ]
-  },
-  "include": [
-    "src",
-  ]
+  }
 }

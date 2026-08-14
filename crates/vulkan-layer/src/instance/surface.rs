@@ -1,6 +1,7 @@
+use asdf_overlay::surface::Surfaces;
 use ash::vk::{self, Handle};
 use once_cell::sync::Lazy;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{instance::DISPATCH_TABLE, map::IntDashMap};
 
@@ -32,9 +33,10 @@ pub(super) extern "system" fn create_win32_surface(
         return res;
     }
 
+    info!("initializing vk surface data");
     let surface = unsafe { *surface }.as_raw();
     let hwnd = unsafe { *create_info }.hwnd as u32;
-    debug!("registering surface: {surface} -> hwnd: {hwnd}");
+    debug!("registering vk surface: {surface} -> hwnd: {hwnd}");
     SURFACE_MAP.insert(surface, hwnd);
 
     vk::Result::SUCCESS
@@ -54,6 +56,8 @@ pub(super) extern "system" fn destroy_surface(
             .destroy_surface
             .unwrap())(instance, surface, callback);
     }
+    info!("vulkan surface cleanup");
 
     SURFACE_MAP.remove(&surface.as_raw());
+    Surfaces::cleanup_state(surface.as_raw());
 }

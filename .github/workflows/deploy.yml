@@ -10,6 +10,9 @@ on:
       unsigned-artifact-id:
         description: "Unsigned artifact Id"
         value: ${{ jobs.deploy.outputs.unsigned-artifact-id }}
+      js-bindings-artifact-id:
+        description: "js bindings artifact Id"
+        value: ${{ jobs.deploy.outputs.js-bindings-artifact-id }}
       signed-artifact-id:
         description: "Signed artifact Id"
         value: ${{ jobs.deploy.outputs.signed-artifact-id }}
@@ -45,6 +48,7 @@ jobs:
     environment: deploy
     outputs:
       unsigned-artifact-id: ${{ steps.upload-unsigned-artifact.outputs.artifact-id }}
+      js-bindings-artifact-id: ${{ steps.upload-js-bindings-artifact.outputs.artifact-id }}
       signed-artifact-id: ${{ steps.upload-signed-artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
@@ -92,11 +96,21 @@ jobs:
         with:
           name: 'asdf-overlay-artifact-unsigned-${{ steps.commit-sha.outputs.short_sha }}'
           path: |
-            packages/core/addon-aarch64.node
-            packages/core/addon-x64.node
+            packages/core/addon.win32-arm64-msvc.node
+            packages/core/addon.win32-ia32-msvc.node
+            packages/core/addon.win32-x64-msvc.node
             packages/core/asdf_overlay-aarch64.dll
             packages/core/asdf_overlay-x86.dll
             packages/core/asdf_overlay-x64.dll
+  
+      - name: Upload js bindings artifact
+        id: upload-js-bindings-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'asdf-overlay-core-bindings-${{ steps.commit-sha.outputs.short_sha }}'
+          path: |
+            packages/core/index.js
+            packages/core/index.d.ts
 
       - name: Sign artifacts
         if: ${{ inputs.signing-policy != '' }}

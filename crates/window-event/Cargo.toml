@@ -1,0 +1,16 @@
+[package]
+name = "asdf-overlay-window-event"
+description = "Asdf Overlay windowing event"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+bitflags = "2.9.1"

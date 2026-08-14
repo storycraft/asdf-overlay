@@ -1,80 +1,100 @@
-//! The [`OverlayEvent`] enum and assorted types.
-//!
-//! These events are emitted from overlay system and usually sent from server to client via IPC connection.
-//! For the actual usage inside the library, see the documentation of
-//! * Overlay system: `asdf-overlay`
-//! * IPC client: `asdf-overlay-client`
-//! * IPC server: `asdf-overlay-dll`
-
-pub mod input;
-
-use input::InputEvent;
-
-/// Describe a overlay event.
+/// Describe a event.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
-pub enum OverlayEvent {
-    /// Events related to a specific window.
-    Window {
-        /// Unique identifier for the window.
-        id: u32,
-        event: WindowEvent,
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Event {
+    /// Events related to a specific surface.
+    Surface {
+        /// Unique identifier for the surface.
+        id: u64,
+        event: SurfaceEvent,
     },
 }
 
-/// Describe a window event.
+/// Describes a surface event.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
-pub enum WindowEvent {
-    /// A new window capable for overlay rendering is identified.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SurfaceEvent {
     Added {
-        /// Initial width of the window
+        /// Width of the surface
         width: u32,
 
-        /// Initial height of the window
+        /// Height of the surface
         height: u32,
 
-        /// The LUID of the GPU adapter which the window used to present to surface.
-        ///
-        /// Client must choose correct GPU adapter using this luid,
-        /// otherwise overlay rendering may fail.
-        gpu_id: GpuLuid,
+        /// Surface information
+        info: SurfaceInfo,
     },
-
-    /// Window size is changed.
     Resized {
-        /// New width of the window
+        // New width of the surface
         width: u32,
 
-        /// New height of the window
+        // New height of the surface
         height: u32,
     },
-
-    /// Input event related to this window.
-    ///
-    /// You only receive this event if you are listening to input events
-    /// or have input blocking enabled for this window.
-    Input(InputEvent),
-
-    /// Input blocking is turned off or interrupted by the user or system.
-    ///
-    /// The user may turn off input blocking at any time,
-    /// for example, by pressing Alt+F4 on Windows.
-    InputBlockingEnded,
-
-    /// Window is no longer available for overlay rendering.
-    /// This is likely the last event for this window.
     Destroyed,
+}
+
+/// Hint for a surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SurfaceInfo {
+    /// Surface type and type specific informations.
+    pub api: SurfaceType,
+
+    /// The LUID of the GPU adapter which the window used to present to surface.
+    ///
+    /// Client must choose correct GPU adapter using this luid,
+    /// otherwise overlay rendering may fail.
+    pub gpu_id: GpuLuid,
 }
 
 /// Locally unique identifier for a GPU adapter.
 ///
 /// This identifier is not persistent across reboots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GpuLuid {
     /// The low part of the LUID.
     pub low: u32,
     /// The high part of the LUID.
     pub high: i32,
+}
+
+/// Describes the render api used by a surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SurfaceType {
+    /// Surface is OpenGL default framebuffer.
+    Opengl {
+        /// Window id of the OpenGL surface
+        window_id: u32,
+    },
+
+    /// Surface is Direct3D9 swapchain.
+    Direct3D9 {
+        /// Window id of the Direct3D9 surface
+        window_id: u32,
+    },
+
+    /// Surface is Direct3D11 swapchain.
+    Direct3D11 {
+        /// Window id of the Direct3D11 surface
+        ///
+        /// If the surface is directcomposition swapchain, the window id will be None.
+        window_id: Option<u32>,
+    },
+
+    /// Surface is Direct3D12 swapchain.
+    Direct3D12 {
+        /// Window id of the Direct3D12 surface
+        ///
+        /// If the surface is directcomposition swapchain, the window id will be None.
+        window_id: Option<u32>,
+    },
+
+    /// Surface is Vulkan win32 surface.
+    Vulkan {
+        /// Window id of the Vulkan surface.
+        window_id: u32,
+    },
 }

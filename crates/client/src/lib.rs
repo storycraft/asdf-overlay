@@ -31,13 +31,8 @@
 
 pub mod client;
 mod injector;
-#[cfg(feature = "surface")]
-pub mod surface;
-#[cfg(feature = "surface")]
-pub mod ty;
 
 pub use asdf_overlay_common as common;
-pub use asdf_overlay_event as event;
 
 use core::time::Duration;
 use std::path::Path;

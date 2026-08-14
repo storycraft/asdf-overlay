@@ -5,21 +5,19 @@ use crate::{
         self,
         types::{GLint, GLuint},
     },
+    surface::{SharedTextureHandle, texture::OverlaySurface},
     wgl,
 };
 use anyhow::{Context, bail};
 use scopeguard::{ScopeGuard, defer};
-use tracing::trace;
+use tracing::{Level, trace};
 use windows::{
     Win32::Graphics::{
-        Direct3D11::{D3D11_TEXTURE2D_DESC, ID3D11Device, ID3D11Texture2D},
-        Dxgi::{
-            Common::{
-                DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
-                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
-                DXGI_FORMAT_R16G16B16A16_UNORM,
-            },
-            IDXGIResource,
+        Direct3D11::ID3D11Device,
+        Dxgi::Common::{
+            DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R16G16B16A16_UNORM,
         },
     },
     core::Interface,
@@ -30,15 +28,18 @@ static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
     interop: Option<GlInteropTexture>,
+    vao: GLuint,
     program: GLuint,
     rect_loc: GLint,
     tex_loc: GLint,
 }
 
 impl OpenglRenderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new() -> anyhow::Result<Self> {
         unsafe {
+            let mut vao = 0;
+            gl::GenVertexArrays(1, &mut vao);
             let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
             gl::ShaderSource(
                 vert_shader,
@@ -70,7 +71,7 @@ impl OpenglRenderer {
 
             Ok(Self {
                 interop: None,
-
+                vao,
                 program,
                 rect_loc,
                 tex_loc,
@@ -78,28 +79,26 @@ impl OpenglRenderer {
         }
     }
 
-    pub fn update_texture(&mut self, texture: Option<&ID3D11Texture2D>) -> anyhow::Result<()> {
+    pub fn update_texture(
+        &mut self,
+        device: &ID3D11Device,
+        surface: Option<&OverlaySurface>,
+    ) -> anyhow::Result<()> {
         self.interop.take();
-        let Some(texture) = texture else {
+        let Some(surface) = surface else {
             return Ok(());
         };
 
-        let mut desc = D3D11_TEXTURE2D_DESC::default();
-        unsafe { texture.GetDesc(&mut desc) };
-        let size = (desc.Width, desc.Height);
+        let size = surface.size();
         if size.0 == 0 || size.1 == 0 {
             return Ok(());
         }
 
-        self.interop = Some(GlInteropTexture::new(
-            texture,
-            desc.Format,
-            (size.0 as _, size.1 as _),
-        )?);
+        self.interop = Some(GlInteropTexture::new(device, surface)?);
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     pub fn draw(
         &mut self,
         position: (i32, i32),
@@ -135,6 +134,7 @@ impl OpenglRenderer {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
+            gl::BindVertexArray(self.vao);
             gl::UseProgram(self.program);
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
@@ -150,10 +150,11 @@ impl OpenglRenderer {
 }
 
 impl Drop for OpenglRenderer {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     fn drop(&mut self) {
         self.interop.take();
         unsafe {
+            gl::DeleteVertexArrays(1, &self.vao);
             gl::DeleteProgram(self.program);
         }
         trace!("OpenGL resources freed");
@@ -169,18 +170,14 @@ enum GlInteropTexture {
 }
 
 impl GlInteropTexture {
-    pub fn new(
-        texture: &ID3D11Texture2D,
-        format: DXGI_FORMAT,
-        size: (u32, u32),
-    ) -> anyhow::Result<Self> {
+    pub fn new(device: &ID3D11Device, surface: &OverlaySurface) -> anyhow::Result<Self> {
         if gl::ImportMemoryWin32HandleEXT::is_loaded()
-            && let Ok(memory_object) = MemoryObjectTexture::open(texture, format, size)
+            && let Ok(memory_object) =
+                MemoryObjectTexture::open(surface.shared_handle(), surface.format(), surface.size())
         {
             Ok(Self::MemoryObject(memory_object))
         } else if wgl::DXOpenDeviceNV::is_loaded() {
-            let device = unsafe { texture.GetDevice()? };
-            Ok(Self::Wgl(NvInteropTexture::open(&device, texture)?))
+            Ok(Self::Wgl(NvInteropTexture::open(device, surface)?))
         } else {
             bail!("Opengl interop is not supported");
         }
@@ -202,13 +199,11 @@ struct MemoryObjectTexture {
 
 impl MemoryObjectTexture {
     fn open(
-        texture: &ID3D11Texture2D,
+        handle: SharedTextureHandle,
         format: DXGI_FORMAT,
         size: (u32, u32),
     ) -> anyhow::Result<Self> {
         unsafe {
-            let handle = texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0.cast();
-
             let memory_object = scopeguard::guard(
                 {
                     let mut id = 0;
@@ -225,8 +220,11 @@ impl MemoryObjectTexture {
             gl::ImportMemoryWin32HandleEXT(
                 *memory_object,
                 0,
-                gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
-                handle,
+                match handle {
+                    SharedTextureHandle::Kmt(_) => gl::HANDLE_TYPE_D3D11_IMAGE_KMT_EXT,
+                    SharedTextureHandle::Nt(_) => gl::HANDLE_TYPE_D3D11_IMAGE_EXT,
+                },
+                handle.as_raw() as _,
             );
             if gl::GetError() != gl::NO_ERROR {
                 bail!("ImportMemoryWin32HandleEXT failed");
@@ -293,7 +291,7 @@ struct NvInteropTexture {
 }
 
 impl NvInteropTexture {
-    fn open(device: &ID3D11Device, texture: &ID3D11Texture2D) -> anyhow::Result<Self> {
+    fn open(device: &ID3D11Device, surface: &OverlaySurface) -> anyhow::Result<Self> {
         unsafe {
             let dx_device_handle = wgl::DXOpenDeviceNV(device.as_raw());
             if dx_device_handle.is_null() {
@@ -313,7 +311,7 @@ impl NvInteropTexture {
 
             let dx11_tex_handle = wgl::DXRegisterObjectNV(
                 dx_device_handle,
-                texture.as_raw(),
+                surface.texture().as_raw() as _,
                 gl_texture,
                 gl::TEXTURE_2D,
                 wgl::ACCESS_READ_ONLY_NV,

@@ -1,7 +1,7 @@
-use core::{mem, num::NonZeroU32};
+use core::mem;
 
 use anyhow::Context;
-use asdf_overlay_common::request::UpdateSharedHandle;
+use tracing::Level;
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -14,7 +14,10 @@ use windows::{
     core::{BOOL, Interface},
 };
 
-use crate::{renderer::dx::shaders, texture::OverlayTextureState, util::with_keyed_mutex};
+use crate::{
+    renderer::dx::shaders, surface::SharedTextureHandle, texture::OverlayTextureState,
+    util::with_keyed_mutex,
+};
 
 const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
     Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
@@ -45,7 +48,7 @@ pub struct Dx11Renderer {
 }
 
 impl Dx11Renderer {
-    #[tracing::instrument]
+    #[tracing::instrument(level = Level::DEBUG)]
     pub fn new(device: &ID3D11Device) -> anyhow::Result<Self> {
         unsafe {
             let mut vertex_shader = None;
@@ -117,11 +120,11 @@ impl Dx11Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: UpdateSharedHandle) {
+    pub fn update_texture(&mut self, shared: Option<SharedTextureHandle>) {
         self.texture.update(shared);
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = Level::TRACE, skip(self))]
     pub fn draw(
         &mut self,
         device: &ID3D11Device,
@@ -193,17 +196,22 @@ impl Dx11Renderer {
 
 fn open_shared_texture(
     device: &ID3D11Device,
-    handle: NonZeroU32,
+    handle: SharedTextureHandle,
 ) -> anyhow::Result<Option<Dx11Tex>> {
-    let mut texture = None;
-    if unsafe {
-        device.OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle.get() as _), &mut texture)
-    }
-    .is_err()
-    {
-        return Ok(None);
-    }
-    let texture = texture.context("failed to open shared texture")?;
+    let texture = match handle {
+        SharedTextureHandle::Kmt(handle) => {
+            let mut slot = None;
+            unsafe { device.OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut slot) }
+                .context("failed to open KMT shared texture")?;
+            slot.unwrap()
+        }
+        SharedTextureHandle::Nt(handle) => unsafe {
+            device
+                .cast::<ID3D11Device1>()?
+                .OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _))
+        }
+        .context("failed to open NT shared texture")?,
+    };
 
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe {

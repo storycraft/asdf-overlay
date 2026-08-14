@@ -1,10 +1,9 @@
 use std::env;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use asdf_overlay_client::{
     OverlayDll,
-    common::request::BlockInput,
-    event::{OverlayEvent, WindowEvent},
+    common::{event::OverlayEvent, request::BlockInput},
     inject,
 };
 
@@ -12,7 +11,9 @@ use asdf_overlay_client::{
 async fn main() -> anyhow::Result<()> {
     let pid = env::args().nth(1).context("processs pid is not provided")?;
 
-    let dll_dir = env::current_dir().expect("cannot find pwd");
+    let dll_dir = env::current_dir()
+        .expect("cannot find pwd")
+        .join("packages/core");
 
     // inject overlay dll into target process
     let (mut conn, mut event) = inject(
@@ -26,24 +27,12 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(OverlayEvent::Window {
-        id,
-        event: WindowEvent::Added { .. },
-    }) = event.recv().await
-    else {
-        bail!("failed to receive main window");
-    };
-
-    conn.window(id).request(BlockInput { block: true }).await?;
+    conn.request(BlockInput { block: true }).await?;
 
     while let Some(event) = event.recv().await {
         dbg!(&event);
 
-        if let OverlayEvent::Window {
-            event: WindowEvent::InputBlockingEnded,
-            ..
-        } = event
-        {
+        if let OverlayEvent::InputBlockingEnded = event {
             break;
         }
     }

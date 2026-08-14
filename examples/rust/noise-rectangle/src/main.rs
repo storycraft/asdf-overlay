@@ -4,18 +4,22 @@ use std::env;
 use anyhow::{Context, bail};
 use asdf_overlay_client::{
     OverlayDll,
-    common::{request::SetPosition, size::PercentLength},
-    event::{OverlayEvent, WindowEvent},
+    common::{
+        event::{OverlayEvent, surface::SurfaceEvent},
+        request::surface::SetPosition,
+    },
     inject,
-    surface::OverlaySurface,
 };
+use asdf_overlay_surface_util::surface::OverlaySurface;
 use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let pid = env::args().nth(1).context("processs pid is not provided")?;
 
-    let dll_dir = env::current_dir().expect("cannot find pwd");
+    let dll_dir = env::current_dir()
+        .expect("cannot find pwd")
+        .join("packages/core");
 
     // inject overlay dll into target process
     let (mut conn, mut event) = inject(
@@ -29,22 +33,25 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let Some(OverlayEvent::Window {
-        id,
-        event: WindowEvent::Added { .. },
-    }) = event.recv().await
-    else {
-        bail!("failed to receive main window");
+    let id = loop {
+        let Some(event) = event.recv().await else {
+            bail!("failed to receive main surface");
+        };
+
+        if let OverlayEvent::Surface {
+            id,
+            event: SurfaceEvent::Added { .. },
+        } = event
+        {
+            break id;
+        }
     };
 
     sleep(Duration::from_secs(1)).await;
 
     // set initial position
-    conn.window(id)
-        .request(SetPosition {
-            x: PercentLength::Length(100.0),
-            y: PercentLength::Length(100.0),
-        })
+    conn.surface(id)
+        .request(SetPosition { x: 100, y: 100 })
         .await?;
 
     let mut surface: OverlaySurface = OverlaySurface::new(None)?;
@@ -56,18 +63,15 @@ async fn main() -> anyhow::Result<()> {
 
         let update = surface.update_bitmap(i as _, &data)?;
         if let Some(shared) = update {
-            conn.window(id).request(shared).await?;
+            conn.surface(id).request(shared).await?;
         }
 
         sleep(Duration::from_millis(10)).await;
     }
 
     // move rectangle
-    conn.window(id)
-        .request(SetPosition {
-            x: PercentLength::Length(200.0),
-            y: PercentLength::Length(200.0),
-        })
+    conn.surface(id)
+        .request(SetPosition { x: 200, y: 200 })
         .await?;
 
     // sleep for 1 secs and remove overlay (dropped)
