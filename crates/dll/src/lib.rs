@@ -21,9 +21,19 @@ use core::time::Duration;
 use std::{sync::Arc, thread};
 use tokio::{net::windows::named_pipe::NamedPipeServer, runtime::Builder, time::sleep};
 use tracing::{debug, error, warn};
-use windows::Win32::{
-    Foundation::HINSTANCE,
-    System::{SystemServices::DLL_PROCESS_ATTACH, Threading::GetCurrentProcessId},
+use windows::{
+    Win32::{
+        Foundation::{HINSTANCE, HMODULE},
+        System::{
+            LibraryLoader::{
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN,
+                GetModuleHandleExA,
+            },
+            SystemServices::DLL_PROCESS_ATTACH,
+            Threading::GetCurrentProcessId,
+        },
+    },
+    core::PCSTR,
 };
 
 use crate::event_sink::EventSink;
@@ -105,6 +115,15 @@ async fn next_ipc_server(module_handle: u32) -> NamedPipeServer {
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
     if fdw_reason != DLL_PROCESS_ATTACH {
         return true;
+    }
+
+    // Prevent dll from unloading
+    unsafe {
+        _ = GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+            PCSTR(DllMain as *const _),
+            &mut HMODULE::default(),
+        );
     }
 
     // setup tracing
