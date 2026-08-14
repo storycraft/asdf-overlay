@@ -28,7 +28,7 @@ use windows::Win32::{
 
 use crate::event_sink::EventSink;
 
-async fn main(module_handle: usize) -> anyhow::Result<()> {
+async fn run(module_handle: usize, mut server: NamedPipeServer) -> anyhow::Result<()> {
     // initialize overlay
     initialize().context("overlay initialization")?;
     debug!("Overlay initialized.");
@@ -53,10 +53,6 @@ async fn main(module_handle: usize) -> anyhow::Result<()> {
         }
     });
 
-    let pid = unsafe { GetCurrentProcessId() };
-
-    // setup first ipc server
-    let mut server = open_ipc_server::<true>(pid, module_handle as u32).await;
     loop {
         debug!("Waiting ipc client...");
         match server.connect().await {
@@ -71,13 +67,25 @@ async fn main(module_handle: usize) -> anyhow::Result<()> {
             }
         }
 
-        server = open_ipc_server::<false>(pid, module_handle as u32).await;
+        server = next_ipc_server(module_handle as _).await;
     }
 }
 
-async fn open_ipc_server<const FIRST: bool>(pid: u32, module_handle: u32) -> NamedPipeServer {
+/// Initialize first IPC server.
+///
+/// NOTE: Loader lock is held when this function is called, so it must not block.
+fn first_ipc_server(module_handle: usize) -> anyhow::Result<NamedPipeServer> {
+    let pid = unsafe { GetCurrentProcessId() };
+
+    // setup first ipc server
+    server::open::<true>(pid, module_handle as _)
+}
+
+async fn next_ipc_server(module_handle: u32) -> NamedPipeServer {
+    let pid = unsafe { GetCurrentProcessId() };
+
     loop {
-        match server::open::<true>(pid, module_handle) {
+        match server::open::<false>(pid, module_handle) {
             Ok(server) => return server,
 
             Err(err) => {
@@ -102,18 +110,29 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     // setup tracing
     tracing::subscriber::set_global_default(ipc_tracing::subscriber()).unwrap();
 
-    let module_handle = dll_module.0 as usize;
-    thread::spawn(move || {
-        // Setup tokio runtime
-        let rt = match Builder::new_current_thread().enable_all().build() {
-            Ok(rt) => rt,
-            Err(err) => {
-                error!(error = ?err, "Cannot setup tokio runtime");
-                return;
-            }
-        };
+    // Setup tokio runtime
+    let rt = match Builder::new_multi_thread().enable_all().build() {
+        Ok(rt) => rt,
+        Err(err) => {
+            error!(error = ?err, "Cannot setup tokio runtime");
+            return true;
+        }
+    };
 
-        if let Err(err) = rt.block_on(main(module_handle)) {
+    let module_handle = dll_module.0 as usize;
+    let server = {
+        let _guard = rt.enter();
+        match first_ipc_server(module_handle) {
+            Ok(server) => server,
+            Err(err) => {
+                error!(error = ?err, "Failed to create first ipc server.");
+                return true;
+            }
+        }
+    };
+
+    thread::spawn(move || {
+        if let Err(err) = rt.block_on(run(module_handle, server)) {
             error!(error = ?err, "Error occurred while running main");
         }
     });
