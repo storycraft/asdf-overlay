@@ -65,6 +65,7 @@ async fn main(module_handle: usize) -> anyhow::Result<()> {
                     warn!(error = ?err, "Client connection ended unexpectedly.");
                 }
             }
+
             Err(err) => {
                 error!(error = ?err, "Failed to connect to client.");
             }
@@ -76,7 +77,7 @@ async fn main(module_handle: usize) -> anyhow::Result<()> {
 
 async fn open_ipc_server<const FIRST: bool>(pid: u32, module_handle: u32) -> NamedPipeServer {
     loop {
-        match server::open::<true>(pid, module_handle as u32) {
+        match server::open::<true>(pid, module_handle) {
             Ok(server) => return server,
 
             Err(err) => {

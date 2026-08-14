@@ -9,7 +9,7 @@ use asdf_overlay_common::{
     event::OverlayEvent,
     ipc::{ClientRequest, Frame, ServerToClientPacket},
     request::{
-        Request, Requestable,
+        self, Request, Requestable,
         surface::{SurfaceRequest, SurfaceRequestable},
         window::{WindowRequest, WindowRequestable},
     },
@@ -95,11 +95,11 @@ impl IpcClientConn {
 
     /// Send a request and wait for the response.
     /// Returns an error if the connection is closed or the request fails.
-    pub async fn request<T: Requestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
+    pub async fn request<T: Requestable>(&mut self, req: T) -> Result<T::Response> {
         self.request_inner::<T::Response>(req.into()).await
     }
 
-    async fn request_inner<T: DeserializeOwned>(&mut self, req: Request) -> anyhow::Result<T> {
+    async fn request_inner<T: DeserializeOwned>(&mut self, req: Request) -> Result<T> {
         let data = self
             .send(req)
             .await
@@ -107,12 +107,14 @@ impl IpcClientConn {
             .await
             .context("failed to receive response")?;
 
-        rmp_serde::from_slice(&data).context("invalid response payload")
+        let res = rmp_serde::from_slice::<request::Result<T>>(&data)
+            .context("invalid response payload")?;
+        Ok(res.map_err(|err| request::Error::new(&err))?)
     }
 
     /// Send a request without waiting for the response.
     /// Returns a oneshot receiver that can be used to receive the response data.
-    async fn send(&mut self, req: Request) -> anyhow::Result<oneshot::Receiver<Vec<u8>>> {
+    async fn send(&mut self, req: Request) -> Result<oneshot::Receiver<Vec<u8>>> {
         let Some(map) = self.map.upgrade() else {
             bail!("connection closed");
         };
@@ -141,6 +143,23 @@ impl Drop for IpcClientConn {
     fn drop(&mut self) {
         self.read_task.abort();
     }
+}
+
+/// Client request result type.
+pub type Result<T> = core::result::Result<T, anyhow::Error>;
+
+/// Error type for IPC client connection.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("ipc io error")]
+    Io(
+        #[from]
+        #[source]
+        anyhow::Error,
+    ),
+
+    #[error("request failed")]
+    Request(#[from] request::Error),
 }
 
 /// Request interface for a specific window id.

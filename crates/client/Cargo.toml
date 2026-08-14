@@ -29,6 +29,7 @@ goblin = { version = "0.10.0", default-features = false, features = [
     "pe32",
     "pe64",
 ] }
+thiserror = "2.0.20"
 
 [dependencies.windows]
 workspace = true

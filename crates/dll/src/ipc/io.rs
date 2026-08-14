@@ -2,10 +2,12 @@
 //! * Using [`IpcServerConn`] one can read requests from the client and reply to them.
 //! * Using [`IpcClientEventEmitter`] one can emit events to the client.
 
+use core::error::Error;
+
 use asdf_overlay_common::{
     event::OverlayEvent,
     ipc::{ClientRequest, Frame, ServerToClientPacket},
-    request::Request,
+    request::{self, Request},
 };
 use serde::Serialize;
 use tokio::{
@@ -73,10 +75,16 @@ impl IpcServerConn {
     }
 
     /// Reply to the client with the given request ID and data.
-    pub fn reply<T: Serialize>(&mut self, id: u32, response: T) -> anyhow::Result<()> {
+    pub fn reply_with<T: Serialize>(
+        &mut self,
+        id: u32,
+        f: impl FnOnce() -> anyhow::Result<T>,
+    ) -> anyhow::Result<()> {
         _ = self.chan.send(ServerToClientPacket::Response {
             id,
-            payload: rmp_serde::to_vec(&response)?,
+            payload: rmp_serde::to_vec(
+                &f().map_err(|err| request::Error::new(AsRef::<dyn Error>::as_ref(&err))),
+            )?,
         });
 
         Ok(())
