@@ -65,11 +65,15 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         let device = device.context("failed to create Dx11 Device")?;
         let cx = cx.context("failed to create Dx11 Context")?;
 
-        Ok(Self {
+        Ok(Self::new_with_device(device, cx))
+    }
+
+    pub fn new_with_device(device: ID3D11Device, cx: ID3D11DeviceContext) -> Self {
+        Self {
             device,
             cx,
             texture: BufferedTexture::new(),
-        })
+        }
     }
 
     /// Clear the current surface.
@@ -93,7 +97,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         let src_texture =
             unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _))? };
         with_external_texture(&src_texture, |src_texture| {
-            self.update_surface_from(width, height, src_texture, rect)
+            self.update_from_texture(width, height, src_texture, rect)
         })
     }
 
@@ -114,11 +118,12 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                 .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut src_texture)?
         };
         with_external_texture(&src_texture.unwrap(), |src_texture| {
-            self.update_surface_from(width, height, src_texture, rect)
+            self.update_from_texture(width, height, src_texture, rect)
         })
     }
 
-    fn update_surface_from(
+    /// Update the surface from a Direct3D texture.
+    pub fn update_from_texture(
         &mut self,
         width: u32,
         height: u32,

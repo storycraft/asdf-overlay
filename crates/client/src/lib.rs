@@ -31,10 +31,6 @@
 
 pub mod client;
 mod injector;
-#[cfg(feature = "surface")]
-pub mod surface;
-#[cfg(feature = "surface")]
-pub mod ty;
 
 pub use asdf_overlay_common as common;
 

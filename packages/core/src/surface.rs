@@ -1,5 +1,6 @@
 use anyhow::Context;
-use asdf_overlay_client::{common::request, surface, ty};
+use asdf_overlay_client::common::request;
+use asdf_overlay_surface_util::{surface, ty};
 use bytemuck::try_pod_read_unaligned;
 use napi::bindgen_prelude::BufferSlice;
 use napi_derive::napi;
