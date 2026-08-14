@@ -120,14 +120,14 @@ pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _:
     };
 
     let module_handle = dll_module.0 as usize;
-    let server = match {
+    let server = {
         let _guard = rt.enter();
-        first_ipc_server(module_handle)
-    } {
-        Ok(server) => server,
-        Err(err) => {
-            error!(error = ?err, "Failed to create first ipc server.");
-            return true;
+        match first_ipc_server(module_handle) {
+            Ok(server) => server,
+            Err(err) => {
+                error!(error = ?err, "Failed to create first ipc server.");
+                return true;
+            }
         }
     };
 
