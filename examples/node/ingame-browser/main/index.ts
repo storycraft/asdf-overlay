@@ -24,6 +24,8 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
+  // NOTE: Some apps decide to recreate whole surface when resizing.
+  // In actual use, you have to listen for `surface_removed` and `surface_added` events to handle this case.
   let [windowId, [surfaceId, surfaceInfo]] = await Promise.all([
     new Promise<number>(resolve => overlay.event.once(
       'window_added',
