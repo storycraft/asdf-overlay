@@ -93,11 +93,10 @@ jobs:
           merge-multiple: true
 
       - name: Publish node package
-        run: pnpm ci:publish
+        run: pnpm ci:publish ${{ !inputs.execute && '--dry-run' || '' }}
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_CONFIG_DRY_RUN: ${{ !inputs.execute && 'true' || 'false' }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Bump cargo package versions, publish
