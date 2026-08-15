@@ -5,6 +5,7 @@ use crate::event::input::Cursor;
 use crate::event::{create_emit_tsfn, event_task};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
+use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common;
 use asdf_overlay_client::common::request::Requestable;
 use asdf_overlay_client::common::request::surface::{self, SetPosition, SurfaceRequestable};
@@ -42,12 +43,10 @@ impl Overlay {
         // Self is not used due to bug in napi-rs generated typing
     ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
         let emitter = create_event_emitter(this)?;
-        let emitter_ref = emitter.create_ref()?;
-        let emit_tsfn = create_emit_tsfn(&emitter)?;
-
-        Ok(env.spawn_future(async move {
+        let task = async move {
             let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
-            let (ipc, event) = inject(
+
+            Ok(inject(
                 pid,
                 OverlayDll {
                     x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
@@ -57,14 +56,19 @@ impl Overlay {
                 timeout,
             )
             .await
-            .context("cannot inject to the process")?;
+            .context("cannot inject to the process")?)
+        };
+        let cb = move |_, (ipc, event): (IpcClientConn, IpcClientEventStream)| {
+            let emit_tsfn = create_emit_tsfn(&emitter)?;
 
             tokio::spawn(event_task(event, emit_tsfn));
             Ok(Self {
                 ipc: Some(ipc.into()),
-                emitter_ref: Mutex::new(emitter_ref),
+                emitter_ref: Mutex::new(emitter.create_ref()?),
             })
-        })?)
+        };
+
+        Ok(env.spawn_future_with_callback(task, cb)?)
     }
 
     async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
