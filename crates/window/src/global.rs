@@ -59,24 +59,7 @@ impl GlobalState {
         if self.blocking_state.write().is_some() {
             return;
         }
-
-        let clip_cursor = {
-            let mut rect = RECT::default();
-            let global_hook = hook::HOOK.wait();
-
-            unsafe {
-                _ = global_hook.get_clip_cursor.original_fn()(&mut rect);
-                let screen = RECT {
-                    left: 0,
-                    top: 0,
-                    right: GetSystemMetrics(SM_CXVIRTUALSCREEN),
-                    bottom: GetSystemMetrics(SM_CYVIRTUALSCREEN),
-                };
-                _ = global_hook.clip_cursor.original_fn()(ptr::null());
-
-                if rect != screen { Some(rect) } else { None }
-            }
-        };
+        let clip_cursor = get_clip_cursor();
 
         for message_loop in self.message_loops.iter() {
             message_loop.block_input();
@@ -95,7 +78,7 @@ impl GlobalState {
             return;
         };
 
-        if let Some(clip_cursor) = state.clip_cursor {
+        if let Some(clip_cursor) = get_clip_cursor().or(state.clip_cursor) {
             _ = unsafe { hook::HOOK.wait().clip_cursor.original_fn()(&clip_cursor) };
         }
 
@@ -199,6 +182,24 @@ impl GlobalState {
 pub struct InputBlockingState {
     // Old cursor clipping rectangle, if any.
     pub clip_cursor: Option<RECT>,
+}
+
+fn get_clip_cursor() -> Option<RECT> {
+    let mut rect = RECT::default();
+    let global_hook = hook::HOOK.wait();
+
+    unsafe {
+        _ = global_hook.get_clip_cursor.original_fn()(&mut rect);
+        let screen = RECT {
+            left: 0,
+            top: 0,
+            right: GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            bottom: GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        };
+        _ = global_hook.clip_cursor.original_fn()(ptr::null());
+
+        if rect != screen { Some(rect) } else { None }
+    }
 }
 
 fn default_cursor() -> HCURSOR {
