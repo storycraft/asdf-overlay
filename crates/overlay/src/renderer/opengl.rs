@@ -133,6 +133,7 @@ impl OpenglRenderer {
             gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
+            gl::Disable(gl::FRAMEBUFFER_SRGB);
 
             gl::BindVertexArray(self.vao);
             gl::UseProgram(self.program);

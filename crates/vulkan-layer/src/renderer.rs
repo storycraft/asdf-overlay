@@ -4,25 +4,17 @@ mod shaders;
 use core::mem;
 
 use anyhow::Context;
+use asdf_overlay::surface::{SharedTextureHandle, texture::OverlaySurface};
 use ash::{
     Device,
     vk::{self, Format},
 };
 use scopeguard::defer;
 use shaders::{FRAGMENT_SHADER, VERTEX_SHADER};
-use windows::{
-    Win32::Graphics::{
-        Direct3D11::{self, D3D11_TEXTURE2D_DESC},
-        Dxgi::{
-            Common::{
-                DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
-                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
-                DXGI_FORMAT_R16G16B16A16_UNORM,
-            },
-            IDXGIResource,
-        },
-    },
-    core::Interface,
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+    DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
+    DXGI_FORMAT_R16G16B16A16_UNORM,
 };
 
 use crate::renderer::frame::FrameData;
@@ -97,7 +89,8 @@ impl VulkanRenderer {
     /// Update renderer overlay texture using given shared Direct3D11 texture.
     pub fn update_texture(
         &mut self,
-        texture: Option<&Direct3D11::ID3D11Texture2D>,
+        surface: Option<&OverlaySurface>,
+        screen_format: vk::Format,
         props: &vk::PhysicalDeviceMemoryProperties,
     ) -> anyhow::Result<()> {
         unsafe {
@@ -109,29 +102,29 @@ impl VulkanRenderer {
                 self.device.free_memory(memory, None);
             }
 
-            let Some(texture) = texture else {
+            let Some(surface) = surface else {
                 return Ok(());
             };
 
-            let mut desc = D3D11_TEXTURE2D_DESC::default();
-            texture.GetDesc(&mut desc);
-            let handle = texture
-                .cast::<IDXGIResource>()
-                .unwrap()
-                .GetSharedHandle()
-                .unwrap();
-            let format = map_dxgi_format_to_vk(desc.Format)
+            let handle = surface.shared_handle();
+            let size = surface.size();
+            let handle_type = match handle {
+                SharedTextureHandle::Kmt(_) => vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT,
+                SharedTextureHandle::Nt(_) => vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE,
+            };
+            let format = map_dxgi_format_to_vk(surface.format(), screen_format)
                 .context("unsupported DXGI format for overlay texture")?;
 
-            let mut external_memory_image_info = vk::ExternalMemoryImageCreateInfo::default()
-                .handle_types(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT);
+            let mut external_memory_image_info =
+                vk::ExternalMemoryImageCreateInfo::default().handle_types(handle_type);
+
             let image = self.device.create_image(
                 &vk::ImageCreateInfo::default()
                     .image_type(vk::ImageType::TYPE_2D)
                     .format(format)
                     .extent(vk::Extent3D {
-                        width: desc.Width,
-                        height: desc.Height,
+                        width: size.0,
+                        height: size.1,
                         depth: 1,
                     })
                     .mip_levels(1)
@@ -158,8 +151,8 @@ impl VulkanRenderer {
             };
 
             let mut import_memory_info = vk::ImportMemoryWin32HandleInfoKHR::default()
-                .handle_type(vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT)
-                .handle(handle.0 as _);
+                .handle_type(handle_type)
+                .handle(handle.as_raw() as _);
             let mut dedicated_alloc_info = vk::MemoryDedicatedAllocateInfo::default().image(image);
 
             if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE
@@ -337,15 +330,46 @@ impl VulkanRenderer {
     }
 }
 
-fn map_dxgi_format_to_vk(format: DXGI_FORMAT) -> Option<vk::Format> {
-    match format {
-        DXGI_FORMAT_R8G8B8A8_UNORM => Some(vk::Format::R8G8B8A8_UNORM),
-        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(vk::Format::R8G8B8A8_SRGB),
-        DXGI_FORMAT_B8G8R8A8_UNORM => Some(vk::Format::B8G8R8A8_UNORM),
-        DXGI_FORMAT_R16G16B16A16_UNORM => Some(vk::Format::R16G16B16A16_UNORM),
-        DXGI_FORMAT_R16G16B16A16_FLOAT => Some(vk::Format::R16G16B16A16_SFLOAT),
+fn map_dxgi_format_to_vk(format: DXGI_FORMAT, screen_format: vk::Format) -> Option<vk::Format> {
+    // All Surface is gamma corrected, so we need to check if the screen is gamma corrected or not.
+
+    match (format, is_srgb(screen_format)) {
+        // Both screen and surface are SRGB. Use SRGB format to avoid double gamma correction.
+        (DXGI_FORMAT_R8G8B8A8_UNORM, true) => Some(vk::Format::R8G8B8A8_SRGB),
+        (DXGI_FORMAT_B8G8R8A8_UNORM, true) => Some(vk::Format::B8G8R8A8_SRGB),
+
+        // Screen is not SRGB. Use UNORM format to render gamma corrected.
+        (DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, false) => Some(vk::Format::R8G8B8A8_UNORM),
+        (DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, false) => Some(vk::Format::B8G8R8A8_UNORM),
+
+        (DXGI_FORMAT_R8G8B8A8_UNORM, _) => Some(vk::Format::R8G8B8A8_UNORM),
+        (DXGI_FORMAT_B8G8R8A8_UNORM, _) => Some(vk::Format::B8G8R8A8_UNORM),
+        (DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, _) => Some(vk::Format::R8G8B8A8_SRGB),
+        (DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, _) => Some(vk::Format::B8G8R8A8_SRGB),
+        (DXGI_FORMAT_R16G16B16A16_UNORM, _) => Some(vk::Format::R16G16B16A16_UNORM),
+        (DXGI_FORMAT_R16G16B16A16_FLOAT, _) => Some(vk::Format::R16G16B16A16_SFLOAT),
         _ => None,
     }
+}
+
+fn is_srgb(foramt: vk::Format) -> bool {
+    matches!(
+        foramt,
+        vk::Format::R8_SRGB
+            | vk::Format::R8G8_SRGB
+            | vk::Format::R8G8B8_SRGB
+            | vk::Format::B8G8R8_SRGB
+            | vk::Format::R8G8B8A8_SRGB
+            | vk::Format::B8G8R8A8_SRGB
+            | vk::Format::BC1_RGB_SRGB_BLOCK
+            | vk::Format::BC1_RGBA_SRGB_BLOCK
+            | vk::Format::BC2_SRGB_BLOCK
+            | vk::Format::BC3_SRGB_BLOCK
+            | vk::Format::BC7_SRGB_BLOCK
+            | vk::Format::ETC2_R8G8B8_SRGB_BLOCK
+            | vk::Format::ETC2_R8G8B8A1_SRGB_BLOCK
+            | vk::Format::ETC2_R8G8B8A8_SRGB_BLOCK
+    )
 }
 
 impl Drop for VulkanRenderer {

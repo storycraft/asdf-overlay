@@ -42,6 +42,7 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
         is_gl_enabled!(last_depth_test = gl::DEPTH_TEST);
         is_gl_enabled!(last_stencil = gl::STENCIL_TEST);
         is_gl_enabled!(last_scissor_test = gl::SCISSOR_TEST);
+        is_gl_enabled!(last_framebuffer_srgb = gl::FRAMEBUFFER_SRGB);
 
         defer!({
             // https://github.com/ocornut/imgui/issues/6220
@@ -84,6 +85,10 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
 
             if last_scissor_test {
                 gl::Enable(gl::SCISSOR_TEST);
+            }
+
+            if last_framebuffer_srgb {
+                gl::Enable(gl::FRAMEBUFFER_SRGB);
             }
 
             if last_viewport[2] != 0 || last_viewport[3] != 0 {

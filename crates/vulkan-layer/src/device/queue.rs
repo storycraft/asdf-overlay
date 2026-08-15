@@ -175,14 +175,8 @@ fn draw_overlay(
     if state.texture.take_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
-        if let Err(err) = renderer.update_texture(
-            state
-                .texture
-                .get()
-                .as_ref()
-                .map(|surface| surface.texture()),
-            &props,
-        ) {
+        if let Err(err) = renderer.update_texture(state.texture.get().as_ref(), data.format, &props)
+        {
             error!("failed to update vulkan texture. err: {err:?}");
             return None;
         }
