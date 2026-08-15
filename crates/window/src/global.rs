@@ -54,8 +54,12 @@ impl GlobalState {
         self.blocking_state.read().is_some()
     }
 
-    /// Block input for the window.
+    /// Block all inputs of the process.
     pub fn block_input(&self) {
+        if self.blocking_state.write().is_some() {
+            return;
+        }
+
         let clip_cursor = {
             let mut rect = RECT::default();
             let global_hook = hook::HOOK.wait();
@@ -85,8 +89,16 @@ impl GlobalState {
         *self.blocking_state.write() = Some(InputBlockingState { clip_cursor });
     }
 
-    /// Unblock input for the window.
+    /// Unblock inputs.
     pub fn unblock_input(&self) {
+        let Some(state) = self.blocking_state.write().take() else {
+            return;
+        };
+
+        if let Some(clip_cursor) = state.clip_cursor {
+            _ = unsafe { hook::HOOK.wait().clip_cursor.original_fn()(&clip_cursor) };
+        }
+
         for message_loop in self.message_loops.iter() {
             message_loop.unblock_input();
         }
@@ -95,7 +107,6 @@ impl GlobalState {
             window.unblock_input();
         }
 
-        *self.blocking_state.write() = None;
         self.emit(Event::InputBlockingEnded);
     }
 
