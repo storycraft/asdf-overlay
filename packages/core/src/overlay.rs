@@ -23,6 +23,7 @@ use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
 use parking_lot::Mutex;
+use tokio::runtime::Handle;
 
 #[napi(custom_finalize)]
 pub struct Overlay {
@@ -45,8 +46,8 @@ impl Overlay {
         let emitter = create_event_emitter(this)?;
         let task = async move {
             let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
-
-            Ok(inject(
+            let handle = Handle::current();
+            let (ipc, event) = inject(
                 pid,
                 OverlayDll {
                     x64: Some(&dll_dir.join("asdf_overlay-x64.dll")),
@@ -56,12 +57,14 @@ impl Overlay {
                 timeout,
             )
             .await
-            .context("cannot inject to the process")?)
+            .context("cannot inject to the process")?;
+
+            Ok((ipc, event, handle))
         };
-        let cb = move |_, (ipc, event): (IpcClientConn, IpcClientEventStream)| {
+        let cb = move |_, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
             let emit_tsfn = create_emit_tsfn(&emitter)?;
 
-            tokio::spawn(event_task(event, emit_tsfn));
+            handle.spawn(event_task(event, emit_tsfn));
             Ok(Self {
                 ipc: Some(ipc.into()),
                 emitter_ref: Mutex::new(emitter.create_ref()?),
