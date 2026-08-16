@@ -52,6 +52,7 @@ mod types;
 mod util;
 
 use anyhow::Context;
+pub use hook::submit_command_queue as submit_d3d12_command_queue;
 
 /// Initialize overlay, hooks.
 ///

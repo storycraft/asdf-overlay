@@ -30,6 +30,7 @@ arc-swap = "1.7.1"
 [dependencies.windows]
 workspace = true
 features = [
+    "Win32_Graphics_Direct3D12",
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_System_Diagnostics_Debug",

@@ -7,6 +7,8 @@ pub mod util {
     pub use super::dx::original_execute_command_lists;
 }
 
+pub use dx::submit_command_queue;
+
 use tracing::Level;
 
 use crate::util::with_dummy_hwnd;

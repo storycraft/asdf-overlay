@@ -18,12 +18,13 @@ use asdf_overlay::initialize;
 use asdf_overlay_common::event::OverlayEvent;
 use asdf_overlay_window::Backends;
 use core::time::Duration;
-use std::{sync::Arc, thread};
+use std::{ffi::c_void, sync::Arc, thread};
 use tokio::{net::windows::named_pipe::NamedPipeServer, runtime::Builder, time::sleep};
 use tracing::{debug, error, warn};
 use windows::{
     Win32::{
-        Foundation::{HINSTANCE, HMODULE},
+        Foundation::{E_POINTER, HINSTANCE, HMODULE, S_FALSE, S_OK},
+        Graphics::Direct3D12::ID3D12CommandQueue,
         System::{
             LibraryLoader::{
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN,
@@ -33,10 +34,32 @@ use windows::{
             Threading::GetCurrentProcessId,
         },
     },
-    core::PCSTR,
+    core::{HRESULT, Interface, PCSTR},
 };
 
 use crate::event_sink::EventSink;
+
+/// Makes a Direct3D 12 command queue available to the next overlay presentation.
+///
+/// Returns `S_OK` when a direct queue was accepted, `S_FALSE` for another queue type, and an error
+/// `HRESULT` for an invalid queue or Direct3D failure.
+///
+/// # Safety
+///
+/// `queue` must be null or point to a live `ID3D12CommandQueue` for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn AsdfOverlaySubmitD3D12CommandQueue(queue: *mut c_void) -> HRESULT {
+    if queue.is_null() {
+        return E_POINTER;
+    }
+    let queue = unsafe { ID3D12CommandQueue::from_raw_borrowed(&queue).unwrap() };
+
+    match asdf_overlay::submit_d3d12_command_queue(queue) {
+        Ok(true) => S_OK,
+        Ok(false) => S_FALSE,
+        Err(error) => error.code(),
+    }
+}
 
 async fn run(module_handle: usize, mut server: NamedPipeServer) -> anyhow::Result<()> {
     // initialize overlay

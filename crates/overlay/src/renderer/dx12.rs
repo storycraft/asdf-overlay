@@ -219,6 +219,7 @@ impl Dx12Renderer {
         backbuffer_index: u32,
         render_target: D3D12_CPU_DESCRIPTOR_HANDLE,
         queue: &ID3D12CommandQueue,
+        use_queue_vtable: bool,
         position: (i32, i32),
         size: (u32, u32),
         screen: (u32, u32),
@@ -327,7 +328,12 @@ impl Dx12Renderer {
             )]);
 
             command_list.Close()?;
-            original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
+            let command_lists = [Some(command_list.clone().into())];
+            if use_queue_vtable {
+                queue.ExecuteCommandLists(&command_lists);
+            } else {
+                original_execute_command_lists(queue, &command_lists);
+            }
         }
         self.fence.register(queue)?;
 

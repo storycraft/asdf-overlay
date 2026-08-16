@@ -3,7 +3,7 @@ mod dx12;
 mod dx9;
 mod dxgi;
 
-pub use dx12::original_execute_command_lists;
+pub use dx12::{original_execute_command_lists, submit_command_queue};
 
 use tracing::{Level, error};
 use windows::Win32::Foundation::HWND;

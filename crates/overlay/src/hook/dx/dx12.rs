@@ -1,14 +1,14 @@
 mod rtv;
 mod util;
 
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::{GpuLuid, SurfaceInfo, SurfaceType};
 pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
 
 use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
-use dashmap::Entry;
+use dashmap::{DashMap, Entry};
 use once_cell::sync::{Lazy, OnceCell};
 use tracing::{Level, debug, info, trace};
 use windows::{
@@ -38,6 +38,32 @@ unsafe impl Send for WeakID3D12CommandQueue {}
 unsafe impl Sync for WeakID3D12CommandQueue {}
 
 static QUEUE_MAP: Lazy<IntDashMap<usize, WeakID3D12CommandQueue>> = Lazy::new(IntDashMap::default);
+static SUBMITTED_QUEUE_MAP: Lazy<DashMap<GpuLuid, ID3D12CommandQueue>> = Lazy::new(DashMap::new);
+
+struct RenderQueue {
+    queue: ID3D12CommandQueue,
+    device: Option<ID3D12Device>,
+    use_queue_vtable: bool,
+}
+
+/// Makes a Direct3D 12 command queue available to the next overlay presentation on its adapter.
+///
+/// This supports applications whose runtime-selected `ExecuteCommandLists` implementation differs
+/// from the system runtime discovered during overlay initialization. The most recently submitted
+/// queue for an adapter is retained until the next presentation on that adapter.
+///
+/// Returns `Ok(true)` for a direct queue and `Ok(false)` for other queue types.
+pub fn submit_command_queue(queue: &ID3D12CommandQueue) -> windows::core::Result<bool> {
+    let Some(device) = direct_queue_device(queue)? else {
+        return Ok(false);
+    };
+    trace!(
+        "submitted DIRECT command queue {:?} for device {:?}",
+        queue, device
+    );
+    SUBMITTED_QUEUE_MAP.insert(gpu_luid(&device), queue.clone());
+    Ok(true)
+}
 
 /// Mapping from [`IDXGISwapChain3`] to [`RendererData`].
 static RENDERERS: Lazy<IntDashMap<usize, RendererData>> = Lazy::new(IntDashMap::default);
@@ -50,17 +76,17 @@ struct RendererData {
 #[inline]
 fn with_or_init_renderer_data<R>(
     swapchain: &IDXGISwapChain3,
+    device: &ID3D12Device,
     f: impl FnOnce(&mut RendererData) -> anyhow::Result<R>,
 ) -> anyhow::Result<R> {
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
             info!("initializing dx12 renderer");
-            let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
             let ref_mut = entry.insert(RendererData {
-                renderer: Dx12Renderer::new(&device, swapchain)?,
-                rtv: RtvDescriptors::new(&device)?,
+                renderer: Dx12Renderer::new(device, swapchain)?,
+                rtv: RtvDescriptors::new(device)?,
             });
             register_swapchain_destruction_callback(swapchain, {
                 let device = device.as_raw() as usize;
@@ -75,19 +101,58 @@ fn with_or_init_renderer_data<R>(
 }
 
 #[tracing::instrument(level = Level::TRACE)]
-fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
-    Some(unsafe {
-        ID3D12CommandQueue::from_raw_borrowed(&QUEUE_MAP.remove(&(device.as_raw() as _))?.1.0)
-            .unwrap()
-            .clone()
+fn get_queue_for(device: &ID3D12Device, gpu_id: GpuLuid) -> Option<RenderQueue> {
+    if let Some((_, queue)) = QUEUE_MAP.remove(&(device.as_raw() as _)) {
+        SUBMITTED_QUEUE_MAP.remove(&gpu_id);
+        return Some(RenderQueue {
+            queue: clone_queue(queue),
+            device: None,
+            use_queue_vtable: false,
+        });
+    }
+
+    let queue = SUBMITTED_QUEUE_MAP.remove(&gpu_id)?.1;
+    let render_device = direct_queue_device(&queue).ok()??;
+    Some(RenderQueue {
+        use_queue_vtable: true,
+        queue,
+        device: Some(render_device),
     })
 }
 
+fn clone_queue(queue: WeakID3D12CommandQueue) -> ID3D12CommandQueue {
+    unsafe {
+        ID3D12CommandQueue::from_raw_borrowed(&queue.0)
+            .unwrap()
+            .clone()
+    }
+}
+
+fn direct_queue_device(queue: &ID3D12CommandQueue) -> windows::core::Result<Option<ID3D12Device>> {
+    unsafe {
+        if queue.GetDesc().Type != D3D12_COMMAND_LIST_TYPE_DIRECT {
+            return Ok(None);
+        }
+        let mut device = None;
+        queue.GetDevice::<ID3D12Device>(&mut device)?;
+        Ok(device)
+    }
+}
+
+fn gpu_luid(device: &ID3D12Device) -> GpuLuid {
+    let luid = unsafe { device.GetAdapterLuid() };
+    GpuLuid {
+        low: luid.LowPart,
+        high: luid.HighPart,
+    }
+}
+
 pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
-    let Some(queue) = get_queue_for(device) else {
+    let Some(queue) = get_queue_for(device, state.info.gpu_id) else {
         debug!("Queue is not found for Direct3D12 device");
         return;
     };
+    let device = queue.device.as_ref().unwrap_or(device);
 
     let Some(size) = state.texture_size() else {
         return;
@@ -95,7 +160,7 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDX
 
     let position = state.position();
     let screen = state.size();
-    _ = with_or_init_renderer_data(swapchain, move |data| {
+    _ = with_or_init_renderer_data(swapchain, device, |data| {
         trace!("using dx12 renderer");
         if state.texture.take_update() {
             data.renderer.update_texture(
@@ -116,7 +181,8 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDX
                     swapchain,
                     backbuffer_index,
                     desc,
-                    &queue,
+                    &queue.queue,
+                    queue.use_queue_vtable,
                     position,
                     size,
                     screen,
