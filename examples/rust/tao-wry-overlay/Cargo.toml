@@ -6,7 +6,7 @@ license.workspace = true
 authors = ["storycraft <me@pancake.sh>"]
 
 [dependencies]
-asdf-overlay-client = { workspace = true, features = ["surface"] }
+asdf-overlay-client = { workspace = true }
 asdf-overlay-surface-util = { workspace = true }
 
 tokio = { workspace = true, features = ["full"] }

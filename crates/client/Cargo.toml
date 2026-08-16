@@ -9,10 +9,6 @@ authors.workspace = true
 rust-version.workspace = true
 readme = "../../README.md"
 
-[features]
-default = ["surface"]
-surface = ["dep:windows"]
-
 [dependencies]
 asdf-overlay-common = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time", "net"] }
@@ -33,7 +29,6 @@ thiserror = "2.0.20"
 
 [dependencies.windows]
 workspace = true
-optional = true
 features = [
     "Win32_Foundation",
     "Wdk_Foundation",
