@@ -10,18 +10,25 @@
 [docs-url]: https://docs.rs/asdf-overlay
 
 # Asdf Overlay
-Blazingly fast™ Windows Overlay library
+Blazingly fast™ In-Game Overlay library for Windows.
 
 [Documentation](https://storycraft.github.io/asdf-overlay/)
+
+## Features
+* Zero copy overlay rendering.
+* Window input capturing and blocking control.
+* Multi window, multi surface support.
+* Renderer detection, multi-API support (DirectX 9, DirectX 11, DirectX 12, OpenGL, Vulkan)
+* Code signed overlay DLL.
 
 ## Used by
 [lyrs-url]: https://github.com/organization/lyrs
 [tosu-url]: https://github.com/tosuapp/tosu
 
-| Logo | Project | Usage |
-| :-----: | ----- | ----- |
-| [![Lyrs logo](.github/images/lyrs-logo.png)][lyrs-url] | [Lyrs][lyrs-url] | Ingame lyrics overlay
-| [![Tosu logo](.github/images/tosu-logo.png)][tosu-url] | [Tosu][tosu-url] | Ingame overlay
+| Logo | Project
+| :-----: | ----- |
+| [![Lyrs logo](.github/images/lyrs-logo.png)][lyrs-url] | [Lyrs][lyrs-url] |
+| [![Tosu logo](.github/images/tosu-logo.png)][tosu-url] | [Tosu][tosu-url] |
 
 ## Sponsorship
 [sign-path-io-url]: https://signpath.io/
@@ -41,22 +48,22 @@ pnpm build && pnpm --filter ingame-browser start <process_name>
 ```
 Pressing `Left Shift + A` will show ingame browser overlay and input will be redirected to browser window. Pressing again will close it.
 
-https://github.com/user-attachments/assets/d7f0db58-cb11-437f-9990-50d095c7c575
+![Ingame Browser Preview](.github/images/examples/ingame-browser.png)
 
 ### Rust
 1. Run
 ```bash
 pnpm build && cargo run -p noise-rectangle <pid>
 ```
-Glitching squares appear and disappear on target process
+Glitching squares appear and disappear on target process.
 
-https://github.com/user-attachments/assets/069d1cc1-f95d-4a44-899c-7f538c0f5a69
+![Noise Rectangle Preview](.github/images/examples/noise-rectangle.png)
 
-2. Run
+1. Run
 ```bash
 pnpm build && cargo run -p input-capture <pid>
 ```
-It will listen and block inputs from target process until process exit
+It will listen all inputs of the target process and block them until the process exit.
 
 ## License
 This project is dual licensed under MIT or Apache-2.0 License
