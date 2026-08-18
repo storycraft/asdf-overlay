@@ -290,6 +290,7 @@ impl Dx12Renderer {
                 right: screen.0 as _,
                 bottom: screen.1 as _,
             }]);
+            command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
             command_list.ResourceBarrier(&[transition(
                 &backbuffer,
@@ -298,7 +299,6 @@ impl Dx12Renderer {
             )]);
 
             command_list.OMSetRenderTargets(1, Some(&render_target), true, None);
-            command_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
             command_list.DrawInstanced(4, 1, 0, 0);
 
             command_list.ResourceBarrier(&[transition(
