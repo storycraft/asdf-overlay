@@ -10,10 +10,6 @@ use windows::Win32::Foundation::HWND;
 
 #[tracing::instrument(level = Level::DEBUG)]
 pub fn hook(dummy_hwnd: HWND) {
-    if let Err(err) = dx12::hook() {
-        error!("failed to hook dx12. err: {err:?}");
-    }
-
     if let Err(err) = dxgi::hook(dummy_hwnd) {
         error!("failed to hook dxgi. err: {err:?}");
     }
