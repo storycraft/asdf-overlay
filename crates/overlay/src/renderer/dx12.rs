@@ -1,3 +1,4 @@
+pub mod queue;
 mod sync;
 
 use anyhow::Context;
@@ -5,6 +6,7 @@ use core::{
     mem::ManuallyDrop,
     slice::{self},
 };
+use scopeguard::defer;
 use sync::RendererFence;
 use tracing::Level;
 use windows::{
@@ -16,12 +18,14 @@ use windows::{
             Dxgi::{Common::DXGI_SAMPLE_DESC, IDXGISwapChain, IDXGISwapChain3},
         },
     },
-    core::BOOL,
+    core::{BOOL, Interface},
 };
 
 use crate::{
-    hook::util::original_execute_command_lists, renderer::dx::shaders,
-    surface::SharedTextureHandle, texture::OverlayTextureState, util::wrap_com_manually_drop,
+    hook::util::original_execute_command_lists,
+    renderer::{dx::shaders, dx12::queue::ID3D12CompatibilityQueue},
+    surface::{SharedTextureHandle, texture::OverlaySurface},
+    util::wrap_com_manually_drop,
 };
 
 const RENDER_TARGET_BLEND_DESC: D3D12_RENDER_TARGET_BLEND_DESC = D3D12_RENDER_TARGET_BLEND_DESC {
@@ -116,7 +120,7 @@ pub struct Dx12Renderer {
     sig: ID3D12RootSignature,
 
     pipeline: ID3D12PipelineState,
-    texture: OverlayTextureState<ID3D12Resource>,
+    texture: Option<(ID3D12Resource, bool)>,
     texture_descriptor: ID3D12DescriptorHeap,
 
     command_list: [(ID3D12GraphicsCommandList, ID3D12CommandAllocator); MAX_RENDER_TARGETS],
@@ -196,7 +200,7 @@ impl Dx12Renderer {
                 sig,
 
                 pipeline,
-                texture: OverlayTextureState::new(),
+                texture: None,
                 texture_descriptor,
 
                 command_list,
@@ -205,9 +209,26 @@ impl Dx12Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: Option<SharedTextureHandle>) {
+    pub fn update_texture(
+        &mut self,
+        device: &ID3D12Device,
+        surface: Option<&OverlaySurface>,
+    ) -> anyhow::Result<()> {
         _ = self.fence.wait_pending();
-        self.texture.update(shared);
+        self.texture = None;
+        let Some(surface) = surface else {
+            return Ok(());
+        };
+
+        let Some(resource) =
+            create_texture(device, &self.texture_descriptor, surface.shared_handle())?
+        else {
+            return Ok(());
+        };
+
+        let mutex = surface.mutex().is_some();
+        self.texture = Some((resource, mutex));
+        Ok(())
     }
 
     #[tracing::instrument(level = Level::TRACE, skip(self))]
@@ -227,11 +248,7 @@ impl Dx12Renderer {
             return Ok(());
         }
 
-        if self
-            .texture
-            .get_or_create(|handle| create_texture(device, &self.texture_descriptor, handle))?
-            .is_none()
-        {
+        let Some((ref texture, mutex)) = self.texture else {
             return Ok(());
         };
 
@@ -291,7 +308,10 @@ impl Dx12Renderer {
             )]);
 
             command_list.Close()?;
-            original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
+
+            with_keyed_mutex(queue, if mutex { Some(texture) } else { None }, || {
+                original_execute_command_lists(queue, &[Some(command_list.clone().into())]);
+            })?;
         }
         self.fence.register(queue)?;
 
@@ -307,6 +327,32 @@ impl Drop for Dx12Renderer {
 
 unsafe impl Send for Dx12Renderer {}
 unsafe impl Sync for Dx12Renderer {}
+
+#[inline]
+fn with_keyed_mutex<R>(
+    queue: &ID3D12CommandQueue,
+    object: Option<&ID3D12Object>,
+    f: impl FnOnce() -> R,
+) -> windows::core::Result<R> {
+    let Some(object) = object else {
+        return Ok(f());
+    };
+
+    let Ok(queue) = queue.cast::<ID3D12CompatibilityQueue>() else {
+        return Ok(f());
+    };
+
+    unsafe {
+        queue
+            .AcquireKeyedMutex(object, 0, u32::MAX, 0 as _, 0)
+            .ok()?;
+        defer!({
+            _ = queue.ReleaseKeyedMutex(object, 0, 0 as _, 0);
+        });
+
+        Ok(f())
+    }
+}
 
 fn create_texture(
     device: &ID3D12Device,
