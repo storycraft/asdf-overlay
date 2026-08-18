@@ -2,7 +2,7 @@ use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
-use tracing::{Level, info, trace};
+use tracing::{Level, error, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -89,14 +89,12 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &ID
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx11 renderer");
 
-        if state.texture.take_update() {
-            data.renderer.update_texture(
-                state
-                    .texture
-                    .get()
-                    .as_ref()
-                    .map(|surface| surface.shared_handle()),
-            );
+        if state.texture.take_update()
+            && let Err(err) = data
+                .renderer
+                .update_texture(device, state.texture.get().as_ref())
+        {
+            error!("failed to update dx11 texture: {err:?}");
         }
 
         let cx = unsafe { device.GetImmediateContext1().unwrap() };

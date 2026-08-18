@@ -97,14 +97,12 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDX
     let screen = state.size();
     _ = with_or_init_renderer_data(swapchain, move |data| {
         trace!("using dx12 renderer");
-        if state.texture.take_update() {
-            data.renderer.update_texture(
-                state
-                    .texture
-                    .get()
-                    .as_ref()
-                    .map(|surface| surface.shared_handle()),
-            );
+        if state.texture.take_update()
+            && let Err(err) = data
+                .renderer
+                .update_texture(device, state.texture.get().as_ref())
+        {
+            error!("failed to update dx12 texture: {err:?}");
         }
 
         let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };

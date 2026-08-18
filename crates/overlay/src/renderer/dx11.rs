@@ -15,7 +15,8 @@ use windows::{
 };
 
 use crate::{
-    renderer::dx::shaders, surface::SharedTextureHandle, texture::OverlayTextureState,
+    renderer::dx::shaders,
+    surface::{SharedTextureHandle, texture::OverlaySurface},
     util::with_keyed_mutex,
 };
 
@@ -32,14 +33,9 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
     MaxLOD: D3D11_FLOAT32_MAX,
 };
 
-struct Dx11Tex {
-    mutex: Option<IDXGIKeyedMutex>,
-    view: ID3D11ShaderResourceView,
-}
-
 pub struct Dx11Renderer {
     constant_buffer: ID3D11Buffer,
-    texture: OverlayTextureState<Dx11Tex>,
+    texture: Option<(ID3D11ShaderResourceView, Option<IDXGIKeyedMutex>)>,
 
     vertex_shader: ID3D11VertexShader,
     pixel_shader: ID3D11PixelShader,
@@ -110,7 +106,7 @@ impl Dx11Renderer {
 
             Ok(Self {
                 constant_buffer,
-                texture: OverlayTextureState::new(),
+                texture: None,
 
                 vertex_shader,
                 pixel_shader,
@@ -120,8 +116,18 @@ impl Dx11Renderer {
         }
     }
 
-    pub fn update_texture(&mut self, shared: Option<SharedTextureHandle>) {
-        self.texture.update(shared);
+    pub fn update_texture(
+        &mut self,
+        device: &ID3D11Device,
+        surface: Option<&OverlaySurface>,
+    ) -> anyhow::Result<()> {
+        self.texture = None;
+        let Some(surface) = surface else {
+            return Ok(());
+        };
+
+        self.texture = open_shared_texture(device, surface.shared_handle())?;
+        Ok(())
     }
 
     #[tracing::instrument(level = Level::TRACE, skip(self))]
@@ -137,10 +143,7 @@ impl Dx11Renderer {
             return Ok(());
         }
 
-        let Some(Dx11Tex { view, mutex, .. }) = self
-            .texture
-            .get_or_create(|handle| open_shared_texture(device, handle))?
-        else {
+        let Some((view, mutex)) = &self.texture else {
             return Ok(());
         };
 
@@ -197,7 +200,7 @@ impl Dx11Renderer {
 fn open_shared_texture(
     device: &ID3D11Device,
     handle: SharedTextureHandle,
-) -> anyhow::Result<Option<Dx11Tex>> {
+) -> anyhow::Result<Option<(ID3D11ShaderResourceView, Option<IDXGIKeyedMutex>)>> {
     let texture = match handle {
         SharedTextureHandle::Kmt(handle) => {
             let mut slot = None;
@@ -226,22 +229,24 @@ fn open_shared_texture(
     let mutex = texture.cast::<IDXGIKeyedMutex>().ok();
     let mut view = None;
     unsafe {
-        device.CreateShaderResourceView(
-            &texture,
-            Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
-                Format: desc.Format,
-                ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
-                Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
-                    Texture2D: D3D11_TEX2D_SRV {
-                        MostDetailedMip: 0,
-                        MipLevels: 1,
+        device
+            .CreateShaderResourceView(
+                &texture,
+                Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
+                    Format: desc.Format,
+                    ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
+                    Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                        Texture2D: D3D11_TEX2D_SRV {
+                            MostDetailedMip: 0,
+                            MipLevels: 1,
+                        },
                     },
-                },
-            }),
-            Some(&mut view),
-        )?;
+                }),
+                Some(&mut view),
+            )
+            .context("cannot create texture view")?;
     }
-    let view = view.context("cannot create texture view")?;
+    let view = view.unwrap();
 
-    Ok(Some(Dx11Tex { mutex, view }))
+    Ok(Some((view, mutex)))
 }
