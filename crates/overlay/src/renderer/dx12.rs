@@ -229,43 +229,7 @@ impl Dx12Renderer {
 
         if self
             .texture
-            .get_or_create(|handle| {
-                let mut texture = None;
-                unsafe {
-                    device
-                        .OpenSharedHandle::<ID3D12Resource>(
-                            HANDLE(handle.as_raw() as _),
-                            &mut texture,
-                        )
-                        .context("cannot open shared texture")?;
-                }
-                let texture = texture.unwrap();
-
-                let desc = unsafe { texture.GetDesc() };
-                if desc.Width == 0 || desc.Height == 0 {
-                    return Ok(None);
-                }
-
-                unsafe {
-                    device.CreateShaderResourceView(
-                        &texture,
-                        Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
-                            Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                            Format: desc.Format,
-                            ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
-                            Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                                Texture2D: D3D12_TEX2D_SRV {
-                                    MipLevels: 1,
-                                    ..Default::default()
-                                },
-                            },
-                        }),
-                        self.texture_descriptor.GetCPUDescriptorHandleForHeapStart(),
-                    );
-                }
-
-                Ok(Some(texture))
-            })?
+            .get_or_create(|handle| create_texture(device, &self.texture_descriptor, handle))?
             .is_none()
         {
             return Ok(());
@@ -343,6 +307,45 @@ impl Drop for Dx12Renderer {
 
 unsafe impl Send for Dx12Renderer {}
 unsafe impl Sync for Dx12Renderer {}
+
+fn create_texture(
+    device: &ID3D12Device,
+    texture_descriptor: &ID3D12DescriptorHeap,
+    handle: SharedTextureHandle,
+) -> anyhow::Result<Option<ID3D12Resource>> {
+    let mut texture = None;
+    unsafe {
+        device
+            .OpenSharedHandle::<ID3D12Resource>(HANDLE(handle.as_raw() as _), &mut texture)
+            .context("cannot open shared texture")?;
+    }
+    let texture = texture.unwrap();
+
+    let desc = unsafe { texture.GetDesc() };
+    if desc.Width == 0 || desc.Height == 0 {
+        return Ok(None);
+    }
+
+    unsafe {
+        device.CreateShaderResourceView(
+            &texture,
+            Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                Format: desc.Format,
+                ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                    Texture2D: D3D12_TEX2D_SRV {
+                        MipLevels: 1,
+                        ..Default::default()
+                    },
+                },
+            }),
+            texture_descriptor.GetCPUDescriptorHandleForHeapStart(),
+        );
+    }
+
+    Ok(Some(texture))
+}
 
 unsafe fn transition(
     res: &ID3D12Resource,

@@ -2,6 +2,7 @@ mod rtv;
 mod util;
 
 use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use parking_lot::Once;
 pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
@@ -10,13 +11,12 @@ use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
-use tracing::{Level, debug, info, trace};
+use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::Graphics::{
-        Direct3D::D3D_FEATURE_LEVEL_11_0,
         Direct3D12::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
-            D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12CreateDevice, ID3D12CommandQueue, ID3D12Device,
+            D3D12_COMMAND_QUEUE_FLAG_NONE, ID3D12CommandQueue, ID3D12Device,
         },
         Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4, IDXGISwapChain1, IDXGISwapChain3},
     },
@@ -132,8 +132,14 @@ pub(super) fn setup_fn(
     device: &ID3D12Device,
     swapchain: &IDXGISwapChain1,
 ) -> anyhow::Result<SurfaceState> {
-    let desc = unsafe { swapchain.GetDesc1() }?;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if let Err(err) = hook(device) {
+            error!("failed to hook dx12. err: {err:?}");
+        }
+    });
 
+    let desc = unsafe { swapchain.GetDesc1() }?;
     let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
     let window_id = unsafe { swapchain.GetHwnd() }
         .ok()
@@ -212,9 +218,9 @@ static HOOK: Hook = Hook {
     execute_command_lists: OnceCell::new(),
 };
 
-pub fn hook() -> anyhow::Result<()> {
+pub fn hook(device: &ID3D12Device) -> anyhow::Result<()> {
     let execute_command_lists =
-        get_execute_command_lists_addr().context("failed to load dx12 addrs")?;
+        get_execute_command_lists_addr(device).context("failed to load dx12 addrs")?;
     HOOK.execute_command_lists.get_or_try_init(|| unsafe {
         debug!("hooking ID3D12CommandQueue::ExecuteCommandLists");
         DetourHook::attach(execute_command_lists, hooked_execute_command_lists as _)
@@ -223,14 +229,10 @@ pub fn hook() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT type by creating dummy device
+/// Get pointer to ID3D12CommandQueue::ExecuteCommandLists of D3D12_COMMAND_LIST_TYPE_DIRECT
 #[tracing::instrument(level = Level::TRACE)]
-fn get_execute_command_lists_addr() -> anyhow::Result<ExecuteCommandListsFn> {
+fn get_execute_command_lists_addr(device: &ID3D12Device) -> anyhow::Result<ExecuteCommandListsFn> {
     unsafe {
-        let mut device = None;
-        D3D12CreateDevice::<_, ID3D12Device>(None, D3D_FEATURE_LEVEL_11_0, &mut device)?;
-        let device = device.context("cannot create IDirect3DDevice12")?;
-
         let queue = device.CreateCommandQueue::<ID3D12CommandQueue>(&D3D12_COMMAND_QUEUE_DESC {
             Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
             Flags: D3D12_COMMAND_QUEUE_FLAG_NONE,

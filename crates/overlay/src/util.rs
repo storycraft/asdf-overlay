@@ -60,7 +60,7 @@ pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
 }
 
 /// If [`IDXGIKeyedMutex`],
-/// * Exists, acquire the mutext with `0` value key, run closure and release.
+/// * Exists, acquire the mutex with `0` value key, run closure and release.
 /// * Not exists, just run closure.
 #[inline]
 pub fn with_keyed_mutex<R>(
