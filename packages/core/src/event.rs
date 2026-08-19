@@ -1,9 +1,7 @@
-pub mod ime;
-pub mod input;
-pub mod surface;
-pub mod tracing;
-
 use anyhow::Context;
+use asdf_overlay_bindings::event::client::tracing::TracingMetadata;
+use asdf_overlay_bindings::event::surface::SurfaceInfo;
+use asdf_overlay_bindings::event::window::input::InputEvent;
 use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common::event::surface::SurfaceEvent;
 use asdf_overlay_client::common::event::tracing::TracingEvent;
@@ -12,10 +10,6 @@ use napi::{
     bindgen_prelude::{FnArgs, Function, JsObjectValue, JsValuesTupleIntoVec, Object},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue},
 };
-
-use crate::event::input::InputEvent;
-use crate::event::surface::SurfaceInfo;
-use crate::event::tracing::TracingMetadata;
 
 pub(crate) struct VarArgs(
     Box<dyn FnOnce(napi::sys::napi_env) -> napi::Result<Vec<napi::sys::napi_value>>>,

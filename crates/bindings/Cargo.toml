@@ -9,6 +9,9 @@ authors.workspace = true
 rust-version.workspace = true
 readme = "../../README.md"
 
+[lib]
+crate-type = ["lib", "cdylib"]
+
 [features]
 default = [
     "uniffi",

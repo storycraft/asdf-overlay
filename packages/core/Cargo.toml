@@ -13,6 +13,11 @@ readme = "../../README.md"
 crate-type = ["cdylib"]
 
 [dependencies]
+asdf-overlay-bindings = { workspace = true, default-features = false, features = [
+    "napi",
+    "client",
+    "surface-util",
+] }
 asdf-overlay-client = { workspace = true }
 asdf-overlay-surface-util = { workspace = true }
 
