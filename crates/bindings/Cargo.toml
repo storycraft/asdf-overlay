@@ -10,7 +10,7 @@ rust-version.workspace = true
 readme = "../../README.md"
 
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = [
