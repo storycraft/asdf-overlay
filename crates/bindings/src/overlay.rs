@@ -1,4 +1,7 @@
-use asdf_overlay::{event_sink::OverlayEventSink, surface::Surfaces};
+use asdf_overlay::{
+    event_sink::OverlayEventSink,
+    surface::{self, Surfaces},
+};
 use flume::Receiver;
 
 use crate::{
@@ -85,16 +88,16 @@ pub enum SharedTextureHandle {
     Nt { handle: u32 },
 }
 
-impl From<asdf_overlay::surface::SharedTextureHandle> for SharedTextureHandle {
-    fn from(update: asdf_overlay::surface::SharedTextureHandle) -> Self {
+impl From<surface::SharedTextureHandle> for SharedTextureHandle {
+    fn from(update: surface::SharedTextureHandle) -> Self {
         match update {
-            asdf_overlay::surface::SharedTextureHandle::Kmt(handle) => Self::Kmt { handle },
-            asdf_overlay::surface::SharedTextureHandle::Nt(handle) => Self::Nt { handle },
+            surface::SharedTextureHandle::Kmt(handle) => Self::Kmt { handle },
+            surface::SharedTextureHandle::Nt(handle) => Self::Nt { handle },
         }
     }
 }
 
-impl From<SharedTextureHandle> for asdf_overlay::surface::SharedTextureHandle {
+impl From<SharedTextureHandle> for surface::SharedTextureHandle {
     fn from(val: SharedTextureHandle) -> Self {
         match val {
             SharedTextureHandle::Kmt { handle } => Self::Kmt(handle),
