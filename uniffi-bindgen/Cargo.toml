@@ -7,4 +7,4 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-uniffi = { version = "0.32.0", features = [ "cli" ] }
+uniffi = { version = "0.31.2", features = [ "cli" ] }
