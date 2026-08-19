@@ -14,6 +14,7 @@ crate-type = ["lib", "cdylib"]
 
 [features]
 default = [
+    "async",
     "uniffi",
     "napi",
     "overlay",
@@ -24,12 +25,14 @@ default = [
     "client",
 ]
 
+async = []
+
 # Binding library features
 uniffi = ["dep:uniffi"]
 napi = ["dep:napi-derive", "dep:napi"]
 
 # Dependency features
-overlay = ["dep:asdf-overlay", "overlay-event"]
+overlay = ["dep:asdf-overlay", "dep:asdf-overlay-vulkan-layer", "overlay-event"]
 overlay-event = ["dep:asdf-overlay-event"]
 window = ["dep:asdf-overlay-window", "window-event"]
 window-event = ["dep:asdf-overlay-window-event"]
@@ -38,14 +41,20 @@ client = ["dep:asdf-overlay-client", "overlay-event", "window-event"]
 
 [dependencies]
 asdf-overlay = { workspace = true, optional = true }
+asdf-overlay-vulkan-layer = { workspace = true, optional = true }
 asdf-overlay-event = { workspace = true, optional = true }
 asdf-overlay-window = { workspace = true, optional = true }
 asdf-overlay-window-event = { workspace = true, optional = true }
 asdf-overlay-surface-util = { workspace = true, optional = true }
 asdf-overlay-client = { workspace = true, optional = true }
+asdf-overlay-common = { workspace = true, optional = true }
 
 uniffi = { version = "0.31.2", optional = true }
 napi-derive = { version = "3.6.2", optional = true }
+
+tokio = { workspace = true, features = ["full"] }
+derive_more = { version = "2", features = ["debug", "from"] }
+flume = "0.12.0"
 
 [dependencies.napi]
 version = "3.12.0"
