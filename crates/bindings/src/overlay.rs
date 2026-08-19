@@ -81,15 +81,15 @@ impl Drop for Overlay {
 #[cfg_attr(feature = "napi", napi_derive::napi)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum SharedTextureHandle {
-    Kmt(u32),
-    Nt(u32),
+    Kmt { handle: u32 },
+    Nt { handle: u32 },
 }
 
 impl From<asdf_overlay::surface::SharedTextureHandle> for SharedTextureHandle {
     fn from(update: asdf_overlay::surface::SharedTextureHandle) -> Self {
         match update {
-            asdf_overlay::surface::SharedTextureHandle::Kmt(handle) => Self::Kmt(handle),
-            asdf_overlay::surface::SharedTextureHandle::Nt(handle) => Self::Nt(handle),
+            asdf_overlay::surface::SharedTextureHandle::Kmt(handle) => Self::Kmt { handle },
+            asdf_overlay::surface::SharedTextureHandle::Nt(handle) => Self::Nt { handle },
         }
     }
 }
@@ -97,8 +97,8 @@ impl From<asdf_overlay::surface::SharedTextureHandle> for SharedTextureHandle {
 impl From<SharedTextureHandle> for asdf_overlay::surface::SharedTextureHandle {
     fn from(val: SharedTextureHandle) -> Self {
         match val {
-            SharedTextureHandle::Kmt(handle) => Self::Kmt(handle),
-            SharedTextureHandle::Nt(handle) => Self::Nt(handle),
+            SharedTextureHandle::Kmt { handle } => Self::Kmt(handle),
+            SharedTextureHandle::Nt { handle } => Self::Nt(handle),
         }
     }
 }
