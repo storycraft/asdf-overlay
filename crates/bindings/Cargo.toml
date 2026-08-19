@@ -41,7 +41,7 @@ asdf-overlay-window-event = { workspace = true, optional = true }
 asdf-overlay-surface-util = { workspace = true, optional = true }
 asdf-overlay-client = { workspace = true, optional = true }
 
-uniffi = { version = "0.32.0", optional = true, features = ["cli"] }
+uniffi = { version = "0.32.0", optional = true }
 napi-derive = { version = "3.6.2", optional = true }
 
 [dependencies.napi]

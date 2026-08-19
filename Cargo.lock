@@ -7725,6 +7725,7 @@ dependencies = [
  "camino",
  "cargo_metadata",
  "clap",
+ "uniffi",
 ]
 
 [[package]]
