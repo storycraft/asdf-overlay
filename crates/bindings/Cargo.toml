@@ -1,0 +1,50 @@
+[package]
+name = "asdf-overlay-bindings"
+description = "Asdf Overlay Bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+readme = "../../README.md"
+
+[features]
+default = [
+    "uniffi",
+    "napi",
+    "overlay",
+    "overlay-event",
+    "window",
+    "window-event",
+    "surface",
+    "client",
+]
+
+# Binding library features
+uniffi = ["dep:uniffi"]
+napi = ["dep:napi-derive", "dep:napi"]
+
+# Dependency features
+overlay = ["dep:asdf-overlay", "overlay-event"]
+overlay-event = ["dep:asdf-overlay-event"]
+window = ["dep:asdf-overlay-window", "window-event"]
+window-event = ["dep:asdf-overlay-window-event"]
+surface = ["dep:asdf-overlay-surface-util"]
+client = ["dep:asdf-overlay-client", "overlay-event", "window-event"]
+
+[dependencies]
+asdf-overlay = { workspace = true, optional = true }
+asdf-overlay-event = { workspace = true, optional = true }
+asdf-overlay-window = { workspace = true, optional = true }
+asdf-overlay-window-event = { workspace = true, optional = true }
+asdf-overlay-surface-util = { workspace = true, optional = true }
+asdf-overlay-client = { workspace = true, optional = true }
+
+uniffi = { version = "0.32.0", optional = true, features = ["cli"] }
+napi-derive = { version = "3.6.2", optional = true }
+
+[dependencies.napi]
+version = "3.12.0"
+optional = true
+features = ["napi8", "async", "error_anyhow"]
