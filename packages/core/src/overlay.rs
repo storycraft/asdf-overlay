@@ -1,10 +1,10 @@
 use core::time::Duration;
 use std::path::PathBuf;
 
-use crate::event::input::Cursor;
 use crate::event::{create_emit_tsfn, event_task};
 use crate::surface::UpdateSharedHandle;
 use anyhow::Context as AnyhowContext;
+use asdf_overlay_bindings::event::window::input::Cursor;
 use asdf_overlay_client::client::IpcClientEventStream;
 use asdf_overlay_client::common;
 use asdf_overlay_client::common::request::Requestable;

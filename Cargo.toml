@@ -2,6 +2,7 @@
 members = [
     "./crates/*",
     "./xtask",
+    "./uniffi-bindgen",
     "./examples/rust/*",
     "./packages/core",
 ]
@@ -33,6 +34,7 @@ asdf-overlay-window = { version = "2.0.5", path = "./crates/window" }
 asdf-overlay-window-event = { version = "2.0.5", path = "./crates/window-event" }
 asdf-overlay-surface-util = { version = "2.0.5", path = "./crates/surface-util" }
 asdf-overlay-egui = { version = "2.0.5", path = "./crates/egui" }
+asdf-overlay-bindings = { version = "2.0.5", path = "./crates/bindings", default-features = false }
 
 tokio = "1.53.1"
 

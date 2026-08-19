@@ -440,6 +440,7 @@ name = "asdf-overlay-node"
 version = "2.0.5"
 dependencies = [
  "anyhow",
+ "asdf-overlay-bindings",
  "asdf-overlay-client",
  "asdf-overlay-surface-util",
  "bytemuck",
@@ -5622,6 +5623,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "uniffi-bindgen"
+version = "0.0.0"
+dependencies = [
+ "uniffi",
+]
+
+[[package]]
 name = "uniffi_bindgen"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7069,7 +7077,6 @@ dependencies = [
  "camino",
  "cargo_metadata",
  "clap",
- "uniffi",
 ]
 
 [[package]]

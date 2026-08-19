@@ -1,4 +1,5 @@
 use anyhow::Context;
+use asdf_overlay_bindings::event::surface::GpuLuid;
 use asdf_overlay_client::common::request;
 use asdf_overlay_surface_util::{surface, ty};
 use bytemuck::try_pod_read_unaligned;
@@ -8,8 +9,6 @@ use windows::Win32::{
     Foundation::LUID,
     Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
 };
-
-use crate::event::surface::GpuLuid;
 
 /// Represent a surface for overlay
 #[napi]
