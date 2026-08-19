@@ -1,9 +1,22 @@
 use std::time::SystemTime;
 
 use asdf_overlay_client::common;
-use napi_derive::napi;
 
-#[napi(object)]
+#[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum TracingEvent {
+    Enter(TracingMetadata),
+    Event {
+        metadata: TracingMetadata,
+
+        /// The tracing message.
+        message: Option<String>,
+    },
+    Exit,
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TracingMetadata {
     /// Metadata tracing level.
     pub level: LogLevel,
@@ -33,7 +46,8 @@ impl From<common::event::tracing::TracingMetadata> for TracingMetadata {
     }
 }
 
-#[napi(string_enum)]
+#[cfg_attr(feature = "napi", napi_derive::napi(string_enum))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum LogLevel {
     Trace,
     Debug,

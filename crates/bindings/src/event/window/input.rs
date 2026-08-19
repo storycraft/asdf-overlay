@@ -3,6 +3,7 @@ use asdf_overlay_window_event::input;
 use crate::event::window::ime::Ime;
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum InputEvent {
     Cursor { event: CursorInput },
     Keyboard { event: KeyboardInput },
@@ -23,6 +24,7 @@ impl From<input::InputEvent> for InputEvent {
 
 /// Describe a cursor input.
 #[cfg_attr(feature = "napi", napi_derive::napi(object))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct CursorInput {
     /// X position relative to window.
     pub x: i32,
@@ -44,6 +46,7 @@ impl From<input::CursorInput> for CursorInput {
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum CursorInputKind {
     /// Cursor has entered to a windowv
     Enter,
@@ -83,6 +86,7 @@ impl From<input::CursorEvent> for CursorInputKind {
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum KeyboardInput {
     /// A key is pressed or released.
     Key { key: Key, state: KeyInputState },
@@ -115,6 +119,7 @@ impl From<input::KeyboardInput> for KeyboardInput {
 
 /// Describe a virtual key code.
 #[cfg_attr(feature = "napi", napi_derive::napi(object))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Key {
     /// A Windows Virtual-Key code.
     pub code: u8,
@@ -134,17 +139,9 @@ impl From<input::Key> for Key {
     }
 }
 
-/// Utility function to create `Key` using key code and optional extended flag.
-#[cfg_attr(feature = "napi", napi_derive::napi)]
-pub fn key(code: u8, extended: Option<bool>) -> Key {
-    Key {
-        code,
-        extended: extended.unwrap_or(false),
-    }
-}
-
 /// Cursor scroll axis.
 #[cfg_attr(feature = "napi", napi_derive::napi(string_enum))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ScrollAxis {
     X,
     Y,
@@ -161,6 +158,7 @@ impl From<input::ScrollAxis> for ScrollAxis {
 
 /// Cursor buttons.
 #[cfg_attr(feature = "napi", napi_derive::napi(string_enum))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum CursorAction {
     Left,
     Right,
@@ -183,6 +181,7 @@ impl From<input::CursorAction> for CursorAction {
 
 /// Cursor input state.
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum CursorInputState {
     Pressed {
         /// Consecutive click count.
@@ -204,6 +203,7 @@ impl From<input::CursorInputState> for CursorInputState {
 
 /// Key input state.
 #[cfg_attr(feature = "napi", napi_derive::napi(string_enum))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum KeyInputState {
     /// The key is pressed down.
     Pressed,
@@ -222,6 +222,7 @@ impl From<input::KeyInputState> for KeyInputState {
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Cursor {
     Default = 0,
     Help,
@@ -268,6 +269,7 @@ pub enum Cursor {
     PanWest,
 }
 
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "napi", napi_derive::napi)]
 pub enum ImeConversion {
     None = 0,

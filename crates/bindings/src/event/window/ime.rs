@@ -2,6 +2,7 @@ use asdf_overlay_window_event::input;
 
 /// Describe a IME event.
 #[cfg_attr(feature = "napi", napi_derive::napi)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Ime {
     Enabled {
         /// Initial IME language in ETF language tag(BCP 47) format.
@@ -73,6 +74,7 @@ impl From<input::Ime> for Ime {
 
 /// IME candidate list.
 #[cfg_attr(feature = "napi", napi_derive::napi(object))]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ImeCandidateList {
     /// Start index of current page.
     pub page_start_index: u32,
