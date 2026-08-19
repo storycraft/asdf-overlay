@@ -1,7 +1,5 @@
 use core::fmt::{self, Display};
 
-use napi::anyhow;
-
 #[derive(Debug, derive_more::From)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 #[cfg_attr(feature = "uniffi", uniffi::export(Debug, Display))]
