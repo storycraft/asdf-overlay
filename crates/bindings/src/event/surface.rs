@@ -1,5 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SurfaceId(pub u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::From)]
+pub struct SurfaceId(#[from] pub u64);
 
 #[cfg(feature = "napi")]
 const _: () = {
@@ -22,12 +22,6 @@ const _: () = {
 #[cfg(feature = "uniffi")]
 uniffi::custom_type!(SurfaceId, u64);
 
-impl From<u64> for SurfaceId {
-    fn from(id: u64) -> Self {
-        Self(id)
-    }
-}
-
 impl From<SurfaceId> for u64 {
     fn from(id: SurfaceId) -> Self {
         id.0
@@ -43,6 +37,17 @@ pub enum OverlayEvent {
         id: SurfaceId,
         event: SurfaceEvent,
     },
+}
+
+impl From<asdf_overlay_event::Event> for OverlayEvent {
+    fn from(event: asdf_overlay_event::Event) -> Self {
+        match event {
+            asdf_overlay_event::Event::Surface { id, event } => Self::Surface {
+                id: SurfaceId(id),
+                event: SurfaceEvent::from(event),
+            },
+        }
+    }
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
@@ -66,6 +71,26 @@ pub enum SurfaceEvent {
         height: u32,
     },
     Destroyed,
+}
+
+impl From<asdf_overlay_event::SurfaceEvent> for SurfaceEvent {
+    fn from(event: asdf_overlay_event::SurfaceEvent) -> Self {
+        match event {
+            asdf_overlay_event::SurfaceEvent::Added {
+                width,
+                height,
+                info,
+            } => Self::Added {
+                width,
+                height,
+                info: SurfaceInfo::from(info),
+            },
+            asdf_overlay_event::SurfaceEvent::Resized { width, height } => {
+                Self::Resized { width, height }
+            }
+            asdf_overlay_event::SurfaceEvent::Destroyed => Self::Destroyed,
+        }
+    }
 }
 
 #[cfg_attr(feature = "napi", napi_derive::napi(object))]
