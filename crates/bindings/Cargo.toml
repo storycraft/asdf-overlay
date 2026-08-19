@@ -17,7 +17,7 @@ default = [
     "overlay-event",
     "window",
     "window-event",
-    "surface",
+    "surface-util",
     "client",
 ]
 
@@ -30,7 +30,7 @@ overlay = ["dep:asdf-overlay", "overlay-event"]
 overlay-event = ["dep:asdf-overlay-event"]
 window = ["dep:asdf-overlay-window", "window-event"]
 window-event = ["dep:asdf-overlay-window-event"]
-surface = ["dep:asdf-overlay-surface-util"]
+surface-util = ["dep:asdf-overlay-surface-util"]
 client = ["dep:asdf-overlay-client", "overlay-event", "window-event"]
 
 [dependencies]

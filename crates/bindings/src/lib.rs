@@ -5,3 +5,9 @@ pub mod overlay;
 pub mod window;
 
 pub mod event;
+
+#[cfg(feature = "surface-util")]
+pub mod surface_util;
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
