@@ -36,7 +36,7 @@ impl From<SurfaceId> for u64 {
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-pub enum Event {
+pub enum OverlayEvent {
     /// Events related to a specific surface.
     Surface {
         /// Unique identifier for the surface.

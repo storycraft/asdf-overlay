@@ -8,7 +8,7 @@ use crate::event::{
 
 #[cfg_attr(feature = "napi", napi_derive::napi)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-pub enum OverlayEvent {
+pub enum ClientEvent {
     /// Events related to a specific window.
     Window { id: u32, event: WindowEvent },
 
