@@ -1,6 +1,6 @@
 use core::error::Error;
 
-use asdf_overlay_egui::prelude::*;
+use asdf_overlay_egui::{OverlayContext, prelude::*};
 
 fn main() -> Result<(), Box<dyn Error>> {
     run_app(async |_| {
@@ -18,7 +18,7 @@ struct MyApp {
 }
 
 impl App for MyApp {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, _overlay_cx: &OverlayContext) {
         egui::Window::new("Inputs").show(ui, |ui| ui.input(|input| input.clone()).ui(ui));
 
         egui::Window::new("Egui window")
