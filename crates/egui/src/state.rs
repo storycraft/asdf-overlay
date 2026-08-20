@@ -96,13 +96,13 @@ impl SurfaceState {
     }
 
     fn on_resized(&mut self, cx: &Context) {
-        self.update_surface(cx);
-
         if self.width == 0 || self.height == 0 {
             return;
         }
         self.surface_texture = create_surface_texture(&self.d3d11_device, self.width, self.height)
             .expect("creating surface texture");
+
+        self.update_surface(cx);
     }
 
     fn update_surface(&self, cx: &Context) {
