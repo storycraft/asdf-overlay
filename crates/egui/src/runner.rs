@@ -75,6 +75,7 @@ async fn inner(
     let mut surface = next_main_surface(&mut rx, &cx)
         .await
         .context("waiting for main surface")?;
+    init_windows(&window);
 
     let mut input = RawInput {
         screen_rect: Some(egui::Rect {
@@ -119,6 +120,14 @@ async fn inner(
         }
     }
     Ok(())
+}
+
+fn init_windows(window: &Backends) {
+    for id in window.windows() {
+        window.window(id, |state| {
+            state.set_input_flags(ListenInputFlags::all());
+        });
+    }
 }
 
 async fn window_event(
