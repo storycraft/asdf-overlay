@@ -232,7 +232,13 @@ fn handle_keyboard_input(raw: &mut RawInput, input: KeyboardInput) {
             });
         }
 
-        KeyboardInput::Char(ch) => inputs.push(dbg!(egui::Event::Text(ch.to_string()))),
+        KeyboardInput::Char(ch) => {
+            if ch.is_ascii_control() {
+                return;
+            }
+
+            inputs.push(egui::Event::Text(ch.to_string()))
+        }
 
         KeyboardInput::Ime(ime) => match ime {
             Ime::Compose { text, caret } => {
