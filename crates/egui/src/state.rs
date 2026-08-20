@@ -120,7 +120,9 @@ impl SurfaceState {
             if let Err(err) = state.commit_overlay_texture(Some(shared_handle)) {
                 error!("failed to commit overlay texture: {err:?}");
             }
-        }).is_none() {
+        })
+        .is_none()
+        {
             error!("failed to commit overlay texture: surface not found");
         }
     }
