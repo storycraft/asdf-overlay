@@ -163,7 +163,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                 }
 
                 let update = UpdateSharedHandle::Kmt(
-                    unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as u32,
+                    unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as _,
                 );
                 *slot = Some((surface, mutex));
                 Ok(Some(update))
@@ -227,7 +227,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                     });
 
                     Ok(Some(UpdateSharedHandle::Kmt(
-                        texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as u32,
+                        texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as _,
                     )))
                 }
             }
