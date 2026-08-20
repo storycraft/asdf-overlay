@@ -98,3 +98,15 @@ pub enum SurfaceType {
         window_id: u32,
     },
 }
+
+impl SurfaceType {
+    pub fn window_id(self) -> Option<u32> {
+        match self {
+            SurfaceType::Opengl { window_id } => Some(window_id),
+            SurfaceType::Direct3D9 { window_id } => Some(window_id),
+            SurfaceType::Direct3D11 { window_id } => window_id,
+            SurfaceType::Direct3D12 { window_id } => window_id,
+            SurfaceType::Vulkan { window_id } => Some(window_id),
+        }
+    }
+}

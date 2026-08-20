@@ -59,7 +59,15 @@ Glitching squares appear and disappear on target process.
 
 ![Noise Rectangle Preview](.github/images/examples/noise-rectangle.png)
 
-1. Run
+2. Run
+```bash
+cargo build -p egui-dll --release
+```
+Builds a DLL that shows a simple egui window on target process.
+
+![Egui DLL Preview](.github/images/examples/egui-dll.png)
+
+3. Run
 ```bash
 pnpm build && cargo run -p input-capture <pid>
 ```
