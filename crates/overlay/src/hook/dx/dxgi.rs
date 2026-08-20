@@ -104,9 +104,12 @@ fn resize_swapchain(swapchain: &IDXGISwapChain1) {
     dx12::resize_swapchain(swapchain);
 }
 
-fn post_resize_swapchain(swapchain: &IDXGISwapChain1, width: u32, height: u32) {
-    let id = swapchain.as_raw() as u64;
+fn post_resize_swapchain(swapchain: &IDXGISwapChain1) {
+    let desc = unsafe { swapchain.GetDesc() }.unwrap_or_default();
+    let width = desc.BufferDesc.Width;
+    let height = desc.BufferDesc.Height;
 
+    let id = swapchain.as_raw() as u64;
     Surfaces::state(id, |state| {
         state.resize(width, height);
         OverlayEventSink::emit(Event::Surface {
@@ -137,7 +140,7 @@ extern "system" fn hooked_resize_buffers(
         return res;
     }
 
-    post_resize_swapchain(swapchain, width, height);
+    post_resize_swapchain(swapchain);
     res
 }
 
@@ -173,7 +176,7 @@ extern "system" fn hooked_resize_buffers1(
         return res;
     }
 
-    post_resize_swapchain(swapchain, width, height);
+    post_resize_swapchain(swapchain);
     res
 }
 
