@@ -1,0 +1,21 @@
+[package]
+name = "egui-dll"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors = ["storycraft <me@pancake.sh>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+asdf-overlay-egui = { workspace = true, features = ["dll"] }
+
+tracing = "0.1.44"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+]

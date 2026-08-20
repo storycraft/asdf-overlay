@@ -1,0 +1,39 @@
+[package]
+name = "asdf-overlay-egui"
+description = "Asdf Overlay Egui integration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+readme = "../../README.md"
+
+[features]
+default = ["dll"]
+
+dll = []
+
+[dependencies]
+asdf-overlay = { workspace = true }
+asdf-overlay-event = { workspace = true }
+asdf-overlay-window = { workspace = true }
+asdf-overlay-window-event = { workspace = true }
+
+tokio = { workspace = true, features = ["full"] }
+egui = "0.35.0"
+egui-directx11 = "0.13.0"
+anyhow = "1.0.104"
+derive_more = { version = "2.1.1", features = ["from"] }
+scopeguard = "1.2.0"
+tracing = "0.1.44"
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+]
