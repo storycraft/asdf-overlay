@@ -15,6 +15,8 @@ pub trait App {
 
     fn logic(&mut self, _cx: &Context, _overlay_cx: &OverlayContext) {}
 
+    fn input_blocking_ended(&mut self) {}
+
     fn clear_color(&self, _visuals: &Visuals) -> [f32; 4] {
         [0.0, 0.0, 0.0, 0.0]
     }

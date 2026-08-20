@@ -98,9 +98,18 @@ async fn inner(
                     .context("handling overlay event")?
             }
 
-            Event::Window(event) => window_event(&egui_cx, &cx, &mut input, event)
-                .await
-                .context("handling window event")?,
+            Event::Window(event) => match event {
+                asdf_overlay_window_event::Event::Window { id, event } => {
+                    window_event(&egui_cx, &cx, &mut input, id, event)
+                        .await
+                        .context("handling window event")?
+                }
+
+                asdf_overlay_window_event::Event::InputBlockingEnded => {
+                    app.input_blocking_ended();
+                    egui_cx.request_repaint();
+                }
+            },
 
             Event::RequestRepaint(info) => {
                 let cumulative_pass_nr = egui_cx.cumulative_pass_nr();
@@ -139,16 +148,9 @@ async fn window_event(
     egui_cx: &Context,
     cx: &OverlayContext,
     raw_input: &mut RawInput,
-    event: asdf_overlay_window_event::Event,
+    id: u32,
+    event: WindowEvent,
 ) -> anyhow::Result<()> {
-    let (id, event) = match event {
-        asdf_overlay_window_event::Event::Window { id, event } => (id, event),
-
-        asdf_overlay_window_event::Event::InputBlockingEnded => {
-            return Ok(());
-        }
-    };
-
     match event {
         WindowEvent::Added { .. } => {
             cx.windows.window(id, |state| {
