@@ -2,7 +2,7 @@ pub mod callback;
 
 use core::{ffi::c_void, ptr};
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
