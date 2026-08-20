@@ -85,6 +85,7 @@ async fn inner(
             max: (surface.width as f32, surface.height as f32).into(),
         }),
         focused: true,
+        modifiers: egui_cx.input(|state| state.modifiers),
         ..RawInput::default()
     };
 
@@ -156,11 +157,9 @@ async fn window_event(
         }
 
         WindowEvent::Input(event) => {
-            let inputs = &mut raw_input.events;
-
             match event {
-                InputEvent::Cursor(input) => handle_cursor_input(inputs, input),
-                InputEvent::Keyboard(input) => handle_keyboard_input(inputs, input),
+                InputEvent::Cursor(input) => handle_cursor_input(raw_input, input),
+                InputEvent::Keyboard(input) => handle_keyboard_input(raw_input, input),
             }
             egui_cx.request_repaint();
         }
@@ -171,7 +170,9 @@ async fn window_event(
     Ok(())
 }
 
-fn handle_cursor_input(inputs: &mut Vec<egui::Event>, input: CursorInput) {
+fn handle_cursor_input(raw_input: &mut RawInput, input: CursorInput) {
+    let inputs = &mut raw_input.events;
+
     match input.event {
         CursorEvent::Move => {
             inputs.push(egui::Event::PointerMoved(
@@ -192,7 +193,7 @@ fn handle_cursor_input(inputs: &mut Vec<egui::Event>, input: CursorInput) {
                     CursorAction::Forward => PointerButton::Extra2,
                 },
                 pressed: matches!(state, CursorInputState::Pressed { .. }),
-                modifiers: Modifiers::default(),
+                modifiers: raw_input.modifiers,
             });
         }
 
@@ -203,30 +204,35 @@ fn handle_cursor_input(inputs: &mut Vec<egui::Event>, input: CursorInput) {
                 ScrollAxis::Y => (0.0, delta as f32).into(),
             },
             phase: TouchPhase::Move,
-            modifiers: Modifiers::default(),
+            modifiers: raw_input.modifiers,
         }),
 
         _ => {}
     }
 }
 
-fn handle_keyboard_input(inputs: &mut Vec<egui::Event>, input: KeyboardInput) {
+fn handle_keyboard_input(raw: &mut RawInput, input: KeyboardInput) {
+    let inputs = &mut raw.events;
+
     match input {
         KeyboardInput::Key { key, state } => {
             let Some(key) = conv_key(key) else {
                 return;
             };
 
+            let pressed = state == KeyInputState::Pressed;
+            update_modifiers(&mut raw.modifiers, key, pressed);
+
             inputs.push(egui::Event::Key {
                 key,
                 physical_key: Some(key),
-                pressed: state == KeyInputState::Pressed,
+                pressed,
                 repeat: false,
-                modifiers: Modifiers::default(),
+                modifiers: raw.modifiers,
             });
         }
 
-        KeyboardInput::Char(ch) => inputs.push(egui::Event::Text(ch.to_string())),
+        KeyboardInput::Char(ch) => inputs.push(dbg!(egui::Event::Text(ch.to_string()))),
 
         KeyboardInput::Ime(ime) => match ime {
             Ime::Compose { text, caret } => {
@@ -243,6 +249,17 @@ fn handle_keyboard_input(inputs: &mut Vec<egui::Event>, input: KeyboardInput) {
 
             _ => {}
         },
+    }
+}
+
+fn update_modifiers(modifiers: &mut Modifiers, key: egui::Key, pressed: bool) {
+    match key {
+        egui::Key::ShiftLeft | egui::Key::ShiftRight => modifiers.shift = pressed,
+        egui::Key::ControlLeft | egui::Key::ControlRight => modifiers.ctrl = pressed,
+        egui::Key::AltLeft | egui::Key::AltRight => modifiers.alt = pressed,
+        egui::Key::SuperLeft | egui::Key::SuperRight => modifiers.command = pressed,
+
+        _ => {}
     }
 }
 
