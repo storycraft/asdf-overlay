@@ -2,7 +2,7 @@ use core::ptr;
 
 use anyhow::Context as _;
 use asdf_overlay::surface::{SharedTextureHandle, Surfaces};
-use asdf_overlay_event::GpuLuid;
+use asdf_overlay_event::{GpuLuid, SurfaceInfo};
 use egui::Context;
 use egui_directx11::{Renderer, RendererOutput};
 use scopeguard::defer;
@@ -33,6 +33,7 @@ pub struct SurfaceState {
     pub id: u64,
     pub width: u32,
     pub height: u32,
+    pub info: SurfaceInfo,
 
     d3d11_device: ID3D11Device,
     d3d11_cx: ID3D11DeviceContext,
@@ -41,14 +42,9 @@ pub struct SurfaceState {
 }
 
 impl SurfaceState {
-    pub fn new(
-        cx: &Context,
-        id: u64,
-        gpu_id: GpuLuid,
-        width: u32,
-        height: u32,
-    ) -> anyhow::Result<Self> {
-        let (d3d11_device, d3d11_cx) = create_device(gpu_id).context("creating d3d11 device")?;
+    pub(crate) fn new(id: u64, info: SurfaceInfo, width: u32, height: u32) -> anyhow::Result<Self> {
+        let (d3d11_device, d3d11_cx) =
+            create_device(info.gpu_id).context("creating d3d11 device")?;
         let renderer = Renderer::new(&d3d11_device).context("creating renderer")?;
         let surface_texture = create_surface_texture(&d3d11_device, width, height)
             .context("creating surface texture")?;
@@ -57,6 +53,7 @@ impl SurfaceState {
             id,
             width,
             height,
+            info,
 
             d3d11_device,
             d3d11_cx,
@@ -64,20 +61,20 @@ impl SurfaceState {
             surface_texture,
         };
 
-        this.update_surface(cx);
+        this.update_surface();
         Ok(this)
     }
 
-    pub fn resize(&mut self, cx: &Context, width: u32, height: u32) {
+    pub(crate) fn resize(&mut self, width: u32, height: u32) {
         self.width = width;
         self.height = height;
-        self.on_resized(cx);
+        self.on_resized();
     }
 
-    pub fn render(
+    pub(crate) fn render(
         &mut self,
-        renderer_output: RendererOutput,
         cx: &Context,
+        renderer_output: RendererOutput,
         clear_color: [f32; 4],
     ) -> anyhow::Result<()> {
         let (_, keyed_mutex, rtv) = &self.surface_texture;
@@ -95,19 +92,17 @@ impl SurfaceState {
         Ok(())
     }
 
-    fn on_resized(&mut self, cx: &Context) {
+    fn on_resized(&mut self) {
         if self.width == 0 || self.height == 0 {
             return;
         }
         self.surface_texture = create_surface_texture(&self.d3d11_device, self.width, self.height)
             .expect("creating surface texture");
 
-        self.update_surface(cx);
+        self.update_surface();
     }
 
-    fn update_surface(&self, cx: &Context) {
-        cx.request_repaint();
-
+    fn update_surface(&self) {
         let shared_handle = unsafe {
             let res = self
                 .surface_texture

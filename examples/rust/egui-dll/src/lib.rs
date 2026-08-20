@@ -49,7 +49,7 @@ impl App for MyApp {
             });
     }
 
-    fn input_blocking_ended(&mut self) {
+    fn on_input_blocking_ended(&mut self) {
         self.input_block = false;
     }
 }

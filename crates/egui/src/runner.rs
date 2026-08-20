@@ -61,7 +61,7 @@ where
 
 async fn inner(
     egui_cx: Context,
-    window: Arc<Backends>,
+    windows: Arc<Backends>,
     (tx, mut rx): (UnboundedSender<Event>, UnboundedReceiver<Event>),
     mut app: impl App,
 ) -> anyhow::Result<()> {
@@ -72,17 +72,18 @@ async fn inner(
         }
     });
 
-    let mut surface = next_main_surface(&mut rx, &egui_cx)
+    let surface = next_main_surface(&mut rx)
         .await
         .context("waiting for main surface")?;
-    init_windows(&window);
+    init_windows(&windows);
+    egui_cx.request_repaint();
 
-    let cx = OverlayContext { windows: window };
+    let mut cx = OverlayContext { windows, surface };
     let mut input = RawInput {
         viewport_id: egui_cx.viewport_id(),
         screen_rect: Some(egui::Rect {
             min: (0.0, 0.0).into(),
-            max: (surface.width as f32, surface.height as f32).into(),
+            max: (cx.surface.width as f32, cx.surface.height as f32).into(),
         }),
         focused: true,
         modifiers: egui_cx.input(|state| state.modifiers),
@@ -93,7 +94,7 @@ async fn inner(
     while let Some(event) = rx.recv().await {
         match event {
             Event::Overlay(event) => {
-                overlay_event(&egui_cx, &mut rx, &mut surface, &mut input, event)
+                overlay_event(&egui_cx, &mut rx, &mut cx.surface, &mut input, event)
                     .await
                     .context("handling overlay event")?
             }
@@ -106,7 +107,7 @@ async fn inner(
                 }
 
                 asdf_overlay_window_event::Event::InputBlockingEnded => {
-                    app.input_blocking_ended();
+                    app.on_input_blocking_ended();
                     egui_cx.request_repaint();
                 }
             },
@@ -127,8 +128,8 @@ async fn inner(
 
                 let clear_color = app.clear_color(&egui_cx.global_style().visuals);
                 let (renderer_output, _, _) = split_output(output);
-                surface
-                    .render(renderer_output, &egui_cx, clear_color)
+                cx.surface
+                    .render(&egui_cx, renderer_output, clear_color)
                     .context("rendering failed")?;
             }
         }
@@ -285,17 +286,21 @@ async fn overlay_event(
 
     match event {
         SurfaceEvent::Resized { width, height } => {
-            surface.resize(cx, width, height);
+            surface.resize(width, height);
             input.screen_rect = Some(egui::Rect {
                 min: (0.0, 0.0).into(),
                 max: (width as f32, height as f32).into(),
             });
+
+            cx.request_repaint();
         }
 
         SurfaceEvent::Destroyed => {
-            *surface = next_main_surface(rx, cx)
+            *surface = next_main_surface(rx)
                 .await
                 .context("waiting for main surface")?;
+
+            cx.request_repaint();
         }
         _ => {}
     }
@@ -303,10 +308,7 @@ async fn overlay_event(
     Ok(())
 }
 
-async fn next_main_surface(
-    rx: &mut UnboundedReceiver<Event>,
-    cx: &Context,
-) -> anyhow::Result<SurfaceState> {
+async fn next_main_surface(rx: &mut UnboundedReceiver<Event>) -> anyhow::Result<SurfaceState> {
     while let Some(event) = rx.recv().await {
         let Event::Overlay(asdf_overlay_event::Event::Surface { id, event }) = event else {
             continue;
@@ -321,7 +323,7 @@ async fn next_main_surface(
             continue;
         };
 
-        return SurfaceState::new(cx, id, info.gpu_id, width, height);
+        return SurfaceState::new(id, info, width, height);
     }
 
     anyhow::bail!("surface not found");
