@@ -4,8 +4,15 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Context as _;
 use asdf_overlay::event_sink::OverlayEventSink;
 use asdf_overlay_event::SurfaceEvent;
-use asdf_overlay_window::Backends;
-use egui::{Context, RawInput};
+use asdf_overlay_window::{Backends, window::ListenInputFlags};
+use asdf_overlay_window_event::{
+    WindowEvent,
+    input::{
+        CursorAction, CursorEvent, CursorInput, CursorInputState, InputEvent, KeyboardInput,
+        ScrollAxis,
+    },
+};
+use egui::{Context, Modifiers, MouseWheelUnit, PointerButton, RawInput, TouchPhase};
 use egui_directx11::split_output;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -54,7 +61,7 @@ where
 
 async fn inner(
     cx: Context,
-    _window: Arc<Backends>,
+    window: Arc<Backends>,
     (tx, mut rx): (UnboundedSender<Event>, UnboundedReceiver<Event>),
     mut app: impl App,
 ) -> anyhow::Result<()> {
@@ -69,11 +76,13 @@ async fn inner(
         .await
         .context("waiting for main surface")?;
 
-    let mut input = RawInput::default();
-    input.screen_rect = Some(egui::Rect {
-        min: (0.0, 0.0).into(),
-        max: (surface.width as f32, surface.height as f32).into(),
-    });
+    let mut input = RawInput {
+        screen_rect: Some(egui::Rect {
+            min: (0.0, 0.0).into(),
+            max: (surface.width as f32, surface.height as f32).into(),
+        }),
+        ..RawInput::default()
+    };
 
     let start = Instant::now();
     while let Some(event) = rx.recv().await {
@@ -82,7 +91,9 @@ async fn inner(
                 .await
                 .context("handling overlay event")?,
 
-            Event::Window(_event) => {}
+            Event::Window(event) => window_event(&cx, &window, &mut input, event)
+                .await
+                .context("handling window event")?,
 
             Event::RequestRepaint(info) => {
                 let cumulative_pass_nr = cx.cumulative_pass_nr();
@@ -109,6 +120,83 @@ async fn inner(
     }
     Ok(())
 }
+
+async fn window_event(
+    _cx: &Context,
+    window: &Backends,
+    raw_input: &mut RawInput,
+    event: asdf_overlay_window_event::Event,
+) -> anyhow::Result<()> {
+    let (id, event) = match event {
+        asdf_overlay_window_event::Event::Window { id, event } => (id, event),
+
+        asdf_overlay_window_event::Event::InputBlockingEnded => {
+            return Ok(());
+        }
+    };
+
+    match event {
+        WindowEvent::Added { .. } => {
+            window.window(id, |state| {
+                state.set_input_flags(ListenInputFlags::all());
+            });
+        }
+
+        WindowEvent::Input(event) => {
+            let inputs = &mut raw_input.events;
+
+            match event {
+                InputEvent::Cursor(input) => handle_cursor_input(inputs, input),
+                InputEvent::Keyboard(input) => handle_keyboard_input(inputs, input),
+            }
+        }
+
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn handle_cursor_input(inputs: &mut Vec<egui::Event>, input: CursorInput) {
+    match input.event {
+        CursorEvent::Move => {
+            inputs.push(egui::Event::PointerMoved(
+                (input.pos.x as f32, input.pos.y as f32).into(),
+            ));
+        }
+
+        CursorEvent::Leave => inputs.push(egui::Event::PointerGone),
+
+        CursorEvent::Action { state, action } => {
+            inputs.push(egui::Event::PointerButton {
+                pos: (input.pos.x as f32, input.pos.y as f32).into(),
+                button: match action {
+                    CursorAction::Left => PointerButton::Primary,
+                    CursorAction::Right => PointerButton::Secondary,
+                    CursorAction::Middle => PointerButton::Middle,
+                    CursorAction::Back => PointerButton::Extra1,
+                    CursorAction::Forward => PointerButton::Extra2,
+                },
+                pressed: matches!(state, CursorInputState::Pressed { .. }),
+                modifiers: Modifiers::default(),
+            });
+        }
+
+        CursorEvent::Scroll { axis, delta } => inputs.push(egui::Event::MouseWheel {
+            unit: MouseWheelUnit::Point,
+            delta: match axis {
+                ScrollAxis::X => (delta as f32, 0.0).into(),
+                ScrollAxis::Y => (0.0, delta as f32).into(),
+            },
+            phase: TouchPhase::Move,
+            modifiers: Modifiers::default(),
+        }),
+
+        _ => {}
+    }
+}
+
+fn handle_keyboard_input(_inputs: &mut Vec<egui::Event>, _input: KeyboardInput) {}
 
 async fn overlay_event(
     cx: &Context,
@@ -160,7 +248,7 @@ async fn next_main_surface(
             continue;
         };
 
-        return Ok(SurfaceState::new(cx, id, info.gpu_id, width, height)?);
+        return SurfaceState::new(cx, id, info.gpu_id, width, height);
     }
 
     anyhow::bail!("surface not found");
