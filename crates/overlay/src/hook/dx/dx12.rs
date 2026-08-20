@@ -89,7 +89,8 @@ pub fn draw_overlay(
     swapchain: &IDXGISwapChain3,
 ) -> anyhow::Result<()> {
     let Some(queue) = get_queue_for(device) else {
-        bail!("queue is not found");
+        debug!("Queue is not found for Direct3D12 device");
+        return Ok(());
     };
 
     let Some(size) = state.texture_size() else {
