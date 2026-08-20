@@ -7,7 +7,7 @@ pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
