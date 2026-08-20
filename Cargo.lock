@@ -1609,7 +1609,6 @@ version = "0.0.0"
 dependencies = [
  "asdf-overlay-egui",
  "tracing",
- "windows 0.62.2",
 ]
 
 [[package]]

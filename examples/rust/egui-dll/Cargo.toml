@@ -12,10 +12,3 @@ crate-type = ["cdylib"]
 asdf-overlay-egui = { workspace = true, features = ["dll"] }
 
 tracing = "0.1.44"
-
-[dependencies.windows]
-workspace = true
-features = [
-    "Win32_Foundation",
-    "Win32_System_LibraryLoader",
-]
