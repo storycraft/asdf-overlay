@@ -1,8 +1,9 @@
+use anyhow::Context;
 use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
-use tracing::{Level, error, info, trace};
+use tracing::{Level, info, trace};
 use windows::{
     Win32::Graphics::{
         Direct3D::D3D_FEATURE_LEVEL_11_0,
@@ -11,7 +12,7 @@ use windows::{
             D3D11_SDK_VERSION, ID3D11Device, ID3D11Device1, ID3D11Texture2D,
             ID3DDeviceContextState,
         },
-        Dxgi::{IDXGIDevice, IDXGISwapChain1},
+        Dxgi::{IDXGIDevice, IDXGISwapChain, IDXGISwapChain1},
     },
     core::Interface,
 };
@@ -40,7 +41,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            info!("initializing dx11 renderer");
+            info!("Initializing Direct3D11 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D11Device1>()? };
 
             let state = unsafe {
@@ -79,66 +80,69 @@ fn with_or_init_renderer_data<R>(
     f(&mut data)
 }
 
-pub fn draw_overlay(state: &SurfaceState, device: &ID3D11Device1, swapchain: &IDXGISwapChain1) {
+pub fn draw_overlay(
+    state: &SurfaceState,
+    device: &ID3D11Device1,
+    swapchain: &IDXGISwapChain1,
+) -> anyhow::Result<()> {
     let Some(size) = state.texture_size() else {
-        return;
+        return Ok(());
     };
 
     let position = state.position();
     let screen = state.size();
-    _ = with_or_init_renderer_data(swapchain, move |data| {
-        trace!("using dx11 renderer");
+    with_or_init_renderer_data(swapchain, move |data| {
+        trace!("Using Direct3D11 renderer");
 
-        if state.texture.take_update()
-            && let Err(err) = data
-                .renderer
+        if state.texture.take_update() {
+            data.renderer
                 .update_texture(device, state.texture.get().as_ref())
-        {
-            error!("failed to update dx11 texture: {err:?}");
+                .context("renderer texture update")?;
         }
 
-        let cx = unsafe { device.GetImmediateContext1().unwrap() };
+        let cx = unsafe { device.GetImmediateContext1()? };
         let mut prev_state = None;
         unsafe {
             cx.SwapDeviceContextState(&data.state, Some(&mut prev_state));
         }
-
         let prev_state = prev_state.unwrap();
         defer!(unsafe {
             cx.SwapDeviceContextState(&prev_state, None);
         });
 
-        let back_buffer = unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }
-            .expect("failed to get dx11 backbuffer");
+        let back_buffer =
+            unsafe { swapchain.GetBuffer::<ID3D11Texture2D>(0) }.context("get backbuffer")?;
+
         let mut rtv = None;
         unsafe { device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv)) }
-            .expect("failed to create rtv");
+            .context("get backbuffer rtv")?;
         let rtv = rtv.unwrap();
 
         unsafe { cx.OMSetRenderTargets(Some(&[Some(rtv)]), None) };
         defer!(unsafe { cx.OMSetRenderTargets(None, None) });
-
-        let res = data.renderer.draw(device, &cx, position, size, screen);
-        trace!("dx11 render: {:?}", res);
-        res
-    });
+        data.renderer
+            .draw(device, &cx, position, size, screen)
+            .context("renderer draw")
+    })
 }
 
 pub(super) fn setup_fn(
-    device: &ID3D11Device1,
-    swapchain: &IDXGISwapChain1,
+    device: &ID3D11Device,
+    swapchain: &IDXGISwapChain,
 ) -> anyhow::Result<SurfaceState> {
     let adapter = unsafe { device.cast::<IDXGIDevice>().unwrap().GetAdapter().ok() };
-    let desc = unsafe { swapchain.GetDesc1() }?;
-    let window_id = unsafe { swapchain.GetHwnd() }
-        .ok()
-        .map(|hwnd| hwnd.0 as u32);
+    let desc = unsafe { swapchain.GetDesc() }?;
+    let window_id = if desc.OutputWindow.is_invalid() {
+        None
+    } else {
+        Some(desc.OutputWindow.0 as u32)
+    };
 
     let interop = DxInterop::new(adapter.as_ref())?;
     let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
-        (desc.Width, desc.Height),
+        (desc.BufferDesc.Width, desc.BufferDesc.Height),
         SurfaceInfo {
             api: SurfaceType::Direct3D11 { window_id },
             gpu_id,
@@ -151,7 +155,7 @@ fn cleanup_swapchain(swapchain: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    info!("dx11 renderer cleanup");
+    info!("Direct3D11 renderer cleanup");
 
     Surfaces::cleanup_state(swapchain as _);
 }

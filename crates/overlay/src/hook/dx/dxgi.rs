@@ -2,7 +2,7 @@ pub mod callback;
 
 use core::{ffi::c_void, ptr};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_event::{Event, SurfaceEvent};
 use asdf_overlay_hook::DetourHook;
 use once_cell::sync::OnceCell;
@@ -22,7 +22,7 @@ use windows::{
                 },
                 CreateDXGIFactory1, DXGI_PRESENT, DXGI_PRESENT_PARAMETERS, DXGI_PRESENT_TEST,
                 DXGI_SWAP_CHAIN_DESC, DXGI_SWAP_EFFECT_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                IDXGIFactory1, IDXGISwapChain1, IDXGISwapChain3,
+                IDXGIFactory1, IDXGISwapChain, IDXGISwapChain1, IDXGISwapChain3,
             },
         },
     },
@@ -36,34 +36,45 @@ use crate::{
 };
 
 #[tracing::instrument(level = Level::TRACE)]
-fn draw_overlay(swapchain: &IDXGISwapChain1) {
+fn draw_overlay(swapchain: &IDXGISwapChain) -> anyhow::Result<()> {
     // use swapchain pointer as unique identifier
     let id = swapchain.as_raw() as u64;
 
     if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D12Device>() } {
-        if let Err(_err) = Surfaces::with(
+        let swapchain = swapchain
+            .cast::<IDXGISwapChain3>()
+            .context("Direct3D12 casting to IDXGISwapChain3")?;
+
+        Surfaces::with(
             id,
-            || dx12::setup_fn(&device, swapchain),
-            |backend| {
-                dx12::draw_overlay(
-                    backend,
-                    &device,
-                    &swapchain.cast::<IDXGISwapChain3>().unwrap(),
-                );
-            },
-        ) {
-            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-        }
-    } else if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() }
-        && let Err(_err) = Surfaces::with(
-            id,
-            || dx11::setup_fn(&device, swapchain),
-            |backend| {
-                dx11::draw_overlay(backend, &device, swapchain);
-            },
+            || dx12::setup_fn(&device, &swapchain),
+            |backend| dx12::draw_overlay(backend, &device, &swapchain),
         )
-    {
-        error!("Backends::with_or_init_backend failed. err: {:?}", _err);
+        .context("Direct3D12 overlay error")?;
+        return Ok(());
+    }
+
+    if let Ok(device) = unsafe { swapchain.GetDevice::<ID3D11Device1>() } {
+        let swapchain = swapchain
+            .cast::<IDXGISwapChain1>()
+            .context("Direct3D11 casting to IDXGISwapChain1")?;
+
+        Surfaces::with(
+            id,
+            || dx11::setup_fn(&device, &swapchain),
+            |backend| dx11::draw_overlay(backend, &device, &swapchain),
+        )
+        .context("Direct3D11 overlay error")?;
+        return Ok(());
+    }
+
+    bail!("unknown device type from swapchain.");
+}
+
+#[inline]
+fn present(swapchain: &IDXGISwapChain) {
+    if let Err(e) = draw_overlay(swapchain) {
+        error!("Failed to draw overlay: {:?}", e);
     }
 }
 
@@ -76,8 +87,8 @@ extern "system" fn hooked_present(
     trace!("Present called");
 
     if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
-        let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        draw_overlay(swapchain);
+        let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
+        present(swapchain);
     }
 
     unsafe { HOOK.present.wait().original_fn()(this, sync_interval, flags) }
@@ -94,17 +105,17 @@ extern "system" fn hooked_present1(
 
     if !flags.contains(DXGI_PRESENT_TEST) && OverlayEventSink::connected() {
         let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
-        draw_overlay(swapchain);
+        present(swapchain);
     }
 
     unsafe { HOOK.present1.wait().original_fn()(this, sync_interval, flags, present_params) }
 }
 
-fn resize_swapchain(swapchain: &IDXGISwapChain1) {
+fn resize_swapchain(swapchain: &IDXGISwapChain) {
     dx12::resize_swapchain(swapchain);
 }
 
-fn post_resize_swapchain(swapchain: &IDXGISwapChain1) {
+fn post_resize_swapchain(swapchain: &IDXGISwapChain) {
     let desc = unsafe { swapchain.GetDesc() }.unwrap_or_default();
     let width = desc.BufferDesc.Width;
     let height = desc.BufferDesc.Height;
@@ -130,7 +141,7 @@ extern "system" fn hooked_resize_buffers(
 ) -> HRESULT {
     trace!("ResizeBuffers called");
 
-    let swapchain = unsafe { IDXGISwapChain1::from_raw_borrowed(&this).unwrap() };
+    let swapchain = unsafe { IDXGISwapChain::from_raw_borrowed(&this).unwrap() };
     resize_swapchain(swapchain);
 
     let res = unsafe {

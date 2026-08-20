@@ -94,7 +94,7 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             renderer_cleanup = true;
         }
 
-        info!("gl renderer cleanup");
+        info!("OpenGL renderer cleanup");
         Surfaces::cleanup_state(key);
 
         let Some(renderer) = gl_data.renderer.take() else {
@@ -124,39 +124,32 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
 fn draw_overlay(hdc: HDC) {
     #[inline]
-    fn inner(state: &SurfaceState, renderer: &mut Option<OpenglRenderer>) {
-        trace!("using opengl renderer");
+    fn inner(state: &SurfaceState, renderer: &mut Option<OpenglRenderer>) -> anyhow::Result<()> {
+        trace!("Using OpenGL renderer");
         with_renderer_gl_data(|| {
             let renderer = match renderer {
                 Some(renderer) => renderer,
                 None => {
-                    info!("initializing opengl renderer");
-                    renderer.insert(match OpenglRenderer::new() {
-                        Ok(renderer) => renderer,
-                        Err(err) => {
-                            error!("renderer setup failed. err: {:?}", err);
-                            return;
-                        }
-                    })
+                    info!("Initializing OpenGL renderer");
+                    renderer.insert(OpenglRenderer::new().context("renderer initialization")?)
                 }
             };
 
             let Some(surface_size) = state.texture_size() else {
-                return;
+                return Ok(());
             };
 
             let position = state.position();
             let screen = state.size();
-            if state.texture.take_update()
-                && let Err(err) =
-                    renderer.update_texture(&state.interop.device, state.texture.get().as_ref())
-            {
-                error!("failed to update opengl texture. err: {err:?}");
-                return;
+            if state.texture.take_update() {
+                renderer
+                    .update_texture(&state.interop.device, state.texture.get().as_ref())
+                    .context("renderer texture update")?;
             }
 
-            let _res = renderer.draw(position, surface_size, screen);
-            trace!("opengl render: {:?}", _res);
+            renderer
+                .draw(position, surface_size, screen)
+                .context("renderer draw")
         })
     }
 
@@ -170,9 +163,9 @@ fn draw_overlay(hdc: HDC) {
     }
 
     if !gl::GetIntegerv::is_loaded() {
-        debug!("setting up opengl");
+        debug!("Setting up opengl");
         if let Err(err) = setup_gl() {
-            error!("opengl setup failed. err: {:?}", err);
+            error!("OpenGL setup failed. err: {:?}", err);
             return;
         }
     }
@@ -184,16 +177,12 @@ fn draw_overlay(hdc: HDC) {
         MAP.entry(key).or_insert_with(|| setup_gl_data(hwnd))
     };
 
-    let res = Surfaces::with(
+    if let Err(err) = Surfaces::with(
         key,
         || setup_fn(unsafe { WindowFromDC(hdc) }),
         |backend| inner(backend, &mut data.renderer),
-    );
-    match res {
-        Ok(_) => {}
-        Err(_err) => {
-            error!("Backends::with_or_init_backend failed. err: {:?}", _err);
-        }
+    ) {
+        error!("Failed to draw opengl overlay. err: {:?}", err);
     }
 }
 

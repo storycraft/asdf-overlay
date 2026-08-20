@@ -1,12 +1,12 @@
 use core::ffi::c_void;
 use tracing::Level;
 use windows::{
-    Win32::Graphics::{Direct3D::ID3DDestructionNotifier, Dxgi::IDXGISwapChain1},
+    Win32::Graphics::{Direct3D::ID3DDestructionNotifier, Dxgi::IDXGISwapChain},
     core::Interface,
 };
 
 pub fn register_swapchain_destruction_callback<F: FnOnce(usize) + Send + 'static>(
-    swapchain: &IDXGISwapChain1,
+    swapchain: &IDXGISwapChain,
     f: F,
 ) {
     struct Data<F> {

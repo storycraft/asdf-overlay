@@ -49,10 +49,10 @@ impl Surfaces {
     pub fn with<R>(
         id: u64,
         setup_fn: impl FnOnce() -> anyhow::Result<SurfaceState>,
-        f: impl FnOnce(&SurfaceState) -> R,
+        f: impl FnOnce(&SurfaceState) -> anyhow::Result<R>,
     ) -> anyhow::Result<R> {
         if let Some(backend) = SURFACES.map.get(&id) {
-            return Ok(f(&backend));
+            return f(&backend);
         }
 
         let backend = SURFACES
@@ -75,7 +75,7 @@ impl Surfaces {
             })?
             .downgrade();
 
-        Ok(f(backend.value()))
+        f(backend.value())
     }
 
     #[doc(hidden)]

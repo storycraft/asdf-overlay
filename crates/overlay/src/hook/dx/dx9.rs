@@ -65,7 +65,7 @@ extern "system" fn hooked_present(
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
         let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        draw_overlay(device, &swapchain);
+        present(device, &swapchain);
     }
 
     unsafe {
@@ -92,7 +92,7 @@ extern "system" fn hooked_swapchain_present(
 
     let swapchain = unsafe { IDirect3DSwapChain9::from_raw_borrowed(&this) }.unwrap();
     let device = unsafe { swapchain.GetDevice() }.unwrap();
-    draw_overlay(&device, swapchain);
+    present(&device, swapchain);
 
     unsafe {
         HOOK.swapchain_present.wait().original_fn()(
@@ -135,7 +135,7 @@ extern "system" fn hooked_present_ex(
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
         let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        draw_overlay(device, &swapchain);
+        present(device, &swapchain);
     }
 
     unsafe {
@@ -150,11 +150,11 @@ extern "system" fn hooked_present_ex(
     }
 }
 
-fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
+fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> anyhow::Result<()> {
     // Use device pointer as key.
     let id = device.as_raw() as u64;
 
-    let res = Surfaces::with(
+    Surfaces::with(
         id,
         || setup_fn(device, swapchain),
         |state| {
@@ -162,14 +162,14 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
                 SurfaceType::Direct3D9 { .. } => {}
                 _ => {
                     trace!("ignoring Direct3D9 rendering");
-                    return;
+                    return Ok(());
                 }
             }
 
             let position = state.position();
             let screen = state.size();
-            _ = with_or_init_renderer(device, |renderer| {
-                trace!("using dx9 renderer");
+            with_or_init_renderer(device, |renderer| {
+                trace!("Using Direct3D9 renderer");
 
                 let surface_lock = state.texture.get();
                 let Some(surface) = surface_lock.as_ref() else {
@@ -179,18 +179,21 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
                 let interop = &state.interop;
                 renderer
                     .update_texture(device, surface, &interop.device, &interop.cx.lock())
-                    .context("failed to update dx9 texture")?;
+                    .context("updating renderer texture")?;
 
                 unsafe { device.BeginScene() }.context("BeginScene failed")?;
                 renderer.draw(device, position, screen)?;
                 unsafe { device.EndScene() }.context("EndScene failed")?;
-                Ok(())
-            });
-        },
-    );
 
-    if let Err(_err) = res {
-        error!("Surfaces::with failed. err: {:?}", _err);
+                Ok(())
+            })
+        },
+    )
+}
+
+fn present(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
+    if let Err(err) = draw_overlay(device, swapchain) {
+        error!("Failed to draw Direct3D9 overlay. err: {:?}", err);
     }
 }
 
@@ -217,7 +220,7 @@ fn post_reset(device: &IDirect3DDevice9) {
 }
 
 fn cleanup_renderer(device: usize) {
-    info!("dx9 renderer cleanup");
+    info!("Direct3D9 renderer cleanup");
 
     // HACK:: workaround for recursive lock
     thread::spawn(move || {
@@ -226,7 +229,7 @@ fn cleanup_renderer(device: usize) {
 }
 
 fn reset_renderer(device: usize) {
-    debug!("dx9 renderer reset");
+    info!("Direct3D9 renderer reset");
     if RENDERERS.remove(&device).is_none() {
         return;
     };
