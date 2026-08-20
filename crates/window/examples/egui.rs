@@ -1,5 +1,5 @@
 use core::error::Error;
-use std::{sync::Arc, thread};
+use std::sync::Arc;
 
 use asdf_overlay_window::Backends;
 use eframe::egui;
@@ -9,15 +9,9 @@ use eframe::egui;
 fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
-    let backends = Arc::new(Backends::new()?);
-    thread::spawn({
-        let backends = backends.clone();
-        move || {
-            while let Some(event) = backends.recv() {
-                eprintln!("Backend event: {event:?}");
-            }
-        }
-    });
+    let backends = Arc::new(Backends::new(|event| {
+        eprintln!("Backend event: {event:?}");
+    })?);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),

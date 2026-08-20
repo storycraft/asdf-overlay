@@ -44,24 +44,20 @@ async fn run(module_handle: usize, mut server: NamedPipeServer) -> anyhow::Resul
     debug!("Overlay initialized.");
 
     // initialize windows
-    let backends = Arc::new(Backends::new().context("window initialization")?);
-    debug!("Window backend initialized.");
+    let backends = Arc::new(
+        Backends::new({
+            use asdf_overlay_common::event::window::Event;
 
-    // setup window event sink
-    tokio::spawn({
-        use asdf_overlay_common::event::window::Event;
-
-        let backends = backends.clone();
-
-        async move {
-            while let Some(event) = backends.recv_async().await {
+            |event| {
                 EventSink::emit(match event {
                     Event::Window { id, event } => OverlayEvent::Window { id, event },
                     Event::InputBlockingEnded => OverlayEvent::InputBlockingEnded,
                 });
             }
-        }
-    });
+        })
+        .context("window initialization")?,
+    );
+    debug!("Window backend initialized.");
 
     loop {
         debug!("Waiting ipc client...");

@@ -31,7 +31,7 @@ use windows::{
     core::BOOL,
 };
 
-use crate::{Backends, window::ListenInputFlags};
+use crate::{Backends, event::EventSink, window::ListenInputFlags};
 
 windows::core::link!("user32.dll" "system" fn GetMessageA(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows::core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
@@ -339,7 +339,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
             if let Some(key) = to_key(msg.lParam) {
-                Backends::get().emit(keyboard_input(
+                EventSink::emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
                         key,
@@ -350,7 +350,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
             if let Some(key) = to_key(msg.lParam) {
-                Backends::get().emit(keyboard_input(
+                EventSink::emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
                         key,
@@ -361,7 +361,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
         }
         msg::WM_CHAR | msg::WM_SYSCHAR => {
             if let Some(ch) = char::from_u32(msg.wParam.0 as _) {
-                Backends::get().emit(keyboard_input(id, KeyboardInput::Char(ch)));
+                EventSink::emit(keyboard_input(id, KeyboardInput::Char(ch)));
             }
         }
         _ => {}
@@ -404,7 +404,7 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
         CursorInputState::Released
     };
 
-    Backends::get().emit(Event::Window {
+    EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Action { action, state },
@@ -417,8 +417,7 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
 fn cursor_move(hwnd: u32, lparam: LPARAM) {
     let pos = parse_cursor_position(lparam);
 
-    let backends = Backends::get();
-    backends.window_state(hwnd, |state| {
+    Backends::get().window_state(hwnd, |state| {
         if state.cursor_hovering.load(Ordering::Relaxed) {
             return;
         }
@@ -434,7 +433,7 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
             });
         };
 
-        backends.emit(Event::Window {
+        EventSink::emit(Event::Window {
             id: hwnd,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                 event: CursorEvent::Enter,
@@ -443,7 +442,7 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
         });
     });
 
-    backends.emit(Event::Window {
+    EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Move,
@@ -453,7 +452,6 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
 }
 
 fn cursor_leave(id: u32) {
-    let backends = Backends::get();
     let pos = {
         let screen_pos = unsafe { HOOK.wait().get_message_pos.original_fn()() };
         let [x, y] = bytemuck::cast::<_, [i16; 2]>(screen_pos);
@@ -472,13 +470,13 @@ fn cursor_leave(id: u32) {
         }
     };
 
-    backends.window_state(id, |state| {
+    Backends::get().window_state(id, |state| {
         if !state.cursor_hovering.load(Ordering::Relaxed) {
             return;
         }
         state.cursor_hovering.store(false, Ordering::Relaxed);
 
-        backends.emit(Event::Window {
+        EventSink::emit(Event::Window {
             id,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
                 event: CursorEvent::Leave,
@@ -493,7 +491,7 @@ fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     let [_, delta] = bytemuck::cast::<_, [i16; 2]>(wparam.0 as u32);
     let pos = parse_cursor_position(lparam);
 
-    Backends::get().emit(Event::Window {
+    EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
             event: CursorEvent::Scroll {

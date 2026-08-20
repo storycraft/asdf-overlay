@@ -20,13 +20,13 @@ asdf-overlay-event = { workspace = true }
 asdf-overlay-window = { workspace = true }
 asdf-overlay-window-event = { workspace = true }
 
-tokio = { workspace = true, features = ["full"] }
 egui = "0.35.0"
 egui-directx11 = "0.13.0"
 anyhow = "1.0.104"
 derive_more = { version = "2.1.1", features = ["from"] }
 scopeguard = "1.2.0"
 tracing = "0.1.44"
+flume = "0.12.0"
 
 [dependencies.windows]
 workspace = true
