@@ -68,7 +68,7 @@ fn draw_overlay(swapchain: &IDXGISwapChain) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    bail!("unknown device type from swapchain.");
+    debug!("unknown device type from swapchain.");
 }
 
 #[inline]
