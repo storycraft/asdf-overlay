@@ -19,6 +19,8 @@ struct MyApp {
 
 impl App for MyApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.input(|input| input.clone()).ui(ui);
+
         egui::Window::new("Egui window")
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .fixed_size((320.0, 180.0))
