@@ -64,14 +64,16 @@ pub(super) extern "system" fn present(
                             queue_data.family_index,
                             backend,
                             wait_semaphores,
-                        );
+                        )?;
 
                         if let Some(semaphore) = semaphore {
                             table.semaphore_buf.push(semaphore);
                         }
+
+                        Ok(())
                     },
                 ) {
-                    error!("Backends::with_or_init_backend failed. err: {err:?}");
+                    error!("Vulkan overlay error. err: {err:?}");
                 }
             });
         }
@@ -134,57 +136,62 @@ fn draw_overlay(
     queue_family_index: u32,
     state: &SurfaceState,
     wait_semaphores: &[vk::Semaphore],
-) -> Option<vk::Semaphore> {
+) -> anyhow::Result<Option<vk::Semaphore>> {
     let mut renderer = data.renderer.lock();
-    let renderer = renderer.get_or_insert_with(|| {
-        debug!("initializing vulkan renderer");
+    let renderer = match *renderer {
+        Some(ref mut renderer) => renderer,
+        None => {
+            debug!("Initializing Vulkan renderer");
 
-        let mut image_count = 0;
-        let mut images = Vec::<vk::Image>::new();
-        unsafe {
-            _ = (table.swapchain_fn.get_swapchain_images_khr)(
-                table.device.handle(),
-                swapchain,
-                &mut image_count,
-                0 as _,
-            );
-            images.resize(image_count as _, vk::Image::null());
+            let mut image_count = 0;
+            let mut images = Vec::<vk::Image>::new();
+            unsafe {
+                _ = (table.swapchain_fn.get_swapchain_images_khr)(
+                    table.device.handle(),
+                    swapchain,
+                    &mut image_count,
+                    0 as _,
+                );
+                images.resize(image_count as _, vk::Image::null());
 
-            (table.swapchain_fn.get_swapchain_images_khr)(
-                table.device.handle(),
-                swapchain,
-                &mut image_count,
-                images.as_mut_ptr(),
+                (table.swapchain_fn.get_swapchain_images_khr)(
+                    table.device.handle(),
+                    swapchain,
+                    &mut image_count,
+                    images.as_mut_ptr(),
+                )
+                .result()
+                .context("getting swapchain images")?;
+            };
+
+            renderer.insert(
+                VulkanRenderer::new(
+                    table.device.clone(),
+                    queue_family_index,
+                    data.image_size,
+                    data.format,
+                    &images,
+                )
+                .context("renderer creation failed")?,
             )
-            .result()
-            .expect("failed to get swapchain images");
-        };
+        }
+    };
 
-        VulkanRenderer::new(
-            table.device.clone(),
-            queue_family_index,
-            data.image_size,
-            data.format,
-            &images,
-        )
-        .expect("renderer creation failed")
-    });
-
-    let size = state.texture_size()?;
+    let Some(size) = state.texture_size() else {
+        return Ok(None);
+    };
 
     if state.texture.take_update() {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
-        if let Err(err) = renderer.update_texture(state.texture.get().as_ref(), data.format, &props)
-        {
-            error!("failed to update vulkan texture. err: {err:?}");
-            return None;
-        }
+        renderer
+            .update_texture(state.texture.get().as_ref(), data.format, &props)
+            .context("updating renderer texture")?;
     }
 
     let position = state.position();
     let screen = state.size();
-    let res = renderer.draw(queue, wait_semaphores, index, position, size, screen);
-    trace!("vulkan render: {:?}", res);
-    res.ok().flatten()
+    renderer
+        .draw(queue, wait_semaphores, index, position, size, screen)
+        .context("renderer draw")
 }

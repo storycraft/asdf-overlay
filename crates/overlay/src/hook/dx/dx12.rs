@@ -7,7 +7,7 @@ pub use util::original_execute_command_lists;
 
 use core::ffi::c_void;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -18,7 +18,7 @@ use windows::{
             D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             D3D12_COMMAND_QUEUE_FLAG_NONE, ID3D12CommandQueue, ID3D12Device,
         },
-        Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4, IDXGISwapChain1, IDXGISwapChain3},
+        Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4, IDXGISwapChain, IDXGISwapChain3},
     },
     core::Interface,
 };
@@ -55,7 +55,7 @@ fn with_or_init_renderer_data<R>(
     let mut data = match RENDERERS.entry(swapchain.as_raw() as _) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
-            info!("initializing dx12 renderer");
+            info!("Initializing Direct3D12 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
             let ref_mut = entry.insert(RendererData {
@@ -83,31 +83,31 @@ fn get_queue_for(device: &ID3D12Device) -> Option<ID3D12CommandQueue> {
     })
 }
 
-pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDXGISwapChain3) {
+pub fn draw_overlay(
+    state: &SurfaceState,
+    device: &ID3D12Device,
+    swapchain: &IDXGISwapChain3,
+) -> anyhow::Result<()> {
     let Some(queue) = get_queue_for(device) else {
-        debug!("Queue is not found for Direct3D12 device");
-        return;
+        bail!("queue is not found");
     };
 
     let Some(size) = state.texture_size() else {
-        return;
+        return Ok(());
     };
 
     let position = state.position();
     let screen = state.size();
-    _ = with_or_init_renderer_data(swapchain, move |data| {
-        trace!("using dx12 renderer");
-        if state.texture.take_update()
-            && let Err(err) = data
-                .renderer
+    with_or_init_renderer_data(swapchain, move |data| {
+        trace!("Using Direct3D12 renderer");
+        if state.texture.take_update() {
+            data.renderer
                 .update_texture(device, state.texture.get().as_ref())
-        {
-            error!("failed to update dx12 texture: {err:?}");
+                .context("updating renderer texture")?;
         }
 
         let backbuffer_index = unsafe { swapchain.GetCurrentBackBufferIndex() };
-        let res = data
-            .rtv
+        data.rtv
             .with_next_swapchain(device, swapchain, backbuffer_index as _, |desc| {
                 data.renderer.draw(
                     device,
@@ -119,33 +119,33 @@ pub fn draw_overlay(state: &SurfaceState, device: &ID3D12Device, swapchain: &IDX
                     size,
                     screen,
                 )
-            });
-
-        trace!("dx12 render: {:?}", res);
-        res
-    });
+            })
+            .context("renderer draw")
+    })
 }
 
 pub(super) fn setup_fn(
     device: &ID3D12Device,
-    swapchain: &IDXGISwapChain1,
+    swapchain: &IDXGISwapChain,
 ) -> anyhow::Result<SurfaceState> {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         if let Err(err) = hook(device) {
-            error!("failed to hook dx12. err: {err:?}");
+            error!("failed to hook Direct3D12. err: {err:?}");
         }
     });
 
-    let desc = unsafe { swapchain.GetDesc1() }?;
+    let desc = unsafe { swapchain.GetDesc() }?;
     let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
-    let window_id = unsafe { swapchain.GetHwnd() }
-        .ok()
-        .map(|hwnd| hwnd.0 as u32);
+    let window_id = if desc.OutputWindow.is_invalid() {
+        None
+    } else {
+        Some(desc.OutputWindow.0 as u32)
+    };
     let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
-        (desc.Width, desc.Height),
+        (desc.BufferDesc.Width, desc.BufferDesc.Height),
         SurfaceInfo {
             api: SurfaceType::Direct3D12 { window_id },
             gpu_id,
@@ -159,7 +159,7 @@ fn get_dxgi_adapter(device: &ID3D12Device) -> Option<IDXGIAdapter> {
     unsafe { factory.EnumAdapterByLuid::<IDXGIAdapter>(luid) }.ok()
 }
 
-pub fn resize_swapchain(swapchain: &IDXGISwapChain1) {
+pub fn resize_swapchain(swapchain: &IDXGISwapChain) {
     let Some(mut data) = RENDERERS.get_mut(&(swapchain.as_raw() as _)) else {
         return;
     };
@@ -173,7 +173,7 @@ fn cleanup_swapchain(swapchain: usize, device: usize) {
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
-    info!("dx12 renderer cleanup");
+    info!("Direct3D12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
     Surfaces::cleanup_state(swapchain as _);
