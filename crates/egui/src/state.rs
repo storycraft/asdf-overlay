@@ -116,12 +116,13 @@ impl SurfaceState {
             SharedTextureHandle::Nt(handle.0 as _)
         };
 
-        Surfaces::state(self.id, |state| {
+        if Surfaces::state(self.id, |state| {
             if let Err(err) = state.commit_overlay_texture(Some(shared_handle)) {
                 error!("failed to commit overlay texture: {err:?}");
             }
-        })
-        .expect("invalid surface");
+        }).is_none() {
+            error!("failed to commit overlay texture: surface not found");
+        }
     }
 }
 
