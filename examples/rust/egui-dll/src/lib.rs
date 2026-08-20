@@ -19,7 +19,7 @@ struct MyApp {
 
 impl App for MyApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        egui::Window::new("Input window").show(ui, |ui| ui.input(|input| input.clone()).ui(ui));
+        egui::Window::new("Inputs").show(ui, |ui| ui.input(|input| input.clone()).ui(ui));
 
         egui::Window::new("Egui window")
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
