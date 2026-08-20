@@ -14,55 +14,47 @@ use asdf_overlay_window_event::{
 };
 use egui::{Context, ImeEvent, Modifiers, MouseWheelUnit, PointerButton, RawInput, TouchPhase};
 use egui_directx11::split_output;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use flume::{Receiver, Sender};
 
 use crate::{App, CreationContext, OverlayContext, event::Event, state::SurfaceState};
 
-pub fn run_app<T>(
+pub async fn run_app<T>(
     setup_fn: impl AsyncFnOnce(&CreationContext) -> Result<T, Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>>
 where
     T: App + 'static,
 {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
+    let (tx, rx) = flume::unbounded::<Event>();
 
-    let window = Arc::new(Backends::new().context("initializing windowing")?);
-    asdf_overlay::initialize().context("initializing overlay")?;
-
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
-
-    rt.spawn({
-        let window = Arc::clone(&window);
+    let window = Backends::new({
         let tx = tx.clone();
 
-        async move {
-            while let Some(event) = window.recv_async().await {
-                _ = tx.send(Event::from(event));
-            }
+        move |event| {
+            _ = tx.send(Event::from(event));
         }
-    });
+    })
+    .context("initializing windowing")?;
+    let window = Arc::new(window);
+
     OverlayEventSink::set({
         let tx = tx.clone();
         move |event| {
             _ = tx.send(Event::from(event));
         }
     });
+    asdf_overlay::initialize().context("initializing overlay")?;
 
-    rt.block_on(async move {
-        let egui_cx = Context::default();
-        let cx = CreationContext { egui_cx };
-        let app = setup_fn(&cx).await?;
+    let egui_cx = Context::default();
+    let cx = CreationContext { egui_cx };
+    let app = setup_fn(&cx).await?;
 
-        Ok(inner(cx.egui_cx, window, (tx, rx), app).await?)
-    })
+    Ok(inner(cx.egui_cx, window, (tx, rx), app).await?)
 }
 
 async fn inner(
     egui_cx: Context,
     windows: Arc<Backends>,
-    (tx, mut rx): (UnboundedSender<Event>, UnboundedReceiver<Event>),
+    (tx, mut rx): (Sender<Event>, Receiver<Event>),
     mut app: impl App,
 ) -> anyhow::Result<()> {
     egui_cx.set_request_repaint_callback({
@@ -91,7 +83,7 @@ async fn inner(
     };
 
     let start = Instant::now();
-    while let Some(event) = rx.recv().await {
+    while let Ok(event) = rx.recv_async().await {
         match event {
             Event::Overlay(event) => {
                 overlay_event(&egui_cx, &mut rx, &mut cx.surface, &mut input, event)
@@ -274,7 +266,7 @@ fn update_modifiers(modifiers: &mut Modifiers, key: egui::Key, pressed: bool) {
 
 async fn overlay_event(
     cx: &Context,
-    rx: &mut UnboundedReceiver<Event>,
+    rx: &mut Receiver<Event>,
     surface: &mut SurfaceState,
     input: &mut RawInput,
     event: asdf_overlay_event::Event,
@@ -308,8 +300,8 @@ async fn overlay_event(
     Ok(())
 }
 
-async fn next_main_surface(rx: &mut UnboundedReceiver<Event>) -> anyhow::Result<SurfaceState> {
-    while let Some(event) = rx.recv().await {
+async fn next_main_surface(rx: &mut Receiver<Event>) -> anyhow::Result<SurfaceState> {
+    while let Ok(event) = rx.recv_async().await {
         let Event::Overlay(asdf_overlay_event::Event::Surface { id, event }) = event else {
             continue;
         };

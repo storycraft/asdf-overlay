@@ -29,6 +29,7 @@ use windows::Win32::{
 
 use crate::{
     Backends,
+    event::EventSink,
     window::{ImeState, ListenInputFlags, get_client_size},
 };
 
@@ -69,7 +70,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
             let (width, height) = get_client_size(HWND(hwnd as _)).unwrap();
             Backends::get().window_state(hwnd, |state| {
                 state.set_size(width, height);
-                Backends::get().emit(Event::Window {
+                EventSink::emit(Event::Window {
                     id: hwnd,
                     event: WindowEvent::Resized { width, height },
                 });
@@ -294,7 +295,7 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
 }
 
 fn emit_ime_event(hwnd: u32, ime: Ime) {
-    Backends::get().emit(Event::Window {
+    EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Keyboard(KeyboardInput::Ime(ime))),
     });

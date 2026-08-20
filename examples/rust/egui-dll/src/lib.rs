@@ -2,7 +2,8 @@ use core::error::Error;
 
 use asdf_overlay_egui::{OverlayContext, prelude::*};
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[pollster::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     run_app(async |_| {
         Ok(MyApp {
             input_block: false,
@@ -10,6 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             age: 42,
         })
     })
+    .await
 }
 impl_dll!(main);
 

@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread};
+use std::sync::Arc;
 
 use asdf_overlay_window::Backends;
 use winit::{
@@ -15,15 +15,9 @@ fn main() -> anyhow::Result<()> {
     let el = EventLoop::new()?;
     el.listen_device_events(DeviceEvents::Always);
 
-    let backends = Arc::new(Backends::new()?);
-    thread::spawn({
-        let backends = backends.clone();
-        move || {
-            while let Some(event) = backends.recv() {
-                eprintln!("Backend event: {event:?}");
-            }
-        }
-    });
+    let backends = Arc::new(Backends::new(|event| {
+        eprintln!("Backend event: {event:?}");
+    })?);
 
     el.run_app(&mut App {
         win: None,

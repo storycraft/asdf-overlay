@@ -10,5 +10,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 asdf-overlay-egui = { workspace = true, features = ["dll"] }
+pollster = { version = "1.0.1", features = ["macro"] }
 
 tracing = "0.1.44"

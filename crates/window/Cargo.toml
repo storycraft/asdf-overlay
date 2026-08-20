@@ -21,9 +21,9 @@ dashmap = "6.1.0"
 nohash-hasher = "0.2.0"
 bytemuck = "1.22.0"
 bitflags = "2.9.1"
-flume = "0.12.0"
 utf16string = "0.2.0"
 scopeguard = "1.2.0"
+arc-swap = "1.9.2"
 
 [dependencies.windows]
 workspace = true

@@ -1,63 +1,38 @@
+mod event;
 mod global;
 pub mod message_loop;
 mod types;
 pub mod window;
 
-use core::{
-    error::Error,
-    fmt::Display,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::sync::LazyLock;
 
-use anyhow::Context;
 use asdf_overlay_window_event::Event;
-use once_cell::sync::OnceCell;
 use windows::Win32::UI::WindowsAndMessaging::HCURSOR;
 
-use crate::{global::GlobalState, message_loop::MessageLoopState, window::WindowProcState};
+use crate::{
+    event::EventSink, global::GlobalState, message_loop::MessageLoopState, window::WindowProcState,
+};
 
-static GLOBAL: OnceCell<GlobalState> = OnceCell::new();
+static GLOBAL: LazyLock<GlobalState> = LazyLock::new(GlobalState::new);
 
-pub struct Backends {
-    event_rx: flume::Receiver<Event>,
-}
+pub struct Backends {}
 
 impl Backends {
     /// Initialize new [`Backends`] instance. This should only be called once.
-    pub fn new() -> anyhow::Result<Self> {
-        let (event_tx, event_rx) = flume::unbounded();
-
-        let init_inner = || -> anyhow::Result<GlobalState> {
-            global::hook::install()?;
-            message_loop::hook::install()?;
-
-            Ok(GlobalState::new(event_tx))
-        };
-
+    pub fn new<F>(f: F) -> anyhow::Result<Self>
+    where
+        F: Fn(Event) + Send + Sync + 'static,
+    {
         static INITIALIZED: AtomicBool = AtomicBool::new(false);
         if INITIALIZED.swap(true, Ordering::SeqCst) {
             panic!("GlobalInputManager can only be initialized once");
         }
 
-        GLOBAL
-            .get_or_try_init(init_inner)
-            .context("initialization failed")?;
-        Ok(Self { event_rx })
-    }
-
-    /// Receives a [`BackendEvent`] from the backend.
-    pub fn recv(&self) -> Option<Event> {
-        self.event_rx.recv().ok()
-    }
-
-    /// Receives a [`BackendEvent`] from the backend.
-    pub async fn recv_async(&self) -> Option<Event> {
-        self.event_rx.recv_async().await.ok()
-    }
-
-    /// Tries to receive a [`BackendEvent`] from the backend.
-    pub fn try_recv(&self) -> Result<Event, TryRecvError> {
-        Ok(self.event_rx.try_recv()?)
+        EventSink::set(f);
+        global::hook::install()?;
+        message_loop::hook::install()?;
+        Ok(Self {})
     }
 
     /// Returns an iterator over the IDs of all windows.
@@ -108,9 +83,9 @@ impl Backends {
         Self::get().reset();
     }
 
-    #[inline]
+    #[inline(always)]
     fn get() -> &'static GlobalState {
-        GLOBAL.get().expect("Backends is not initialized")
+        &GLOBAL
     }
 }
 
@@ -118,31 +93,7 @@ impl Drop for Backends {
     fn drop(&mut self) {
         // Release input blocking on drop.
         Self::get().unblock_input();
+
+        EventSink::clear();
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TryRecvError {
-    Empty,
-    Disconnected,
-}
-
-impl From<flume::TryRecvError> for TryRecvError {
-    fn from(err: flume::TryRecvError) -> Self {
-        match err {
-            flume::TryRecvError::Empty => TryRecvError::Empty,
-            flume::TryRecvError::Disconnected => TryRecvError::Disconnected,
-        }
-    }
-}
-
-impl Display for TryRecvError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TryRecvError::Empty => flume::TryRecvError::Empty.fmt(f),
-            TryRecvError::Disconnected => flume::TryRecvError::Disconnected.fmt(f),
-        }
-    }
-}
-
-impl Error for TryRecvError {}
