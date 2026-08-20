@@ -78,10 +78,12 @@ async fn inner(
     init_windows(&window);
 
     let mut input = RawInput {
+        viewport_id: cx.viewport_id(),
         screen_rect: Some(egui::Rect {
             min: (0.0, 0.0).into(),
             max: (surface.width as f32, surface.height as f32).into(),
         }),
+        focused: true,
         ..RawInput::default()
     };
 
@@ -131,7 +133,7 @@ fn init_windows(window: &Backends) {
 }
 
 async fn window_event(
-    _cx: &Context,
+    cx: &Context,
     window: &Backends,
     raw_input: &mut RawInput,
     event: asdf_overlay_window_event::Event,
@@ -158,6 +160,8 @@ async fn window_event(
                 InputEvent::Cursor(input) => handle_cursor_input(inputs, input),
                 InputEvent::Keyboard(input) => handle_keyboard_input(inputs, input),
             }
+            
+            cx.request_repaint();
         }
 
         _ => {}
