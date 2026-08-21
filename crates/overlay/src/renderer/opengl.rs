@@ -173,8 +173,7 @@ enum GlInteropTexture {
 impl GlInteropTexture {
     pub fn new(device: &ID3D11Device, surface: &OverlaySurface) -> anyhow::Result<Self> {
         if gl::ImportMemoryWin32HandleEXT::is_loaded()
-            && let Ok(memory_object) =
-                MemoryObjectTexture::open(surface.shared_handle(), surface.format(), surface.size())
+            && let Ok(memory_object) = MemoryObjectTexture::open(surface)
         {
             Ok(Self::MemoryObject(memory_object))
         } else if wgl::DXOpenDeviceNV::is_loaded() {
@@ -195,15 +194,12 @@ impl GlInteropTexture {
 
 struct MemoryObjectTexture {
     memory_object: GLuint,
+    keyed_mutex: bool,
     id: GLuint,
 }
 
 impl MemoryObjectTexture {
-    fn open(
-        handle: SharedTextureHandle,
-        format: DXGI_FORMAT,
-        size: (u32, u32),
-    ) -> anyhow::Result<Self> {
+    fn open(surface: &OverlaySurface) -> anyhow::Result<Self> {
         unsafe {
             let memory_object = scopeguard::guard(
                 {
@@ -218,6 +214,7 @@ impl MemoryObjectTexture {
 
             // reset previous error before
             _ = gl::GetError();
+            let handle = surface.shared_handle();
             gl::ImportMemoryWin32HandleEXT(
                 *memory_object,
                 0,
@@ -247,12 +244,13 @@ impl MemoryObjectTexture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as _);
+            let (width, height) = surface.size();
             gl::TexStorageMem2DEXT(
                 gl::TEXTURE_2D,
                 1,
-                map_dxgi_to_gl(format).context("Unsupported DXGI format")?,
-                size.0 as _,
-                size.1 as _,
+                map_dxgi_to_gl(surface.format()).context("Unsupported DXGI format")?,
+                width as _,
+                height as _,
                 *memory_object,
                 0,
             );
@@ -262,6 +260,8 @@ impl MemoryObjectTexture {
 
             Ok(Self {
                 memory_object: ScopeGuard::into_inner(memory_object),
+                keyed_mutex: surface.mutex().is_some()
+                    && gl::AcquireKeyedMutexWin32EXT::is_loaded(),
                 id: ScopeGuard::into_inner(texture),
             })
         }
@@ -269,8 +269,20 @@ impl MemoryObjectTexture {
 
     #[inline]
     pub fn bind(&self, target: gl::types::GLenum, f: impl FnOnce()) {
-        unsafe { gl::BindTexture(target, self.id) };
-        f();
+        unsafe {
+            if !self.keyed_mutex {
+                gl::BindTexture(target, self.id);
+                f();
+                return;
+            }
+
+            gl::AcquireKeyedMutexWin32EXT(self.memory_object, 0, u32::MAX);
+            defer!({
+                _ = gl::ReleaseKeyedMutexWin32EXT(self.memory_object, 0);
+            });
+            gl::BindTexture(target, self.id);
+            f();
+        }
     }
 }
 

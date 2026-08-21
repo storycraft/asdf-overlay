@@ -16,8 +16,8 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
         Fallbacks::None,
         [
             "GL_EXT_memory_object",
+            "GL_EXT_win32_keyed_mutex",
             "GL_EXT_memory_object_win32",
-            "GL_EXT_texture_swizzle",
         ],
     )
     .write_bindings(GlobalGenerator, &mut gl)
