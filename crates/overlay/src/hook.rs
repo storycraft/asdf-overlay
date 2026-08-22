@@ -20,7 +20,6 @@ pub fn install() -> anyhow::Result<()> {
             opengl::hook(dummy_hwnd);
 
             Ok(())
-        })
-        .flatten()
+        })?
     })
 }
