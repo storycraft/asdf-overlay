@@ -69,7 +69,7 @@ impl<F: FnPtr> DetourHook<F> {
 
     /// Get the original function pointer.
     #[inline(always)]
-    pub fn original_fn(&self) -> F {
+    pub unsafe fn original_fn(&self) -> F {
         self.trampoline
     }
 }
