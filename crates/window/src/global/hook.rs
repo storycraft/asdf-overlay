@@ -40,7 +40,6 @@ pub struct Hook {
 
     pub get_clip_cursor: DetourHook<GetClipCursorFn>,
     pub get_cursor_pos: DetourHook<GetCursorPos>,
-    pub get_physical_cursor_pos: DetourHook<GetPhysicalCursorPos>,
     pub get_async_key_state: DetourHook<GetAsyncKeyStateFn>,
     pub get_key_state: DetourHook<GetKeyStateFn>,
     pub get_keyboard_state: DetourHook<GetKeyboardStateFn>,
@@ -53,7 +52,6 @@ type SetCursorPosFn = unsafe extern "system" fn(i32, i32) -> BOOL;
 
 type GetClipCursorFn = unsafe extern "system" fn(*mut RECT) -> BOOL;
 type GetCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
-type GetPhysicalCursorPos = unsafe extern "system" fn(*mut POINT) -> BOOL;
 type GetAsyncKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyStateFn = unsafe extern "system" fn(i32) -> i16;
 type GetKeyboardStateFn = unsafe extern "system" fn(*mut u8) -> BOOL;
@@ -72,12 +70,6 @@ pub fn install() -> anyhow::Result<()> {
 
         debug!("hooking GetCursorPos");
         let get_cursor_pos = DetourHook::attach(GetCursorPos as _, hooked_get_cursor_pos as _)?;
-
-        debug!("hooking GetPhysicalCursorPos");
-        let get_physical_cursor_pos = DetourHook::attach(
-            GetPhysicalCursorPos as _,
-            hooked_get_physical_cursor_pos as _,
-        )?;
 
         debug!("hooking GetAsyncKeyState");
         let get_async_key_state =
@@ -100,7 +92,6 @@ pub fn install() -> anyhow::Result<()> {
 
             get_clip_cursor,
             get_cursor_pos,
-            get_physical_cursor_pos,
             get_async_key_state,
             get_key_state,
             get_keyboard_state,
@@ -148,19 +139,6 @@ extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
     if !Backends::get().input_blocked() {
         return unsafe { HOOK.wait().get_cursor_pos.original_fn()(lppoint) };
-    }
-
-    // Return a fixed position instead of the real cursor position to prevent games from tracking mouse movement
-    unsafe {
-        lppoint.write(POINT { x: 0, y: 0 });
-    }
-    BOOL(1)
-}
-
-#[tracing::instrument(level = Level::TRACE)]
-extern "system" fn hooked_get_physical_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if !Backends::get().input_blocked() {
-        return unsafe { HOOK.wait().get_physical_cursor_pos.original_fn()(lppoint) };
     }
 
     // Return a fixed position instead of the real cursor position to prevent games from tracking mouse movement
