@@ -3,84 +3,117 @@
 //! This crate is intended to be used only as `asdf-overlay`'s internal dependency.
 //! It provides a safe abstraction over the Detours library for function hooking.
 
-#[allow(non_camel_case_types, non_snake_case, unused, clippy::all)]
-mod detours {
-    // Generated using `bindgen detours_wrapper.h --allowlist-function DetourTransaction.* --allowlist-function DetourAttach --use-core -o src/pregenerated.rs`
-    #[cfg(target_pointer_width = "32")]
-    include!("./pregenerated-x86.rs");
-    #[cfg(target_pointer_width = "64")]
-    include!("./pregenerated-x64.rs");
+#[allow(
+    non_camel_case_types,
+    non_upper_case_globals,
+    non_snake_case,
+    unused,
+    clippy::all
+)]
+mod bindings {
+    // Generated using `bindgen gum_wrapper.h --allowlist-function gum_bindings_.* --use-core -o src/bindings.rs`
+    include!("./bindings.rs");
 }
 
+use fn_ptr::{FnPtr, UntypedFnPtr};
+use scopeguard::defer;
 use tracing::{Level, debug};
 
-use core::{
-    error::Error,
-    ffi::c_long,
-    fmt::{self, Debug, Display, Formatter},
-};
+use core::{fmt::Debug, ptr};
+use std::sync::LazyLock;
 
 /// A detour function hook.
 #[derive(Debug)]
 pub struct DetourHook<F> {
-    func: F,
+    trampoline: F,
 }
 
-impl<F: Copy> DetourHook<F> {
+impl<F: FnPtr> DetourHook<F> {
     /// Attach a hook to the target function.
     ///
     /// # Safety
     /// func and detour should be valid function pointers with same signature.
     #[tracing::instrument(level = Level::TRACE)]
-    pub unsafe fn attach(mut func: F, mut detour: F) -> DetourResult<Self>
-    where
-        F: Debug,
-    {
-        unsafe {
-            wrap_detour_call(|| detours::DetourTransactionBegin())?;
-            wrap_detour_call(|| {
-                use core::ffi::c_void;
+    pub unsafe fn attach(func: F, detour: F) -> DetourResult<Self> {
+        let mut trampoline: UntypedFnPtr = ptr::null_mut();
+        let code = unsafe {
+            bindings::gum_bindings_interceptor_replace_fast(
+                INTERCEPTER.0,
+                func.as_ptr() as _,
+                detour.as_ptr() as _,
+                (&raw mut trampoline).cast(),
+            )
+        };
+        match code {
+            bindings::GumReplaceReturn_GUM_REPLACE_WRONG_SIGNATURE => {
+                return Err(HookError::BadSignature);
+            }
+            bindings::GumReplaceReturn_GUM_REPLACE_ALREADY_REPLACED => {
+                return Err(HookError::AlreadyReplaced);
+            }
+            bindings::GumReplaceReturn_GUM_REPLACE_POLICY_VIOLATION => {
+                return Err(HookError::PolicyViolation);
+            }
+            bindings::GumReplaceReturn_GUM_REPLACE_WRONG_TYPE => {
+                return Err(HookError::WrongType);
+            }
 
-                detours::DetourAttach(
-                    (&raw mut func).cast(),
-                    *(&raw mut detour).cast::<*mut c_void>(),
-                )
-            })?;
-            wrap_detour_call(|| detours::DetourTransactionCommit())?;
+            _ => {}
         }
-        debug!("hook attached");
 
-        Ok(DetourHook { func })
+        debug!("hook attached");
+        Ok(DetourHook {
+            trampoline: unsafe { F::from_ptr(trampoline as _) },
+        })
     }
 
     /// Get the original function pointer.
+    /// 
+    /// # Safety
+    /// The returned function pointer is valid only if the attach transaction is finished and the hook is still attached.
     #[inline(always)]
-    pub fn original_fn(&self) -> F {
-        self.func
+    pub unsafe fn original_fn(&self) -> F {
+        self.trampoline
     }
 }
 
-type DetourResult<T> = Result<T, DetourError>;
+pub fn with_transaction<R>(f: impl FnOnce() -> R) -> R {
+    unsafe {
+        bindings::gum_bindings_interceptor_begin_transaction(INTERCEPTER.0);
+    }
+    defer!(unsafe { bindings::gum_bindings_interceptor_end_transaction(INTERCEPTER.0) });
+
+    f()
+}
+
+type DetourResult<T> = Result<T, HookError>;
 
 /// Detour error code.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+pub enum HookError {
+    #[error("Bad interceptor signature")]
+    BadSignature,
+
+    #[error("Function already replaced")]
+    AlreadyReplaced,
+
+    #[error("Policy violation")]
+    PolicyViolation,
+
+    #[error("Wrong type")]
+    WrongType,
+}
+
+static INTERCEPTER: LazyLock<Intercepter> = LazyLock::new(|| {
+    Intercepter(unsafe {
+        bindings::gum_bindings_init();
+        bindings::gum_bindings_interceptor_obtain()
+    })
+});
+
 #[derive(Debug, Clone, Copy)]
-pub struct DetourError(c_long);
+#[repr(transparent)]
+struct Intercepter(*mut bindings::GumInterceptor);
 
-impl Display for DetourError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Detour call error: {:?}", self.0)
-    }
-}
-
-impl Error for DetourError {}
-
-/// Wrap a detour call and convert its errors to `DetourError`.
-#[inline]
-fn wrap_detour_call(f: impl FnOnce() -> c_long) -> Result<(), DetourError> {
-    let code = f();
-    if code == 0 {
-        Ok(())
-    } else {
-        Err(DetourError(code))
-    }
-}
+unsafe impl Send for Intercepter {}
+unsafe impl Sync for Intercepter {}

@@ -10,8 +10,13 @@ rust-version.workspace = true
 readme = "../../README.md"
 
 [dependencies]
+fn-ptr = { version = "0.9.3", features = ["max-arity-12"] }
+scopeguard = "1.2.0"
+thiserror = "2.0.20"
 tracing = "0.1"
 
 [build-dependencies]
-anyhow = "1.0.97"
-cc = "1.2.18"
+anyhow = "1.0.104"
+cc = "1.4.4"
+frida-build = "0.17.2"
+bindgen = "0.72.1"

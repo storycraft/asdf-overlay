@@ -44,6 +44,8 @@ impl Overlay {
         // Self is not used due to bug in napi-rs generated typing
     ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
         let emitter = create_event_emitter(this)?;
+        let emitter_ref = emitter.create_ref::<true>()?;
+
         let task = async move {
             let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
             let handle = Handle::current();
@@ -61,6 +63,7 @@ impl Overlay {
 
             Ok((ipc, event, handle))
         };
+
         let cb = move |_, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
             let emit_tsfn = create_emit_tsfn(&emitter)?;
 
@@ -71,7 +74,11 @@ impl Overlay {
             })
         };
 
-        Ok(env.spawn_future_with_callback(task, cb)?)
+        let mut promise = env.spawn_future_with_callback(task, cb)?;
+        promise.add_finalizer(emitter_ref, (), |cx| {
+            _ = cx.value.unref(&cx.env);
+        })?;
+        Ok(promise)
     }
 
     async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
