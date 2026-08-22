@@ -1,32 +1,30 @@
-use std::env;
+use frida_build::download_and_use_devkit;
 
-fn build_detours() -> anyhow::Result<()> {
+fn build_gum() -> anyhow::Result<()> {
     if std::env::var("DOCS_RS").is_ok() {
         return Ok(());
     }
 
-    cc::Build::new()
-        .define(
-            "DETOUR_DEBUG",
-            if env::var("DEBUG").unwrap() == "true" {
-                "1"
-            } else {
-                "0"
-            },
-        )
-        .file("detours/src/detours.cpp")
-        .file("detours/src/modules.cpp")
-        .file("detours/src/disasm.cpp")
-        .file("detours/src/image.cpp")
-        .file("detours/src/creatwth.cpp")
-        .file("detours/src/disasm.cpp")
-        .compile("detours");
+    let include_dir = download_and_use_devkit("gum", include_str!("FRIDA_VERSION").trim());
 
+    cc::Build::new()
+        .include(include_dir)
+        .file("gum_wrapper.c")
+        .compile("bindings");
+
+    if cfg!(target_os = "windows") {
+        for lib in [
+            "dnsapi", "iphlpapi", "psapi", "winmm", "ws2_32", "advapi32", "crypt32", "gdi32",
+            "kernel32", "ole32", "secur32", "shell32", "shlwapi", "user32", "setupapi",
+        ] {
+            println!("cargo:rustc-link-lib=dylib={lib}");
+        }
+    }
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
-    build_detours()?;
+    build_gum()?;
 
     Ok(())
 }
