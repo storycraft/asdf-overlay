@@ -16,7 +16,7 @@ GumReplaceReturn gum_bindings_interceptor_replace(
     gpointer replacement_function,
     gpointer *original_function)
 {
-    return gum_interceptor_replace(
+    return gum_interceptor_replace_fast(
         self,
         function_address,
         replacement_function,
