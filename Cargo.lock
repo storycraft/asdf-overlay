@@ -342,7 +342,6 @@ dependencies = [
  "flume",
  "napi",
  "napi-derive",
- "tokio",
  "uniffi",
 ]
 
