@@ -1,3 +1,4 @@
+use anyhow::Context;
 use asdf_overlay::{
     event_sink::OverlayEventSink,
     surface::{self, Surfaces},
@@ -57,11 +58,12 @@ impl Overlay {
         &self,
         id: SurfaceId,
         handle: Option<SharedTextureHandle>,
-    ) -> bool {
-        Surfaces::state(id.0, |state| {
+    ) -> types::Result<()> {
+        Ok(Surfaces::state(id.0, |state| {
             state.commit_overlay_texture(handle.map(Into::into))
         })
-        .is_some()
+        .context("surface is not found")
+        .flatten()?)
     }
 }
 
