@@ -6,11 +6,12 @@ void gum_bindings_init();
 
 GumInterceptor *gum_bindings_interceptor_obtain();
 
-GumReplaceReturn gum_bindings_interceptor_replace(
+GumReplaceReturn gum_bindings_interceptor_replace_fast(
     GumInterceptor *self,
     gpointer function_address,
     gpointer replacement_function,
-    gpointer *original_function);
+    gpointer *original_function,
+    const GumInterceptorOptions *options);
 
 void gum_bindings_interceptor_begin_transaction(GumInterceptor *self);
 void gum_bindings_interceptor_end_transaction(GumInterceptor *self);
