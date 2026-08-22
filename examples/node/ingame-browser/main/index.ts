@@ -24,6 +24,14 @@ async function createOverlayWindow(pid: number) {
     },
   });
 
+  overlay.event.on(
+    'window_added',
+    (id) => {
+      // always listen keyboard events
+      overlay.listenInput(id, false, true);
+    }
+  );
+
   // NOTE: Some apps decide to recreate whole surface when resizing.
   // In actual use, you have to listen for `surface_destroyed` and listen for next `surface_added` events to handle this case.
   let [windowId, [surfaceId, surfaceInfo]] = await Promise.all([
@@ -53,9 +61,6 @@ async function createOverlayWindow(pid: number) {
   const surface: OverlaySurface = { id: surfaceId, overlay, info: surfaceInfo };
 
   let electronSurface: ElectronOverlaySurface | null = null;
-
-  // always listen keyboard events
-  await overlay.listenInput(windowId, false, true);
 
   let overlayInput: ElectronOverlayInput | null = null;
   let block = false;
