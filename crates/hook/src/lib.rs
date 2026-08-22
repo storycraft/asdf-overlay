@@ -11,7 +11,7 @@
     clippy::all
 )]
 mod bindings {
-    // Generated using `bindgen gum_wrapper.h --allowlist-function gum_bindings_.* --use-core --no-layout-tests -o src/bindings.rs`
+    // Generated using `bindgen gum_wrapper.h --allowlist-function gum_bindings_.* --use-core -o src/bindings.rs`
     include!("./bindings.rs");
 }
 
@@ -42,7 +42,6 @@ impl<F: FnPtr> DetourHook<F> {
                 func.as_ptr() as _,
                 detour.as_ptr() as _,
                 (&raw mut trampoline).cast(),
-                &DEFAULT_OPTIONS,
             )
         };
         match code {
@@ -74,15 +73,6 @@ impl<F: FnPtr> DetourHook<F> {
         self.trampoline
     }
 }
-
-const DEFAULT_OPTIONS: bindings::GumInterceptorOptions = bindings::GumInterceptorOptions {
-    scratch_register: 0,
-    scenario: bindings::GumInterceptorScenario_GUM_INTERCEPTOR_SCENARIO_ONLINE,
-    relocation_policy: bindings::GumRelocationPolicy_GUM_RELOCATION_FORCED,
-    write_redirect: None,
-    write_redirect_data: ptr::null_mut(),
-    redirect_space_hint: 0,
-};
 
 pub fn with_transaction<R>(f: impl FnOnce() -> R) -> R {
     unsafe {
