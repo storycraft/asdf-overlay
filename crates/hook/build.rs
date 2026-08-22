@@ -1,6 +1,9 @@
 use frida_build::download_and_use_devkit;
 
 fn build_gum() -> anyhow::Result<()> {
+    println!("cargo:rerun-if-changed=gum_wrapper.c");
+    println!("cargo:rerun-if-changed=FRIDA_VERSION");
+
     if std::env::var("DOCS_RS").is_ok() {
         return Ok(());
     }
