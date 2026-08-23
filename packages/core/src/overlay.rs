@@ -22,13 +22,13 @@ use napi::bindgen_prelude::{
 use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
-use parking_lot::Mutex;
+use sync_wrapper::SyncWrapper;
 use tokio::runtime::Handle;
 
 #[napi(custom_finalize)]
 pub struct Overlay {
     ipc: Option<tokio::sync::Mutex<IpcClientConn>>,
-    emitter_ref: Mutex<ObjectRef>,
+    emitter_ref: SyncWrapper<ObjectRef>,
 }
 
 #[napi]
@@ -44,7 +44,7 @@ impl Overlay {
         // Self is not used due to bug in napi-rs generated typing
     ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
         let emitter = create_event_emitter(this)?;
-        let emitter_ref = emitter.create_ref::<true>()?;
+        let emitter_ref = emitter.create_ref()?;
 
         let task = async move {
             let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
@@ -64,21 +64,18 @@ impl Overlay {
             Ok((ipc, event, handle))
         };
 
-        let cb = move |_, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
+        let cb = move |env, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
+            let emitter = emitter_ref.get_value(env)?;
             let emit_tsfn = create_emit_tsfn(&emitter)?;
 
             handle.spawn(event_task(event, emit_tsfn));
             Ok(Self {
                 ipc: Some(ipc.into()),
-                emitter_ref: Mutex::new(emitter.create_ref()?),
+                emitter_ref: SyncWrapper::new(emitter_ref),
             })
         };
 
-        let mut promise = env.spawn_future_with_callback(task, cb)?;
-        promise.add_finalizer(emitter_ref, (), |cx| {
-            _ = cx.value.unref(&cx.env);
-        })?;
-        Ok(promise)
+        Ok(env.spawn_future_with_callback(task, cb)?)
     }
 
     async fn ipc(&self) -> anyhow::Result<tokio::sync::MutexGuard<'_, IpcClientConn>> {
@@ -91,8 +88,8 @@ impl Overlay {
     }
 
     #[napi(getter, ts_return_type = "OverlayEventEmitter")]
-    pub fn event<'env>(&self, env: &'env Env) -> anyhow::Result<Object<'env>> {
-        Ok(self.emitter_ref.lock().get_value(env)?)
+    pub fn event<'env>(&mut self, env: &'env Env) -> anyhow::Result<Object<'env>> {
+        Ok(self.emitter_ref.get_mut().get_value(env)?)
     }
 
     async fn request<T: Requestable>(&self, request: T) -> anyhow::Result<T::Response> {
@@ -185,7 +182,7 @@ impl ObjectFinalize for Overlay {
     }
 }
 
-fn create_event_emitter<'env>(overlay: This) -> anyhow::Result<Object<'env>> {
+fn create_event_emitter<'env>(overlay: This<'env>) -> anyhow::Result<Object<'env>> {
     // See index.js
     let event_emitter_ctor = overlay.get_named_property::<Function<(), Object>>("EventEmitter")?;
     Ok(event_emitter_ctor.new_instance(())?.coerce_to_object()?)

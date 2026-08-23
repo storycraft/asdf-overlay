@@ -451,6 +451,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "static_vcruntime",
+ "sync_wrapper",
  "tokio",
  "windows 0.62.2",
 ]
