@@ -163,12 +163,16 @@ fn peek_message<const UNICODE: bool>(
     }
 
     let msg = unsafe { &mut *msg };
+    let should_filter = should_filter(msg);
     if remove.contains(PM_REMOVE) {
         read_message::<UNICODE>(msg);
+
+        if should_filter {
+            filtered_proc::<UNICODE>(msg);
+        }
     }
 
-    if should_filter(msg) {
-        filtered_proc::<UNICODE>(msg);
+    if should_filter {
         msg.message = msg::WM_NULL;
     }
     original_read
