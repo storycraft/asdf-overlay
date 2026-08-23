@@ -68,7 +68,7 @@ impl<F: FnPtr> DetourHook<F> {
     }
 
     /// Get the original function pointer.
-    /// 
+    ///
     /// # Safety
     /// The returned function pointer is valid only if the attach transaction is finished and the hook is still attached.
     #[inline(always)]
