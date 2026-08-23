@@ -22,13 +22,13 @@ use napi::bindgen_prelude::{
 use napi::{Env, JsValue};
 use napi_derive::napi;
 use num::FromPrimitive;
-use sync_wrapper::SyncWrapper;
+use parking_lot::Mutex;
 use tokio::runtime::Handle;
 
 #[napi(custom_finalize)]
 pub struct Overlay {
     ipc: Option<tokio::sync::Mutex<IpcClientConn>>,
-    emitter_ref: SyncWrapper<ObjectRef>,
+    emitter_ref: Mutex<ObjectRef>,
 }
 
 #[napi]
@@ -65,13 +65,12 @@ impl Overlay {
         };
 
         let cb = move |env, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
-            let emitter = emitter_ref.get_value(env)?;
-            let emit_tsfn = create_emit_tsfn(&emitter)?;
-
+            let emit_tsfn = create_emit_tsfn(&emitter_ref.get_value(env)?)?;
             handle.spawn(event_task(event, emit_tsfn));
+
             Ok(Self {
                 ipc: Some(ipc.into()),
-                emitter_ref: SyncWrapper::new(emitter_ref),
+                emitter_ref: Mutex::new(emitter_ref),
             })
         };
 
@@ -88,8 +87,8 @@ impl Overlay {
     }
 
     #[napi(getter, ts_return_type = "OverlayEventEmitter")]
-    pub fn event<'env>(&mut self, env: &'env Env) -> anyhow::Result<Object<'env>> {
-        Ok(self.emitter_ref.get_mut().get_value(env)?)
+    pub fn event<'env>(&self, env: &'env Env) -> anyhow::Result<Object<'env>> {
+        Ok(self.emitter_ref.lock().get_value(env)?)
     }
 
     async fn request<T: Requestable>(&self, request: T) -> anyhow::Result<T::Response> {
