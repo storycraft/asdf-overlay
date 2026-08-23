@@ -4,8 +4,7 @@ use std::collections::vec_deque::VecDeque;
 
 use parking_lot::{Mutex, RwLock};
 use windows::Win32::{
-    Foundation::{LPARAM, WPARAM},
-    UI::WindowsAndMessaging::{HCURSOR, PostThreadMessageA, SetCursor, ShowCursor, WM_NULL},
+    Foundation::{LPARAM, WPARAM}, UI::{Input::KeyboardAndMouse::{GetActiveWindow, SetFocus}, WindowsAndMessaging::{HCURSOR, PostThreadMessageA, SetCursor, ShowCursor, WM_NULL}},
 };
 
 use crate::Backends;
@@ -40,6 +39,9 @@ impl MessageLoopState {
             let prev_cursor = SetCursor(Backends::get().blocking_cursor()).0 as usize;
 
             *blocking_state = Some(InputBlockingState { prev_cursor });
+
+            // Update focus to top window
+            _ =  SetFocus(Some(GetActiveWindow()));
         });
     }
 
