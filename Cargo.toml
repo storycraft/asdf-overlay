@@ -14,7 +14,7 @@ panic = "abort"
 panic = "abort"
 
 [workspace.package]
-version = "2.0.5"
+version = "2.0.6"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
@@ -22,17 +22,17 @@ authors = ["storycraft <me@pancake.sh>"]
 rust-version = "1.88"
 
 [workspace.dependencies]
-asdf-overlay = { version = "2.0.5", path = "./crates/overlay" }
-asdf-overlay-event = { version = "2.0.5", path = "./crates/event" }
-asdf-overlay-dll = { version = "2.0.5", path = "./crates/dll" }
-asdf-overlay-hook = { version = "2.0.5", path = "./crates/hook" }
-asdf-overlay-client = { version = "2.0.5", path = "./crates/client" }
-asdf-overlay-common = { version = "2.0.5", path = "./crates/common" }
-asdf-overlay-vulkan-layer = { version = "2.0.5", path = "./crates/vulkan-layer" }
-asdf-overlay-window = { version = "2.0.5", path = "./crates/window" }
-asdf-overlay-window-event = { version = "2.0.5", path = "./crates/window-event" }
-asdf-overlay-surface-util = { version = "2.0.5", path = "./crates/surface-util" }
-asdf-overlay-egui = { version = "2.0.5", path = "./crates/egui" }
+asdf-overlay = { version = "2.0.6", path = "./crates/overlay" }
+asdf-overlay-event = { version = "2.0.6", path = "./crates/event" }
+asdf-overlay-dll = { version = "2.0.6", path = "./crates/dll" }
+asdf-overlay-hook = { version = "2.0.6", path = "./crates/hook" }
+asdf-overlay-client = { version = "2.0.6", path = "./crates/client" }
+asdf-overlay-common = { version = "2.0.6", path = "./crates/common" }
+asdf-overlay-vulkan-layer = { version = "2.0.6", path = "./crates/vulkan-layer" }
+asdf-overlay-window = { version = "2.0.6", path = "./crates/window" }
+asdf-overlay-window-event = { version = "2.0.6", path = "./crates/window-event" }
+asdf-overlay-surface-util = { version = "2.0.6", path = "./crates/surface-util" }
+asdf-overlay-egui = { version = "2.0.6", path = "./crates/egui" }
 
 tokio = "1.53.1"
 
