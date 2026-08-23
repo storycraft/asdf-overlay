@@ -14,10 +14,12 @@ use crate::util::with_dummy_hwnd;
 #[tracing::instrument(level = Level::DEBUG)]
 /// Install various hooks.
 pub fn install() -> anyhow::Result<()> {
-    with_dummy_hwnd(|dummy_hwnd| {
-        dx::hook(dummy_hwnd);
-        opengl::hook(dummy_hwnd);
+    asdf_overlay_hook::with_transaction(|| {
+        with_dummy_hwnd(|dummy_hwnd| {
+            dx::hook(dummy_hwnd);
+            opengl::hook(dummy_hwnd);
 
-        Ok(())
-    })?
+            Ok(())
+        })?
+    })
 }

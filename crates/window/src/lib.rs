@@ -7,6 +7,7 @@ pub mod window;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::LazyLock;
 
+use anyhow::Context;
 use asdf_overlay_window_event::Event;
 use windows::Win32::UI::WindowsAndMessaging::HCURSOR;
 
@@ -30,8 +31,14 @@ impl Backends {
         }
 
         EventSink::set(f);
-        global::hook::install()?;
-        message_loop::hook::install()?;
+
+        asdf_overlay_hook::with_transaction(|| {
+            global::hook::install().context("global win32 functions")?;
+            message_loop::hook::install().context("win32 message loop functions")?;
+
+            Ok::<_, anyhow::Error>(())
+        })
+        .context("hook failed")?;
         Ok(Self {})
     }
 

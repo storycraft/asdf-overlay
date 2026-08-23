@@ -29,7 +29,7 @@ num = "0.4.3"
 
 [dependencies.napi]
 version = "3.12.0"
-features = ["napi8", "async", "error_anyhow"]
+features = ["napi8", "async", "error_anyhow", "deferred_trace"]
 
 [dependencies.windows]
 workspace = true

@@ -44,6 +44,8 @@ impl Overlay {
         // Self is not used due to bug in napi-rs generated typing
     ) -> anyhow::Result<PromiseRaw<'env, Overlay>> {
         let emitter = create_event_emitter(this)?;
+        let emitter_ref = emitter.create_ref()?;
+
         let task = async move {
             let timeout = timeout.map(|timeout| Duration::from_millis(timeout as _));
             let handle = Handle::current();
@@ -61,13 +63,14 @@ impl Overlay {
 
             Ok((ipc, event, handle))
         };
-        let cb = move |_, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
-            let emit_tsfn = create_emit_tsfn(&emitter)?;
 
+        let cb = move |env, (ipc, event, handle): (IpcClientConn, IpcClientEventStream, Handle)| {
+            let emit_tsfn = create_emit_tsfn(&emitter_ref.get_value(env)?)?;
             handle.spawn(event_task(event, emit_tsfn));
+
             Ok(Self {
                 ipc: Some(ipc.into()),
-                emitter_ref: Mutex::new(emitter.create_ref()?),
+                emitter_ref: Mutex::new(emitter_ref),
             })
         };
 
@@ -178,7 +181,7 @@ impl ObjectFinalize for Overlay {
     }
 }
 
-fn create_event_emitter<'env>(overlay: This) -> anyhow::Result<Object<'env>> {
+fn create_event_emitter<'env>(overlay: This<'env>) -> anyhow::Result<Object<'env>> {
     // See index.js
     let event_emitter_ctor = overlay.get_named_property::<Function<(), Object>>("EventEmitter")?;
     Ok(event_emitter_ctor.new_instance(())?.coerce_to_object()?)
