@@ -1,4 +1,4 @@
-use core::{mem, sync::atomic::Ordering};
+use core::{mem, num::NonZeroU8, sync::atomic::Ordering};
 use std::time::Instant;
 
 use asdf_overlay_hook::DetourHook;
@@ -19,8 +19,7 @@ use windows::{
         UI::{
             Controls::{self, HOVER_DEFAULT},
             Input::KeyboardAndMouse::{
-                MAPVK_VSC_TO_VK, MapVirtualKeyA, ReleaseCapture, SetCapture, TME_LEAVE,
-                TRACKMOUSEEVENT, TrackMouseEvent,
+                ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
@@ -342,7 +341,7 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
 fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
     match msg.message {
         msg::WM_KEYDOWN | msg::WM_SYSKEYDOWN => {
-            if let Some(key) = to_key(msg.lParam) {
+            if let Some((key, _repeat)) = to_key(msg.wParam, msg.lParam) {
                 EventSink::emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
@@ -353,7 +352,7 @@ fn emit_keyboard_event_from_message(id: u32, msg: &MSG) {
             }
         }
         msg::WM_KEYUP | msg::WM_SYSKEYUP => {
-            if let Some(key) = to_key(msg.lParam) {
+            if let Some((key, _)) = to_key(msg.wParam, msg.lParam) {
                 EventSink::emit(keyboard_input(
                     id,
                     KeyboardInput::Key {
@@ -579,10 +578,12 @@ fn keyboard_input(id: u32, input: KeyboardInput) -> Event {
 }
 
 #[inline]
-fn to_key(lparam: LPARAM) -> Option<Key> {
-    let [_, _, code, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
-    Key::new(
-        unsafe { MapVirtualKeyA(code as u32, MAPVK_VSC_TO_VK) as u8 },
-        flags & 0x01 == 0x01,
-    )
+fn to_key(wparam: WPARAM, lparam: LPARAM) -> Option<(Key, bool)> {
+    let code = NonZeroU8::new(wparam.0 as u8)?;
+    let [_, _, scan_code, flags] = bytemuck::cast::<_, [u8; 4]>(lparam.0 as u32);
+    let scan_code = NonZeroU8::new(scan_code)?;
+    let extended = flags & 0b00000001 != 0;
+    let repeat = flags & 0b01000000 != 0;
+
+    Some((Key::new(code, extended, scan_code), repeat))
 }
