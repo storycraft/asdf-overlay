@@ -117,12 +117,19 @@ pub struct Key {
     ///
     /// This is usually true for right-side modifier keys, numpad keys, and arrow keys.
     pub extended: bool,
+
+    /// A USB scan code of the key.
+    pub physical_code: NonZeroU8,
 }
 
 impl Key {
     /// Create a new [`Key`] from a virtual-key code.
-    pub fn new(code: u8, extended: bool) -> Option<Self> {
-        NonZeroU8::new(code).map(|code| Key { code, extended })
+    pub fn new(code: NonZeroU8, extended: bool, physical_code: NonZeroU8) -> Self {
+        Key {
+            code,
+            extended,
+            physical_code,
+        }
     }
 }
 
