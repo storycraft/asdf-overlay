@@ -346,8 +346,8 @@ fn create_surface_texture(
             },
             initial.map(|r| r as *const _),
             Some(&mut texture),
-        )?;
-        let texture = texture.context("cannot create texture")?;
+        ).context("cannot create buffer texture")?;
+        let texture = texture.unwrap();
         let mutex = texture.cast::<IDXGIKeyedMutex>()?;
 
         Ok((texture, mutex))
