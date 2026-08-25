@@ -258,10 +258,12 @@ impl MemoryObjectTexture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as _);
             let (width, height) = surface.size();
+            let (internal_format, swizzling) =
+                map_dxgi_to_gl(surface.format()).context("Unsupported DXGI format")?;
             gl::TexStorageMem2DEXT(
                 gl::TEXTURE_2D,
                 1,
-                map_dxgi_to_gl(surface.format()).context("Unsupported DXGI format")?,
+                internal_format,
                 width as _,
                 height as _,
                 *memory_object,
@@ -269,6 +271,10 @@ impl MemoryObjectTexture {
             );
             if gl::GetError() != gl::NO_ERROR {
                 bail!("TexStorageMem2DEXT failed");
+            }
+
+            if let Some(swizzling) = swizzling {
+                gl::TexParameterIuiv(gl::TEXTURE_2D, gl::TEXTURE_SWIZZLE_RGBA, swizzling.as_ptr());
             }
 
             Ok(Self {
@@ -389,13 +395,15 @@ impl Drop for NvInteropTexture {
 
 unsafe impl Send for NvInteropTexture {}
 
-fn map_dxgi_to_gl(format: DXGI_FORMAT) -> Option<GLuint> {
+fn map_dxgi_to_gl(format: DXGI_FORMAT) -> Option<(GLuint, Option<[GLuint; 4]>)> {
     match format {
-        DXGI_FORMAT_R8G8B8A8_UNORM => Some(gl::RGBA8),
-        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some(gl::SRGB8_ALPHA8),
-        DXGI_FORMAT_B8G8R8A8_UNORM => Some(gl::BGRA),
-        DXGI_FORMAT_R16G16B16A16_UNORM => Some(gl::RGBA16),
-        DXGI_FORMAT_R16G16B16A16_FLOAT => Some(gl::RGBA16F),
+        DXGI_FORMAT_R8G8B8A8_UNORM => Some((gl::RGBA8, None)),
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some((gl::SRGB8_ALPHA8, None)),
+        DXGI_FORMAT_B8G8R8A8_UNORM => {
+            Some((gl::RGBA8, Some([gl::BLUE, gl::GREEN, gl::RED, gl::ALPHA])))
+        }
+        DXGI_FORMAT_R16G16B16A16_UNORM => Some((gl::RGBA16, None)),
+        DXGI_FORMAT_R16G16B16A16_FLOAT => Some((gl::RGBA16F, None)),
         _ => None,
     }
 }
