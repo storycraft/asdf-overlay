@@ -183,7 +183,7 @@ fn draw_overlay(hdc: HDC) {
     let mut data = if let Some(r) = MAP.get_mut(&key) {
         r
     } else {
-        MAP.entry(key).or_insert_with(|| setup_gl_data(hdc, hwnd))
+        MAP.entry(key).or_insert_with(|| setup_gl_data(hwnd))
     };
 
     if let Err(err) = Surfaces::with(
@@ -212,7 +212,7 @@ fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
     )
 }
 
-fn setup_gl_data(hdc: HDC, hwnd: HWND) -> GlData {
+fn setup_gl_data(hwnd: HWND) -> GlData {
     proc::install(hwnd);
 
     let mut extensions = HashSet::new();
@@ -222,7 +222,7 @@ fn setup_gl_data(hdc: HDC, hwnd: HWND) -> GlData {
 
     // Load wgl extensions
     if wgl::GetExtensionsStringARB::is_loaded() {
-        load_wgl_extensions(hdc, &mut extensions);
+        load_wgl_extensions(&mut extensions);
     }
 
     GlData {
@@ -254,8 +254,8 @@ fn load_gl_extensions(set: &mut HashSet<String>) {
     }
 }
 
-fn load_wgl_extensions(hdc: HDC, set: &mut HashSet<String>) {
-    let ext = unsafe { wgl::GetExtensionsStringARB(hdc.0 as _) };
+fn load_wgl_extensions(set: &mut HashSet<String>) {
+    let ext = unsafe { wgl::GetExtensionsStringARB(wgl::GetCurrentDC()) };
     if ext.is_null() {
         return;
     }
