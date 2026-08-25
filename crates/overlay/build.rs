@@ -11,7 +11,7 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
 
     Registry::new(
         Api::Gl,
-        (3, 0),
+        (3, 3),
         Profile::Core,
         Fallbacks::None,
         [
