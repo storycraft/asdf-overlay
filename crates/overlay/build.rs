@@ -31,7 +31,11 @@ fn create_gl_bindings(out_dir: &str) -> anyhow::Result<()> {
         (1, 0),
         Profile::Core,
         Fallbacks::None,
-        ["WGL_NV_DX_interop", "WGL_NV_DX_interop2"],
+        [
+            "WGL_ARB_extensions_string",
+            "WGL_NV_DX_interop",
+            "WGL_NV_DX_interop2",
+        ],
     )
     .write_bindings(GlobalGenerator, &mut wgl)
     .context("Couldn't write wgl bindings")?;

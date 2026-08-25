@@ -216,27 +216,56 @@ fn setup_gl_data(hwnd: HWND) -> GlData {
     proc::install(hwnd);
 
     let mut extensions = HashSet::new();
-    unsafe {
-        let mut len = 0;
-        gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut len);
-        extensions.reserve(len as _);
 
-        for i in 0..len {
-            let ext = gl::GetStringi(gl::EXTENSIONS, i as _);
-            if !ext.is_null() {
-                let c_str = CStr::from_ptr(ext as _);
+    // Load gl extensions
+    load_gl_extensions(&mut extensions);
 
-                if let Ok(str) = c_str.to_str() {
-                    extensions.insert(str.to_string());
-                }
-            }
-        }
+    // Load wgl extensions
+    if wgl::GetExtensionsStringARB::is_loaded() {
+        load_wgl_extensions(&mut extensions);
     }
 
     GlData {
         hglrc: unsafe { wglGetCurrentContext() }.0 as usize,
         renderer: None,
         extensions,
+    }
+}
+
+fn load_gl_extensions(set: &mut HashSet<String>) {
+    let mut len = 0;
+
+    unsafe {
+        gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut len);
+        set.reserve(len as _);
+
+        for i in 0..len {
+            let ext = gl::GetStringi(gl::EXTENSIONS, i as _);
+            if ext.is_null() {
+                continue;
+            }
+
+            let Ok(str) = CStr::from_ptr(ext as _).to_str() else {
+                continue;
+            };
+
+            set.insert(str.to_string());
+        }
+    }
+}
+
+fn load_wgl_extensions(set: &mut HashSet<String>) {
+    let ext = unsafe { wgl::GetExtensionsStringARB(wgl::GetCurrentDC()) };
+    if ext.is_null() {
+        return;
+    }
+
+    let Ok(str) = unsafe { CStr::from_ptr(ext as _) }.to_str() else {
+        return;
+    };
+
+    for ext in str.split_whitespace() {
+        set.insert(ext.to_string());
     }
 }
 
