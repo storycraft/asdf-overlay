@@ -295,8 +295,6 @@ impl Drop for MemoryObjectTexture {
     }
 }
 
-unsafe impl Send for MemoryObjectTexture {}
-
 struct NvInteropTexture {
     device_handle: *const c_void,
     dx11_tex_handle: *const c_void,
