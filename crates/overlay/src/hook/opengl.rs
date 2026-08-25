@@ -1,8 +1,11 @@
 mod data;
 mod proc;
 
-use core::{ffi::c_void, mem};
-use std::ffi::CString;
+use core::{
+    ffi::{CStr, c_void},
+    mem,
+};
+use std::{collections::HashSet, ffi::CString};
 
 use anyhow::Context;
 use asdf_overlay_event::{SurfaceInfo, SurfaceType};
@@ -46,6 +49,7 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 
 struct GlData {
     hglrc: usize,
+    extensions: HashSet<String>,
     renderer: Option<OpenglRenderer>,
 }
 // hwnd -> GlData
@@ -124,14 +128,15 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
 fn draw_overlay(hdc: HDC) {
     #[inline]
-    fn inner(state: &SurfaceState, renderer: &mut Option<OpenglRenderer>) -> anyhow::Result<()> {
+    fn inner(state: &SurfaceState, data: &mut GlData) -> anyhow::Result<()> {
         trace!("Using OpenGL renderer");
         with_renderer_gl_data(|| {
-            let renderer = match renderer {
-                Some(renderer) => renderer,
+            let renderer = match data.renderer {
+                Some(ref mut renderer) => renderer,
                 None => {
                     info!("Initializing OpenGL renderer");
-                    renderer.insert(OpenglRenderer::new().context("renderer initialization")?)
+                    data.renderer
+                        .insert(OpenglRenderer::new().context("renderer initialization")?)
                 }
             };
 
@@ -143,7 +148,11 @@ fn draw_overlay(hdc: HDC) {
             let screen = state.size();
             if state.texture.take_update() {
                 renderer
-                    .update_texture(&state.interop.device, state.texture.get().as_ref())
+                    .update_texture(
+                        &state.interop.device,
+                        state.texture.get().as_ref(),
+                        &data.extensions,
+                    )
                     .context("renderer texture update")?;
             }
 
@@ -180,7 +189,7 @@ fn draw_overlay(hdc: HDC) {
     if let Err(err) = Surfaces::with(
         key,
         || setup_fn(unsafe { WindowFromDC(hdc) }),
-        |backend| inner(backend, &mut data.renderer),
+        |backend| inner(backend, &mut data),
     ) {
         error!("Failed to draw opengl overlay. err: {:?}", err);
     }
@@ -206,9 +215,28 @@ fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
 fn setup_gl_data(hwnd: HWND) -> GlData {
     proc::install(hwnd);
 
+    let mut extensions = HashSet::new();
+    unsafe {
+        let mut len = 0;
+        gl::GetIntegerv(gl::NUM_EXTENSIONS, &mut len);
+        extensions.reserve(len as _);
+
+        for i in 0..len {
+            let ext = gl::GetStringi(gl::EXTENSIONS, i as _);
+            if !ext.is_null() {
+                let c_str = CStr::from_ptr(ext as _);
+
+                if let Ok(str) = c_str.to_str() {
+                    extensions.insert(str.to_string());
+                }
+            }
+        }
+    }
+
     GlData {
         hglrc: unsafe { wglGetCurrentContext() }.0 as usize,
         renderer: None,
+        extensions,
     }
 }
 

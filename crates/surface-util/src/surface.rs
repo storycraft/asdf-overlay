@@ -328,25 +328,27 @@ fn create_surface_texture(
 ) -> anyhow::Result<(ID3D11Texture2D, IDXGIKeyedMutex)> {
     let mut texture = None;
     unsafe {
-        device.CreateTexture2D(
-            &D3D11_TEXTURE2D_DESC {
-                Width: width,
-                Height: height,
-                MipLevels: 1,
-                ArraySize: 1,
-                Format: format,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
+        device
+            .CreateTexture2D(
+                &D3D11_TEXTURE2D_DESC {
+                    Width: width,
+                    Height: height,
+                    MipLevels: 1,
+                    ArraySize: 1,
+                    Format: format,
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 1,
+                        Quality: 0,
+                    },
+                    Usage: D3D11_USAGE_DEFAULT,
+                    BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as _,
+                    CPUAccessFlags: 0,
+                    MiscFlags: D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0 as u32,
                 },
-                Usage: D3D11_USAGE_DEFAULT,
-                BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as _,
-                CPUAccessFlags: 0,
-                MiscFlags: D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0 as u32,
-            },
-            initial.map(|r| r as *const _),
-            Some(&mut texture),
-        ).context("cannot create buffer texture")?;
+                initial.map(|r| r as *const _),
+                Some(&mut texture),
+            )
+            .context("cannot create buffer texture")?;
         let texture = texture.unwrap();
         let mutex = texture.cast::<IDXGIKeyedMutex>()?;
 
