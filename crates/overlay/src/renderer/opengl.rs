@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use std::collections::HashSet;
 
 use crate::{
     gl::{
@@ -83,6 +84,7 @@ impl OpenglRenderer {
         &mut self,
         device: &ID3D11Device,
         surface: Option<&OverlaySurface>,
+        extensions: &HashSet<String>,
     ) -> anyhow::Result<()> {
         self.interop.take();
         let Some(surface) = surface else {
@@ -94,7 +96,7 @@ impl OpenglRenderer {
             return Ok(());
         }
 
-        self.interop = Some(GlInteropTexture::new(device, surface)?);
+        self.interop = Some(GlInteropTexture::new(device, surface, extensions)?);
         Ok(())
     }
 
@@ -171,16 +173,27 @@ enum GlInteropTexture {
 }
 
 impl GlInteropTexture {
-    pub fn new(device: &ID3D11Device, surface: &OverlaySurface) -> anyhow::Result<Self> {
-        if gl::ImportMemoryWin32HandleEXT::is_loaded()
-            && let Ok(memory_object) = MemoryObjectTexture::open(surface)
+    pub fn new(
+        device: &ID3D11Device,
+        surface: &OverlaySurface,
+        extensions: &HashSet<String>,
+    ) -> anyhow::Result<Self> {
+        if extensions.contains("GL_EXT_memory_object_win32")
+            && gl::ImportMemoryWin32HandleEXT::is_loaded()
         {
-            Ok(Self::MemoryObject(memory_object))
-        } else if wgl::DXOpenDeviceNV::is_loaded() {
-            Ok(Self::Wgl(NvInteropTexture::open(device, surface)?))
-        } else {
-            bail!("Opengl interop is not supported");
+            return Ok(Self::MemoryObject(
+                MemoryObjectTexture::open(surface, extensions)
+                    .context("external memory texture")?,
+            ));
         }
+
+        if extensions.contains("WGL_NV_DX_interop2") && wgl::DXOpenDeviceNV::is_loaded() {
+            return Ok(Self::Wgl(
+                NvInteropTexture::open(device, surface).context("NV interop texture")?,
+            ));
+        }
+
+        bail!("Opengl interop is not supported");
     }
 
     #[inline]
@@ -199,7 +212,7 @@ struct MemoryObjectTexture {
 }
 
 impl MemoryObjectTexture {
-    fn open(surface: &OverlaySurface) -> anyhow::Result<Self> {
+    fn open(surface: &OverlaySurface, extensions: &HashSet<String>) -> anyhow::Result<Self> {
         unsafe {
             let memory_object = scopeguard::guard(
                 {
@@ -261,6 +274,7 @@ impl MemoryObjectTexture {
             Ok(Self {
                 memory_object: ScopeGuard::into_inner(memory_object),
                 keyed_mutex: surface.mutex().is_some()
+                    && extensions.contains("GL_EXT_win32_keyed_mutex")
                     && gl::AcquireKeyedMutexWin32EXT::is_loaded(),
                 id: ScopeGuard::into_inner(texture),
             })
