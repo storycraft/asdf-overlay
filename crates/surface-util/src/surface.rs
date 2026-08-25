@@ -131,7 +131,7 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         rect: Option<CopyRect>,
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         if width == 0 || height == 0 {
-            bail!("Zero size surface is not allowed");
+            return Ok(Some(UpdateSharedHandle::None));
         }
 
         let mut desc = D3D11_TEXTURE2D_DESC::default();
