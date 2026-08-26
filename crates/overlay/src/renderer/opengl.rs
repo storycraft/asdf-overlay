@@ -16,9 +16,9 @@ use windows::{
     Win32::Graphics::{
         Direct3D11::ID3D11Device,
         Dxgi::Common::{
-            DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
-            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16G16B16A16_FLOAT,
-            DXGI_FORMAT_R16G16B16A16_UNORM,
+            DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+            DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+            DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_UNORM,
         },
     },
     core::Interface,
@@ -397,9 +397,8 @@ unsafe impl Send for NvInteropTexture {}
 
 fn map_dxgi_to_gl(format: DXGI_FORMAT) -> Option<(GLuint, Option<[GLuint; 4]>)> {
     match format {
-        DXGI_FORMAT_R8G8B8A8_UNORM => Some((gl::RGBA8, None)),
-        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some((gl::SRGB8_ALPHA8, None)),
-        DXGI_FORMAT_B8G8R8A8_UNORM => {
+        DXGI_FORMAT_R8G8B8A8_UNORM | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => Some((gl::RGBA8, None)),
+        DXGI_FORMAT_B8G8R8A8_UNORM | DXGI_FORMAT_B8G8R8A8_UNORM_SRGB => {
             Some((gl::RGBA8, Some([gl::BLUE, gl::GREEN, gl::RED, gl::ALPHA])))
         }
         DXGI_FORMAT_R16G16B16A16_UNORM => Some((gl::RGBA16, None)),
