@@ -50,6 +50,7 @@ static HOOK: OnceCell<Hook> = OnceCell::new();
 
 struct GlData {
     hglrc: usize,
+    hwnd: u32,
     extensions: HashSet<String>,
     renderer: Option<OpenglRenderer>,
 }
@@ -232,6 +233,7 @@ fn setup_gl_data(hdc: HDC) -> anyhow::Result<GlData> {
 
     Ok(GlData {
         hglrc: unsafe { wglGetCurrentContext() }.0 as usize,
+        hwnd: hwnd.0 as u32,
         renderer: None,
         extensions,
     })

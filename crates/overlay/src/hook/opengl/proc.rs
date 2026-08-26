@@ -35,7 +35,7 @@ pub fn install(hwnd: HWND) {
 }
 
 #[inline(always)]
-fn proc(id: u64, msg: u32, lparam: LPARAM) {
+fn proc(hwnd: u32, msg: u32, lparam: LPARAM) {
     let msg::WM_WINDOWPOSCHANGED = msg else {
         return;
     };
@@ -45,14 +45,21 @@ fn proc(id: u64, msg: u32, lparam: LPARAM) {
         return;
     }
 
-    let (width, height) = get_client_size(HWND(id as _)).unwrap();
-    Surfaces::state(id, |state| {
-        state.resize(width, height);
-        OverlayEventSink::emit(Event::Surface {
-            id,
-            event: SurfaceEvent::Resized { width, height },
+    let (width, height) = get_client_size(HWND(hwnd as _)).unwrap();
+    for data in super::MAP.iter() {
+        if data.hwnd != hwnd {
+            continue;
+        }
+
+        let key = hwnd as _;
+        Surfaces::state(key, |state| {
+            state.resize(width, height);
+            OverlayEventSink::emit(Event::Surface {
+                id: key,
+                event: SurfaceEvent::Resized { width, height },
+            });
         });
-    });
+    }
 }
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -74,6 +81,6 @@ unsafe extern "system" fn ogl_wnd_proc(
     });
     let last_wnd_proc = *MAP.get(&key).unwrap();
 
-    proc(key as _, msg, lparam);
+    proc(key, msg, lparam);
     unsafe { CallWindowProcA(last_wnd_proc, hwnd, msg, wparam, lparam) }
 }
