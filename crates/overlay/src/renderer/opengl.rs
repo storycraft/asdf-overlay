@@ -142,7 +142,6 @@ impl OpenglRenderer {
             gl::Uniform4f(self.rect_loc, rect[0], rect[1], rect[2], rect[3]);
             gl::Uniform1i(self.tex_loc, 0);
 
-            gl::ActiveTexture(gl::TEXTURE0);
             texture.bind(gl::TEXTURE_2D, || {
                 gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
             });
