@@ -13,13 +13,14 @@ use asdf_overlay_event::{SurfaceInfo, SurfaceType};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
+use scopeguard::defer;
 use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HMODULE, HWND, LUID},
         Graphics::{
             Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
-            Gdi::{HDC, WindowFromDC},
+            Gdi::{GetDC, HDC, ReleaseDC, WindowFromDC},
             OpenGL::{
                 HGLRC, wglGetCurrentContext, wglGetCurrentDC, wglGetProcAddress, wglMakeCurrent,
             },
@@ -53,7 +54,7 @@ struct GlData {
     extensions: HashSet<String>,
     renderer: Option<OpenglRenderer>,
 }
-// HDC -> GlData
+// HWND -> GlData
 static MAP: Lazy<IntDashMap<u32, GlData>> = Lazy::new(IntDashMap::default);
 
 #[tracing::instrument(level = Level::DEBUG)]
@@ -90,13 +91,14 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
 
     let current_hdc = unsafe { wglGetCurrentDC() };
     let current_hglrc = unsafe { wglGetCurrentContext() };
+
     let mut renderer_cleanup = false;
-    MAP.retain(|&hdc, gl_data| {
+    MAP.retain(|&key, gl_data| {
         if gl_data.hglrc != hglrc.0 as usize {
             return true;
         }
         info!("OpenGL renderer cleanup");
-        Surfaces::cleanup_state(hdc as _);
+        Surfaces::cleanup_state(key as _);
 
         let Some(renderer) = gl_data.renderer.take() else {
             return false;
@@ -106,7 +108,13 @@ extern "system" fn hooked_wgl_delete_context(hglrc: HGLRC) -> BOOL {
             renderer_cleanup = true;
         }
 
-        _ = unsafe { wglMakeCurrent(HDC(hdc as _), hglrc) };
+        let hwnd = HWND(key as _);
+        let hdc = unsafe { GetDC(Some(hwnd)) };
+        defer!(unsafe {
+            _ = ReleaseDC(Some(hwnd), hdc);
+        });
+
+        _ = unsafe { wglMakeCurrent(hdc, hglrc) };
         drop(renderer);
         false
     });
@@ -160,11 +168,16 @@ fn draw_overlay(hdc: HDC) {
         return;
     }
 
-    let key = hdc.0 as u32;
+    let hwnd = unsafe { WindowFromDC(hdc) };
+    if hwnd.is_invalid() {
+        return;
+    }
+
+    let key = hwnd.0 as u32;
     let mut data = match MAP.entry(key) {
         Entry::Occupied(r) => r.into_ref(),
         Entry::Vacant(entry) => {
-            let data = match setup_gl_data(hdc) {
+            let data = match setup_gl_data(hwnd) {
                 Ok(data) => data,
                 Err(err) => {
                     error!("Failed to setup opengl data. err: {:?}", err);
@@ -178,15 +191,14 @@ fn draw_overlay(hdc: HDC) {
 
     if let Err(err) = Surfaces::with(
         key as _,
-        || setup_fn(hdc),
+        || setup_fn(hwnd),
         |backend| inner(backend, &mut data),
     ) {
         error!("Failed to draw opengl overlay. err: {:?}", err);
     }
 }
 
-fn setup_fn(hdc: HDC) -> anyhow::Result<SurfaceState> {
-    let hwnd = unsafe { WindowFromDC(hdc) };
+fn setup_fn(hwnd: HWND) -> anyhow::Result<SurfaceState> {
     let size = get_client_size(hwnd).unwrap_or_default();
     let interop = DxInterop::new(get_dxgi_adapter().as_ref())?;
     let gpu_id = interop.gpu_id;
@@ -203,21 +215,15 @@ fn setup_fn(hdc: HDC) -> anyhow::Result<SurfaceState> {
     )
 }
 
-fn setup_gl_data(hdc: HDC) -> anyhow::Result<GlData> {
+fn setup_gl_data(hwnd: HWND) -> anyhow::Result<GlData> {
     if !gl::GetIntegerv::is_loaded() {
         debug!("Setting up opengl");
         setup_gl().context("Opengl setup")?;
     }
 
-    if hdc.is_invalid() {
-        bail!("invalid hdc");
-    }
-
-    let hwnd = unsafe { WindowFromDC(hdc) };
     if hwnd.is_invalid() {
         bail!("invalid hwnd");
     }
-
     proc::install(hwnd);
 
     let mut extensions = HashSet::new();
