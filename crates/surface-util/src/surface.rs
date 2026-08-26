@@ -309,13 +309,14 @@ fn copy_to_surface(
 fn with_external_texture<R>(texture: &ID3D11Texture2D, f: impl FnOnce(&ID3D11Texture2D) -> R) -> R {
     if let Ok(mutex) = texture.cast::<IDXGIKeyedMutex>() {
         unsafe {
-            mutex.AcquireSync(0, u32::MAX).unwrap();
+            _ = mutex.AcquireSync(0, u32::MAX);
         }
         defer!({
             unsafe {
                 _ = mutex.ReleaseSync(0);
             }
         });
+
         f(texture)
     } else {
         f(texture)
