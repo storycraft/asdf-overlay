@@ -95,7 +95,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     ) -> anyhow::Result<Option<UpdateSharedHandle>> {
         let device1 = self.device.cast::<ID3D11Device1>()?;
         let src_texture =
-            unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _))? };
+            unsafe { device1.OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle as _)) }
+                .context("opening NT shared texture")?;
         with_external_texture(&src_texture, |src_texture| {
             self.update_from_texture(width, height, src_texture, rect)
         })
@@ -115,7 +116,8 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         let mut src_texture = None;
         unsafe {
             self.device
-                .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut src_texture)?
+                .OpenSharedResource::<ID3D11Texture2D>(HANDLE(handle as _), &mut src_texture)
+                .context("opening KMT shared texture")?
         };
         with_external_texture(&src_texture.unwrap(), |src_texture| {
             self.update_from_texture(width, height, src_texture, rect)
@@ -311,10 +313,8 @@ fn with_external_texture<R>(texture: &ID3D11Texture2D, f: impl FnOnce(&ID3D11Tex
         unsafe {
             _ = mutex.AcquireSync(0, u32::MAX);
         }
-        defer!({
-            unsafe {
-                _ = mutex.ReleaseSync(0);
-            }
+        defer!(unsafe {
+            _ = mutex.ReleaseSync(0);
         });
 
         f(texture)
