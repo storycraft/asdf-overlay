@@ -10,7 +10,15 @@ rust-version.workspace = true
 
 [features]
 default = ["capture"]
-capture = []
+capture = [
+    "windows/Win32_Security",
+    "windows/Win32_System_WinRT_Direct3D11",
+    "windows/Win32_Graphics_DirectComposition",
+    "windows/System",
+    "windows/Graphics_DirectX_Direct3D11",
+    "windows/Graphics_Capture",
+    "windows/UI_Composition"
+]
 
 [dependencies]
 asdf-overlay-common = { workspace = true }
@@ -22,15 +30,8 @@ windows-numerics = "0.3.1"
 [dependencies.windows]
 workspace = true
 features = [
-    "System",
-    "Win32_Security",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Direct3D",
-    "Graphics_DirectX_Direct3D11",
-    "Win32_Graphics_Direct3D11",
-    "Win32_System_WinRT_Direct3D11",
-    "Win32_Graphics_DirectComposition",
-    "Graphics_Capture",
-    "UI_Composition"
+    "Win32_Graphics_Direct3D11"
 ]
