@@ -45,13 +45,13 @@ fn proc(hwnd: u32, msg: u32, lparam: LPARAM) {
         return;
     }
 
-    let (width, height) = get_client_size(HWND(hwnd as _)).unwrap();
+    let (width, height) = get_client_size(HWND(hwnd as _)).unwrap_or_default();
     for data in super::MAP.iter() {
         if data.hwnd != hwnd {
             continue;
         }
 
-        let key = hwnd as _;
+        let key = *data.key() as _;
         Surfaces::state(key, |state| {
             state.resize(width, height);
             OverlayEventSink::emit(Event::Surface {
