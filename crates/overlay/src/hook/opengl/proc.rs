@@ -12,7 +12,8 @@ use windows::Win32::{
 };
 
 use crate::{
-    event_sink::OverlayEventSink, surface::Surfaces, types::IntDashMap, util::get_client_size,
+    event_sink::OverlayEventSink, hook::opengl::util::get_client_size, surface::Surfaces,
+    types::IntDashMap,
 };
 
 // HWND -> last WNDPROC
