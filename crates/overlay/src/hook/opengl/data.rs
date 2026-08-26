@@ -23,6 +23,7 @@ pub fn with_renderer_gl_data<R>(f: impl FnOnce() -> R) -> R {
 
         // bindings, mode
         get_gl_int!(last_active_texture = gl::ACTIVE_TEXTURE);
+        gl::ActiveTexture(gl::TEXTURE0);
         get_gl_int!(last_program = gl::CURRENT_PROGRAM);
         get_gl_int!(last_texture = gl::TEXTURE_BINDING_2D);
         get_gl_int!(last_array_buffer = gl::ARRAY_BUFFER_BINDING);
