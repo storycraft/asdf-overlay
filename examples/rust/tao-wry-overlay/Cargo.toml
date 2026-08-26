@@ -7,7 +7,7 @@ authors = ["storycraft <me@pancake.sh>"]
 
 [dependencies]
 asdf-overlay-client = { workspace = true }
-asdf-overlay-surface-util = { workspace = true }
+asdf-overlay-surface-util = { workspace = true, features = ["capture"] }
 
 tokio = { workspace = true, features = ["full"] }
 
@@ -19,7 +19,4 @@ windows-numerics = "0.3.1"
 
 [dependencies.windows]
 workspace = true
-features = [
-    "System",
-    "UI_Composition"
-]
+features = ["System", "UI_Composition"]
