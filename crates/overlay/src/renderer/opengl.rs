@@ -181,8 +181,7 @@ impl GlInteropTexture {
             && gl::ImportMemoryWin32HandleEXT::is_loaded()
         {
             return Ok(Self::MemoryObject(
-                MemoryObjectTexture::open(surface, extensions)
-                    .context("external memory texture")?,
+                MemoryObjectTexture::open(surface).context("external memory texture")?,
             ));
         }
 
@@ -211,7 +210,7 @@ struct MemoryObjectTexture {
 }
 
 impl MemoryObjectTexture {
-    fn open(surface: &OverlaySurface, extensions: &HashSet<String>) -> anyhow::Result<Self> {
+    fn open(surface: &OverlaySurface) -> anyhow::Result<Self> {
         unsafe {
             let memory_object = scopeguard::guard(
                 {
@@ -278,9 +277,11 @@ impl MemoryObjectTexture {
 
             Ok(Self {
                 memory_object: ScopeGuard::into_inner(memory_object),
-                keyed_mutex: surface.mutex().is_some()
-                    && extensions.contains("GL_EXT_win32_keyed_mutex")
-                    && gl::AcquireKeyedMutexWin32EXT::is_loaded(),
+                // Disable keyed mutex until freeze issue is resolved.
+                // keyed_mutex: surface.mutex().is_some()
+                //     && extensions.contains("GL_EXT_win32_keyed_mutex")
+                //     && gl::AcquireKeyedMutexWin32EXT::is_loaded(),
+                keyed_mutex: false,
                 id: ScopeGuard::into_inner(texture),
             })
         }
