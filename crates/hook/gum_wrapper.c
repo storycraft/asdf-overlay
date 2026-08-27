@@ -17,9 +17,7 @@ GumReplaceReturn gum_bindings_interceptor_replace_fast(
     gpointer *original_function)
 {
     const GumInterceptorOptions OPTIONS = {
-        .scenario = GUM_INTERCEPTOR_SCENARIO_ONLINE,
-        .relocation_policy = GUM_RELOCATION_FORCED,
-    };
+        .scenario = GUM_INTERCEPTOR_SCENARIO_ONLINE};
 
     return gum_interceptor_replace_fast(
         self,
