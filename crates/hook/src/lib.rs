@@ -46,16 +46,16 @@ impl<F: FnPtr> DetourHook<F> {
         };
         match code {
             bindings::GumReplaceReturn_GUM_REPLACE_WRONG_SIGNATURE => {
-                return Err(HookError::BadSignature);
+                return Err(HookError(Inner::BadSignature));
             }
             bindings::GumReplaceReturn_GUM_REPLACE_ALREADY_REPLACED => {
-                return Err(HookError::AlreadyReplaced);
+                return Err(HookError(Inner::AlreadyReplaced));
             }
             bindings::GumReplaceReturn_GUM_REPLACE_POLICY_VIOLATION => {
-                return Err(HookError::PolicyViolation);
+                return Err(HookError(Inner::PolicyViolation));
             }
             bindings::GumReplaceReturn_GUM_REPLACE_WRONG_TYPE => {
-                return Err(HookError::WrongType);
+                return Err(HookError(Inner::WrongType));
             }
 
             _ => {}
@@ -88,9 +88,13 @@ pub fn with_transaction<R>(f: impl FnOnce() -> R) -> R {
 
 type DetourResult<T> = Result<T, HookError>;
 
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct HookError(Inner);
+
 /// Detour error code.
 #[derive(Debug, Clone, Copy, thiserror::Error)]
-pub enum HookError {
+enum Inner {
     #[error("Bad interceptor signature")]
     BadSignature,
 
