@@ -348,6 +348,10 @@ fn setup_gl() -> anyhow::Result<()> {
 }
 
 fn get_dxgi_adapter() -> Option<IDXGIAdapter> {
+    if !gl::GetUnsignedBytevEXT::is_loaded() {
+        return None;
+    }
+
     let mut luid = LUID::default();
     unsafe {
         _ = gl::GetError();
