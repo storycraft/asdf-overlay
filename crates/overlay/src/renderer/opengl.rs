@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use scopeguard::{ScopeGuard, defer};
-use tracing::{Level, trace};
+use tracing::{Level, trace, warn};
 use windows::{
     Win32::Graphics::{
         Direct3D11::ID3D11Device,
@@ -180,18 +180,24 @@ impl GlInteropTexture {
         if extensions.contains("GL_EXT_memory_object_win32")
             && gl::ImportMemoryWin32HandleEXT::is_loaded()
         {
-            return Ok(Self::MemoryObject(
-                MemoryObjectTexture::open(surface).context("external memory texture")?,
-            ));
+            match MemoryObjectTexture::open(surface) {
+                Ok(shtex) => return Ok(Self::MemoryObject(shtex)),
+                Err(err) => {
+                    warn!("Failed to open overlay texture using OpenGL external memory: {err:?}");
+                }
+            }
         }
 
         if extensions.contains("WGL_NV_DX_interop2") && wgl::DXOpenDeviceNV::is_loaded() {
-            return Ok(Self::Wgl(
-                NvInteropTexture::open(device, surface).context("NV interop texture")?,
-            ));
+            match NvInteropTexture::open(device, surface) {
+                Ok(shtex) => return Ok(Self::Wgl(shtex)),
+                Err(err) => {
+                    warn!("Failed to open overlay texture using OpenGL NV interop: {err:?}");
+                }
+            }
         }
 
-        bail!("Opengl interop is not supported");
+        bail!("OpenGL interop is not supported");
     }
 
     #[inline]
