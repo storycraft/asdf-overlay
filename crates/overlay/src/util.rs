@@ -5,14 +5,15 @@ use core::mem::{self, ManuallyDrop};
 use scopeguard::defer;
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LUID},
+        Foundation::{HWND, LUID},
         Graphics::Dxgi::{IDXGIAdapter, IDXGIFactory, IDXGIKeyedMutex},
         UI::WindowsAndMessaging::{
-            CreateDialogIndirectParamA, DLGITEMTEMPLATE, DLGTEMPLATE, DestroyWindow,
+            CreateWindowExA, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WS_POPUP,
         },
     },
     core::Interface,
 };
+use windows_core::s;
 
 // Cloning COM objects for ManuallyDrop<Option<T>> never decrease ref count and leak wtf
 // as per: https://github.com/microsoft/windows-rs/blob/83d4e0b4d49d004f52523614f292bc1526142052/crates/samples/windows/direct3d12/src/main.rs#L493
@@ -24,14 +25,20 @@ pub unsafe fn wrap_com_manually_drop<T: Interface>(inf: &T) -> ManuallyDrop<Opti
 ///
 /// Creating another dummy windows in closures fail.
 pub fn with_dummy_hwnd<R>(f: impl FnOnce(HWND) -> R) -> anyhow::Result<R> {
-    let template = (DLGTEMPLATE::default(), [DLGITEMTEMPLATE::default(); 3]);
     unsafe {
-        let hwnd = CreateDialogIndirectParamA(
+        let hwnd = CreateWindowExA(
+            WINDOW_EX_STYLE(0),
+            s!("STATIC"),
+            s!("asdf-overlay dummy window"),
+            WS_POPUP,
+            0,
+            0,
+            2,
+            2,
+            Some(HWND_MESSAGE),
             None,
-            (&raw const template).cast::<DLGTEMPLATE>(),
             None,
             None,
-            LPARAM(0),
         )?;
         defer!({
             _ = DestroyWindow(hwnd);
