@@ -414,20 +414,22 @@ fn get_addr(
         let dx9ex = Direct3DCreate9Ex(D3D_SDK_VERSION).context("cannot create IDirect3D9")?;
 
         let mut device = None;
-        dx9ex.CreateDeviceEx(
-            D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL,
-            HWND(ptr::null_mut()),
-            D3DCREATE_HARDWARE_VERTEXPROCESSING as _,
-            &mut D3DPRESENT_PARAMETERS {
-                Windowed: BOOL(1),
-                SwapEffect: D3DSWAPEFFECT_DISCARD,
-                hDeviceWindow: dummy_hwnd,
-                ..Default::default()
-            },
-            0 as _,
-            &mut device,
-        ).context("cannot create IDirect3DDevice9")?;
+        dx9ex
+            .CreateDeviceEx(
+                D3DADAPTER_DEFAULT,
+                D3DDEVTYPE_HAL,
+                HWND(ptr::null_mut()),
+                D3DCREATE_HARDWARE_VERTEXPROCESSING as _,
+                &mut D3DPRESENT_PARAMETERS {
+                    Windowed: BOOL(1),
+                    SwapEffect: D3DSWAPEFFECT_DISCARD,
+                    hDeviceWindow: dummy_hwnd,
+                    ..Default::default()
+                },
+                0 as _,
+                &mut device,
+            )
+            .context("cannot create IDirect3DDevice9Ex")?;
         device.unwrap()
     };
 
