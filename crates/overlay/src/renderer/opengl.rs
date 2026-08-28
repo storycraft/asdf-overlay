@@ -183,7 +183,7 @@ impl GlInteropTexture {
             match MemoryObjectTexture::open(surface) {
                 Ok(shtex) => return Ok(Self::MemoryObject(shtex)),
                 Err(err) => {
-                    warn!("Failed to import external memory texture: {err:?}");
+                    warn!("Failed to open overlay texture using OpenGL external memory: {err:?}");
                 }
             }
         }
@@ -192,12 +192,12 @@ impl GlInteropTexture {
             match NvInteropTexture::open(device, surface) {
                 Ok(shtex) => return Ok(Self::Wgl(shtex)),
                 Err(err) => {
-                    warn!("Failed to import NV interop texture: {err:?}");
+                    warn!("Failed to open overlay texture using OpenGL NV interop: {err:?}");
                 }
             }
         }
 
-        bail!("Opengl interop is not supported");
+        bail!("OpenGL interop is not supported");
     }
 
     #[inline]
