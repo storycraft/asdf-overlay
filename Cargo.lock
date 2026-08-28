@@ -313,7 +313,7 @@ checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 
 [[package]]
 name = "asdf-overlay"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-client"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-common"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay-event",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-dll"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-egui"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay",
@@ -415,14 +415,14 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-event"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "asdf-overlay-hook"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-node"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay-client",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-surface-util"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay-common",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-vulkan-layer"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "asdf-overlay",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-window"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "asdf-overlay-window-event"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "bitflags 2.13.1",
  "serde",
