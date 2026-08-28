@@ -427,9 +427,8 @@ fn get_addr(
             },
             0 as _,
             &mut device,
-        )?;
-
-        device.context("cannot create IDirect3DDevice9")?
+        ).context("cannot create IDirect3DDevice9")?;
+        device.unwrap()
     };
 
     let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
