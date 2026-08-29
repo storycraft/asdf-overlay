@@ -9,7 +9,7 @@ panic = "abort"
 panic = "abort"
 
 [workspace.package]
-version = "2.0.11"
+version = "2.0.12"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/storycraft/asdf-overlay"
@@ -17,17 +17,17 @@ authors = ["storycraft <me@pancake.sh>"]
 rust-version = "1.92"
 
 [workspace.dependencies]
-asdf-overlay = { version = "2.0.11", path = "./crates/overlay", default-features = false }
-asdf-overlay-event = { version = "2.0.11", path = "./crates/event", default-features = false }
-asdf-overlay-dll = { version = "2.0.11", path = "./crates/dll", default-features = false }
-asdf-overlay-hook = { version = "2.0.11", path = "./crates/hook", default-features = false }
-asdf-overlay-client = { version = "2.0.11", path = "./crates/client", default-features = false }
-asdf-overlay-common = { version = "2.0.11", path = "./crates/common", default-features = false }
-asdf-overlay-vulkan-layer = { version = "2.0.11", path = "./crates/vulkan-layer", default-features = false }
-asdf-overlay-window = { version = "2.0.11", path = "./crates/window", default-features = false }
-asdf-overlay-window-event = { version = "2.0.11", path = "./crates/window-event", default-features = false }
-asdf-overlay-surface-util = { version = "2.0.11", path = "./crates/surface-util", default-features = false }
-asdf-overlay-egui = { version = "2.0.11", path = "./crates/egui", default-features = false }
+asdf-overlay = { version = "2.0.12", path = "./crates/overlay", default-features = false }
+asdf-overlay-event = { version = "2.0.12", path = "./crates/event", default-features = false }
+asdf-overlay-dll = { version = "2.0.12", path = "./crates/dll", default-features = false }
+asdf-overlay-hook = { version = "2.0.12", path = "./crates/hook", default-features = false }
+asdf-overlay-client = { version = "2.0.12", path = "./crates/client", default-features = false }
+asdf-overlay-common = { version = "2.0.12", path = "./crates/common", default-features = false }
+asdf-overlay-vulkan-layer = { version = "2.0.12", path = "./crates/vulkan-layer", default-features = false }
+asdf-overlay-window = { version = "2.0.12", path = "./crates/window", default-features = false }
+asdf-overlay-window-event = { version = "2.0.12", path = "./crates/window-event", default-features = false }
+asdf-overlay-surface-util = { version = "2.0.12", path = "./crates/surface-util", default-features = false }
+asdf-overlay-egui = { version = "2.0.12", path = "./crates/egui", default-features = false }
 
 tokio = "1.53.1"
 
