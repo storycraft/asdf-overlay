@@ -20,16 +20,12 @@ pub enum InputEvent {
 pub struct CursorInput {
     /// The distinguishable identifier of the cursor input.
     pub id: u32,
+    /// If this cursor input is the primary input.
+    pub primary: bool,
     /// The type of cursor input.
     pub event: CursorEvent,
     /// Cursor position relative to the left-top corner client area of the window.
     pub pos: InputPosition,
-}
-
-impl CursorInput {
-    /// The primary cursor input identifier.
-    /// An input with this identifier should be treated as the main input.
-    pub const PRIMARY_ID: u32 = 0;
 }
 
 /// Describe a cursor event.

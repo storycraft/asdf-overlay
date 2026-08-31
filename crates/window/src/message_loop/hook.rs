@@ -429,7 +429,8 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id: CursorInput::PRIMARY_ID,
+            id: 0,
+            primary: true,
             event: CursorEvent::Action { action, state },
             pos,
         })),
@@ -459,7 +460,8 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
         EventSink::emit(Event::Window {
             id: hwnd,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                id: CursorInput::PRIMARY_ID,
+                id: 0,
+                primary: true,
                 event: CursorEvent::Enter,
                 pos,
             })),
@@ -469,7 +471,8 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id: CursorInput::PRIMARY_ID,
+            id: 0,
+            primary: true,
             event: CursorEvent::Move,
             pos,
         })),
@@ -504,7 +507,8 @@ fn cursor_leave(id: u32) {
         EventSink::emit(Event::Window {
             id,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-                id: CursorInput::PRIMARY_ID,
+                id: 0,
+                primary: true,
                 event: CursorEvent::Leave,
                 pos,
             })),
@@ -520,7 +524,8 @@ fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
-            id: CursorInput::PRIMARY_ID,
+            id: 0,
+            primary: true,
             event: CursorEvent::Scroll {
                 axis: if horizontal {
                     ScrollAxis::X
