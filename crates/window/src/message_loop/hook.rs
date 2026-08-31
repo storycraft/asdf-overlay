@@ -10,6 +10,7 @@ use asdf_overlay_window_event::{
     },
 };
 use once_cell::sync::OnceCell;
+use scopeguard::defer;
 use tracing::{Level, debug, trace};
 use windows::{
     Win32::{
@@ -22,7 +23,10 @@ use windows::{
                 KeyboardAndMouse::{
                     ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
                 },
-                Touch::{CloseTouchInputHandle, GetTouchInputInfo, HTOUCHINPUT, TOUCHINPUT},
+                Touch::{
+                    CloseTouchInputHandle, GetTouchInputInfo, HTOUCHINPUT, TOUCHEVENTF_PRIMARY,
+                    TOUCHINPUT,
+                },
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
@@ -342,18 +346,54 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
             let handle = HTOUCHINPUT(msg.lParam.0 as _);
             let count = msg.wParam.0 as u16;
 
-            let mut inputs = vec![TOUCHINPUT::default(); count as _];
-            let _ = unsafe {
-                GetTouchInputInfo(handle, &mut inputs, mem::size_of::<TOUCHINPUT>() as _)
-            };
-
-            // TODO
-
-            _ = unsafe { CloseTouchInputHandle(handle) };
+            touch(id, handle, count);
         }
 
         _ => {}
     }
+}
+
+fn touch(id: u32, handle: HTOUCHINPUT, count: u16) {
+    Backends::get().window_state(id, |state| {
+        state.with_touch_buf(count as _, |buf| {
+            let res = unsafe { GetTouchInputInfo(handle, buf, mem::size_of::<TOUCHINPUT>() as _) };
+            if res.is_err() {
+                return;
+            }
+            defer!(unsafe {
+                _ = CloseTouchInputHandle(handle);
+            });
+
+            for input in buf.iter() {
+                emit_cursor_event_from_touch(id, input);
+            }
+        });
+    });
+}
+
+fn emit_cursor_event_from_touch(id: u32, input: &TOUCHINPUT) {
+    let mut point = POINT {
+        x: input.x / 100,
+        y: input.y / 100,
+    };
+    if !unsafe { ScreenToClient(HWND(id as _), &mut point) }.as_bool() {
+        return;
+    }
+
+    let pos = InputPosition {
+        x: point.x,
+        y: point.y,
+    };
+
+    EventSink::emit(Event::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: input.dwID,
+            primary: input.dwFlags.contains(TOUCHEVENTF_PRIMARY),
+            event: CursorEvent::Move,
+            pos,
+        })),
+    });
 }
 
 #[inline]
@@ -593,6 +633,8 @@ fn is_filter_target(message: u32) -> bool {
 
             // Touch messages
             | msg::WM_TOUCH
+            | msg::WM_GESTURE
+            | msg::WM_GESTURENOTIFY
 
             // Keyboard messages
             | msg::WM_KEYDOWN
@@ -612,6 +654,8 @@ fn call_def_proc(msg: &MSG) -> bool {
         msg.message,
         // Touch messages
         msg::WM_TOUCH
+            | msg::WM_GESTURE
+            | msg::WM_GESTURENOTIFY
 
         // Client mouse messages
             | msg::WM_MOUSEMOVE
