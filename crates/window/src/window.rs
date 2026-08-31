@@ -2,7 +2,7 @@ mod click_state;
 mod proc;
 
 use core::{
-    mem,
+    mem, slice,
     sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering},
 };
 use std::time::Instant;
@@ -11,7 +11,10 @@ use parking_lot::{Mutex, RwLock};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, RECT, WPARAM},
     UI::{
-        Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
+        Input::{
+            Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
+            Touch::TOUCHINPUT,
+        },
         WindowsAndMessaging::{
             DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
             SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
@@ -36,6 +39,8 @@ pub struct WindowProcState {
 
     input_flags: AtomicU8,
     blocking_state: Mutex<Option<InputBlockData>>,
+
+    touch_buf: Mutex<Vec<TouchInputWrap>>,
 
     ime: RwLock<ImeState>,
     click_state: Mutex<ClickState>,
@@ -71,6 +76,8 @@ impl WindowProcState {
             input_flags: AtomicU8::new(0),
             blocking_state: Mutex::new(None),
 
+            touch_buf: Mutex::new(vec![]),
+
             ime: RwLock::new(ImeState::Disabled),
             click_state: Mutex::new(ClickState::new()),
         })
@@ -98,6 +105,18 @@ impl WindowProcState {
     pub(crate) fn set_size(&self, width: u32, height: u32) {
         self.size.0.store(width, Ordering::Relaxed);
         self.size.1.store(height, Ordering::Relaxed);
+    }
+
+    pub(crate) fn with_touch_buf<R>(
+        &self,
+        count: usize,
+        f: impl FnOnce(&mut [TOUCHINPUT]) -> R,
+    ) -> R {
+        let mut touch_buf = self.touch_buf.lock();
+        touch_buf.resize(count, TouchInputWrap(TOUCHINPUT::default()));
+
+        let len = touch_buf.len();
+        f(unsafe { slice::from_raw_parts_mut(touch_buf.as_mut_ptr().cast::<TOUCHINPUT>(), len) })
     }
 
     pub(crate) fn get_click_count(&self, x: i32, y: i32, button: u32, new_time: Instant) -> u32 {
@@ -159,6 +178,13 @@ impl WindowProcState {
         });
     }
 }
+
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct TouchInputWrap(TOUCHINPUT);
+
+unsafe impl Send for TouchInputWrap {}
+unsafe impl Sync for TouchInputWrap {}
 
 #[derive(Clone, Copy)]
 struct InputBlockData {

@@ -10,6 +10,7 @@ use asdf_overlay_window_event::{
     },
 };
 use once_cell::sync::OnceCell;
+use scopeguard::defer;
 use tracing::{Level, debug, trace};
 use windows::{
     Win32::{
@@ -18,8 +19,14 @@ use windows::{
         System::Threading::GetCurrentThreadId,
         UI::{
             Controls::{self, HOVER_DEFAULT},
-            Input::KeyboardAndMouse::{
-                ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+            Input::{
+                KeyboardAndMouse::{
+                    ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+                },
+                Touch::{
+                    CloseTouchInputHandle, GetTouchInputInfo, HTOUCHINPUT, TOUCHEVENTF_PRIMARY,
+                    TOUCHINPUT,
+                },
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
@@ -124,7 +131,9 @@ fn get_message<const UNICODE: bool>(
     read_message::<UNICODE>(msg);
 
     if should_filter(msg) {
-        filtered_proc::<UNICODE>(msg);
+        if call_def_proc(msg) {
+            filtered_proc::<UNICODE>(msg);
+        }
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -333,8 +342,58 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
             cursor_scroll(id, msg.wParam, msg.lParam, true);
         }
 
+        msg::WM_TOUCH => {
+            let handle = HTOUCHINPUT(msg.lParam.0 as _);
+            let count = msg.wParam.0 as u16;
+
+            touch(id, handle, count);
+        }
+
         _ => {}
     }
+}
+
+fn touch(id: u32, handle: HTOUCHINPUT, count: u16) {
+    Backends::get().window_state(id, |state| {
+        state.with_touch_buf(count as _, |buf| {
+            let res = unsafe { GetTouchInputInfo(handle, buf, mem::size_of::<TOUCHINPUT>() as _) };
+            if res.is_err() {
+                return;
+            }
+            defer!(unsafe {
+                _ = CloseTouchInputHandle(handle);
+            });
+
+            for input in buf.iter() {
+                emit_cursor_event_from_touch(id, input);
+            }
+        });
+    });
+}
+
+fn emit_cursor_event_from_touch(id: u32, input: &TOUCHINPUT) {
+    let mut point = POINT {
+        x: input.x / 100,
+        y: input.y / 100,
+    };
+    if !unsafe { ScreenToClient(HWND(id as _), &mut point) }.as_bool() {
+        return;
+    }
+
+    let pos = InputPosition {
+        x: point.x,
+        y: point.y,
+    };
+
+    EventSink::emit(Event::Window {
+        id,
+        event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: input.dwID,
+            primary: input.dwFlags.contains(TOUCHEVENTF_PRIMARY),
+            event: CursorEvent::Move,
+            pos,
+        })),
+    });
 }
 
 #[inline]
@@ -410,6 +469,8 @@ fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM)
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: 0,
+            primary: true,
             event: CursorEvent::Action { action, state },
             pos,
         })),
@@ -439,6 +500,8 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
         EventSink::emit(Event::Window {
             id: hwnd,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                id: 0,
+                primary: true,
                 event: CursorEvent::Enter,
                 pos,
             })),
@@ -448,6 +511,8 @@ fn cursor_move(hwnd: u32, lparam: LPARAM) {
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: 0,
+            primary: true,
             event: CursorEvent::Move,
             pos,
         })),
@@ -482,6 +547,8 @@ fn cursor_leave(id: u32) {
         EventSink::emit(Event::Window {
             id,
             event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+                id: 0,
+                primary: true,
                 event: CursorEvent::Leave,
                 pos,
             })),
@@ -497,6 +564,8 @@ fn cursor_scroll(hwnd: u32, wparam: WPARAM, lparam: LPARAM, horizontal: bool) {
     EventSink::emit(Event::Window {
         id: hwnd,
         event: WindowEvent::Input(InputEvent::Cursor(CursorInput {
+            id: 0,
+            primary: true,
             event: CursorEvent::Scroll {
                 axis: if horizontal {
                     ScrollAxis::X
@@ -545,6 +614,27 @@ fn is_filter_target(message: u32) -> bool {
             | msg::WM_XBUTTONDBLCLK
             | msg::WM_MOUSEWHEEL
             | msg::WM_MOUSEHWHEEL
+            | msg::WM_NCHITTEST
+            | msg::WM_NCLBUTTONDBLCLK
+            | msg::WM_NCLBUTTONDOWN
+            | msg::WM_NCLBUTTONUP
+            | msg::WM_NCMBUTTONDBLCLK
+            | msg::WM_NCMBUTTONDOWN
+            | msg::WM_NCMBUTTONUP
+            | msg::WM_NCMOUSEHOVER
+            | msg::WM_NCMOUSELEAVE
+            | msg::WM_NCMOUSEMOVE
+            | msg::WM_NCRBUTTONDBLCLK
+            | msg::WM_NCRBUTTONDOWN
+            | msg::WM_NCRBUTTONUP
+            | msg::WM_NCXBUTTONDBLCLK
+            | msg::WM_NCXBUTTONDOWN
+            | msg::WM_NCXBUTTONUP
+
+            // Touch messages
+            | msg::WM_TOUCH
+            | msg::WM_GESTURE
+            | msg::WM_GESTURENOTIFY
 
             // Keyboard messages
             | msg::WM_KEYDOWN
@@ -556,6 +646,34 @@ fn is_filter_target(message: u32) -> bool {
 
             // Raw input messages
             | msg::WM_INPUT
+    )
+}
+
+fn call_def_proc(msg: &MSG) -> bool {
+    !matches!(
+        msg.message,
+        // Touch messages
+        msg::WM_TOUCH
+            | msg::WM_GESTURE
+            | msg::WM_GESTURENOTIFY
+
+        // Client mouse messages
+            | msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | Controls::WM_MOUSELEAVE
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
     )
 }
 
