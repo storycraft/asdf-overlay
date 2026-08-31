@@ -347,7 +347,7 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
                 GetTouchInputInfo(handle, &mut inputs, mem::size_of::<TOUCHINPUT>() as _)
             };
 
-            dbg!(&inputs);
+            // TODO
 
             _ = unsafe { CloseTouchInputHandle(handle) };
         }
