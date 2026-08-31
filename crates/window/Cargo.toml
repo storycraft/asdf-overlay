@@ -37,6 +37,7 @@ features = [
     "Win32_UI_Controls",
     "Win32_Security",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Touch",
     "Win32_UI_Input_Ime",
     "Win32_Globalization",
 ]

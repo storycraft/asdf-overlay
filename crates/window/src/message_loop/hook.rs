@@ -18,8 +18,11 @@ use windows::{
         System::Threading::GetCurrentThreadId,
         UI::{
             Controls::{self, HOVER_DEFAULT},
-            Input::KeyboardAndMouse::{
-                ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+            Input::{
+                KeyboardAndMouse::{
+                    ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+                },
+                Touch::{CloseTouchInputHandle, GetTouchInputInfo, HTOUCHINPUT, TOUCHINPUT},
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
@@ -124,7 +127,9 @@ fn get_message<const UNICODE: bool>(
     read_message::<UNICODE>(msg);
 
     if should_filter(msg) {
-        filtered_proc::<UNICODE>(msg);
+        if call_def_proc(msg) {
+            filtered_proc::<UNICODE>(msg);
+        }
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -331,6 +336,20 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
         }
         msg::WM_MOUSEHWHEEL => {
             cursor_scroll(id, msg.wParam, msg.lParam, true);
+        }
+
+        msg::WM_TOUCH => {
+            let handle = HTOUCHINPUT(msg.lParam.0 as _);
+            let count = msg.wParam.0 as u16;
+
+            let mut inputs = vec![TOUCHINPUT::default(); count as _];
+            let _ = unsafe {
+                GetTouchInputInfo(handle, &mut inputs, mem::size_of::<TOUCHINPUT>() as _)
+            };
+
+            dbg!(&inputs);
+
+            _ = unsafe { CloseTouchInputHandle(handle) };
         }
 
         _ => {}
@@ -545,6 +564,25 @@ fn is_filter_target(message: u32) -> bool {
             | msg::WM_XBUTTONDBLCLK
             | msg::WM_MOUSEWHEEL
             | msg::WM_MOUSEHWHEEL
+            | msg::WM_NCHITTEST
+            | msg::WM_NCLBUTTONDBLCLK
+            | msg::WM_NCLBUTTONDOWN
+            | msg::WM_NCLBUTTONUP
+            | msg::WM_NCMBUTTONDBLCLK
+            | msg::WM_NCMBUTTONDOWN
+            | msg::WM_NCMBUTTONUP
+            | msg::WM_NCMOUSEHOVER
+            | msg::WM_NCMOUSELEAVE
+            | msg::WM_NCMOUSEMOVE
+            | msg::WM_NCRBUTTONDBLCLK
+            | msg::WM_NCRBUTTONDOWN
+            | msg::WM_NCRBUTTONUP
+            | msg::WM_NCXBUTTONDBLCLK
+            | msg::WM_NCXBUTTONDOWN
+            | msg::WM_NCXBUTTONUP
+
+            // Touch messages
+            | msg::WM_TOUCH
 
             // Keyboard messages
             | msg::WM_KEYDOWN
@@ -556,6 +594,32 @@ fn is_filter_target(message: u32) -> bool {
 
             // Raw input messages
             | msg::WM_INPUT
+    )
+}
+
+fn call_def_proc(msg: &MSG) -> bool {
+    !matches!(
+        msg.message,
+        // Touch messages
+        msg::WM_TOUCH
+
+        // Client mouse messages
+            | msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | Controls::WM_MOUSELEAVE
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
     )
 }
 
