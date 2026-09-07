@@ -12,10 +12,10 @@ use windows::{
         Foundation::{HWND, LUID, RECT},
         Graphics::{
             Direct3D9::{
-                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DBACKBUFFER_TYPE_MONO,
-                D3DCREATE_HARDWARE_VERTEXPROCESSING, D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL,
-                D3DDISPLAYMODEEX, D3DPRESENT_PARAMETERS, D3DSURFACE_DESC, D3DSWAPEFFECT_DISCARD,
-                Direct3DCreate9Ex, IDirect3D9Ex, IDirect3DDevice9, IDirect3DSwapChain9,
+                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
+                D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX,
+                D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3D9Ex,
+                IDirect3DDevice9, IDirect3DSwapChain9,
             },
             Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
             Gdi::RGNDATA,
@@ -202,19 +202,17 @@ fn post_reset(device: &IDirect3DDevice9) {
 
     Surfaces::state(id, |state| {
         let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        let back_buffer =
-            unsafe { default_swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO) }.unwrap();
-        let mut desc = D3DSURFACE_DESC::default();
-        unsafe { back_buffer.GetDesc(&mut desc) }.unwrap();
 
+        let mut present_params = D3DPRESENT_PARAMETERS::default();
+        _ = unsafe { default_swapchain.GetPresentParameters(&mut present_params) };
+
+        let width = present_params.BackBufferWidth;
+        let height = present_params.BackBufferHeight;
         state.texture.invalidate();
-        state.resize(desc.Width, desc.Height);
+        state.resize(width, height);
         OverlayEventSink::emit(Event::Surface {
             id: device.as_raw() as _,
-            event: SurfaceEvent::Resized {
-                width: desc.Width,
-                height: desc.Height,
-            },
+            event: SurfaceEvent::Resized { width, height },
         });
     });
 }
@@ -243,14 +241,6 @@ fn setup_fn(
     device: &IDirect3DDevice9,
     swapchain: &IDirect3DSwapChain9,
 ) -> anyhow::Result<SurfaceState> {
-    let back_buffer = unsafe { swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO) }
-        .context("failed to get back buffer")?;
-
-    let mut desc = D3DSURFACE_DESC::default();
-    unsafe {
-        back_buffer.GetDesc(&mut desc)?;
-    }
-
     let mut present_params = D3DPRESENT_PARAMETERS::default();
     unsafe { swapchain.GetPresentParameters(&mut present_params) }?;
 
@@ -266,7 +256,10 @@ fn setup_fn(
     let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
-        (desc.Width, desc.Height),
+        (
+            present_params.BackBufferWidth,
+            present_params.BackBufferHeight,
+        ),
         SurfaceInfo {
             api: SurfaceType::Direct3D9 { window_id },
             gpu_id,
