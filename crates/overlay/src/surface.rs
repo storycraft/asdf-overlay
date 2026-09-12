@@ -34,7 +34,7 @@ impl Surfaces {
         SURFACES.map.iter().map(|r| *r.key())
     }
 
-    /// Access a surface state, or return `None` if the ID is no longer tracked.
+    /// Access a surface state, or return [`None`] if the ID is not associated to any surfaces.
     pub fn state<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
         SURFACES.map.get(&id).map(|r| f(&r))
     }
@@ -158,7 +158,7 @@ impl SurfaceState {
         self.position.1.store(y, Ordering::Relaxed);
     }
 
-    /// Replace the overlay texture, or remove it with `None`.
+    /// Replace the overlay texture, or remove it with [`None`].
     ///
     /// The texture must use this surface's GPU adapter. On success, ownership of an NT
     /// handle transfers to the texture; on failure, the caller retains it and the old

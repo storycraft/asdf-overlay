@@ -226,7 +226,7 @@ pub struct IpcClientEventStream {
 }
 
 impl IpcClientEventStream {
-    /// Wait for the next event, or return `None` when the closed stream is drained.
+    /// Wait for the next event, or return [`None`] when the closed stream is drained.
     ///
     /// Cancelling this wait does not consume an event.
     #[inline]

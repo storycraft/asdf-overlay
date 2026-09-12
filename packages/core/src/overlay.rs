@@ -153,7 +153,7 @@ impl Overlay {
         Ok(())
     }
 
-    /// Set the cursor used during input blocking, or hide it with `None`.
+    /// Set the cursor used during input blocking, or hide it with [`None`].
     #[napi]
     pub async fn set_blocking_cursor(&self, cursor: Option<Cursor>) -> anyhow::Result<()> {
         let cursor = cursor

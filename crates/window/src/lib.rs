@@ -70,8 +70,7 @@ impl Backends {
         Self::get().windows.iter().map(|r| *r.key())
     }
 
-    /// Access a tracked window, returning `None` if its ID has not been observed or
-    /// is no longer tracked.
+    /// Access a tracked window, returning [`None`] if its ID is not associated to any windows.
     pub fn window<R>(&self, id: u32, f: impl FnOnce(&WindowProcState) -> R) -> Option<R> {
         Self::get().windows.view(&id, |_, state| f(state))
     }
@@ -81,7 +80,7 @@ impl Backends {
         Self::get().message_loops.iter().map(|r| *r.key())
     }
 
-    /// Access a tracked message loop by Windows thread ID, or return `None` if unknown.
+    /// Access a tracked message loop by ID, or return [`None`] if unknown.
     pub fn message_loop<R>(&self, id: u32, f: impl FnOnce(&MessageLoopState) -> R) -> Option<R> {
         Self::get().message_loops.view(&id, |_, state| f(state))
     }

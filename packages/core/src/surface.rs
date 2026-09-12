@@ -13,8 +13,8 @@ use crate::event::surface::GpuLuid;
 
 /// A shared overlay texture backed by [`surface::OverlaySurface`].
 ///
-/// Update methods return `None` when the consumer can reuse its handle. Forward
-/// `Some` updates to the consumer to replace or remove the texture.
+/// Update methods return [`None`] when the consumer can reuse its handle. Forward
+/// [`Some`] updates to the consumer to replace or remove the texture.
 ///
 /// Shared resources must use the consumer's GPU. Handle buffers contain one
 /// native-endian, pointer-sized integer whose low 32 bits identify the handle.

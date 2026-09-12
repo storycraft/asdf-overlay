@@ -29,7 +29,7 @@ use crate::ty::CopyRect;
 /// `BUFFERS` controls how many textures are retained across size or format changes
 /// and must be greater than zero. Updates reuse the current texture when possible.
 ///
-/// Forward `Some(handle)` updates to the consumer; `None` means its current handle
+/// Forward `Some(handle)` updates to the consumer; [`None`] means its current handle
 /// remains usable. `Some(UpdateSharedHandle::None)` requests removal without freeing
 /// cached textures. Use [`Self::clear`] to release them.
 ///
