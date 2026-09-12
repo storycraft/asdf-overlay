@@ -10,7 +10,6 @@ use asdf_overlay_window_event::{
     },
 };
 use once_cell::sync::OnceCell;
-use scopeguard::defer;
 use tracing::{Level, debug, trace};
 use windows::{
     Win32::{
@@ -23,10 +22,7 @@ use windows::{
                 KeyboardAndMouse::{
                     ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
                 },
-                Touch::{
-                    CloseTouchInputHandle, GetTouchInputInfo, HTOUCHINPUT, TOUCHEVENTF_PRIMARY,
-                    TOUCHINPUT,
-                },
+                Touch::{GetTouchInputInfo, HTOUCHINPUT, TOUCHEVENTF_PRIMARY, TOUCHINPUT},
             },
             WindowsAndMessaging::{
                 self as msg, CallWindowProcA, CallWindowProcW, MSG, PEEK_MESSAGE_REMOVE_TYPE,
@@ -360,9 +356,6 @@ fn touch(id: u32, handle: HTOUCHINPUT, count: u16) {
             if res.is_err() {
                 return;
             }
-            defer!(unsafe {
-                _ = CloseTouchInputHandle(handle);
-            });
 
             for input in buf.iter() {
                 emit_cursor_event_from_touch(id, input);
@@ -652,13 +645,8 @@ fn is_filter_target(message: u32) -> bool {
 fn call_def_proc(msg: &MSG) -> bool {
     !matches!(
         msg.message,
-        // Touch messages
-        msg::WM_TOUCH
-            | msg::WM_GESTURE
-            | msg::WM_GESTURENOTIFY
-
         // Client mouse messages
-            | msg::WM_MOUSEMOVE
+        msg::WM_MOUSEMOVE
             | msg::WM_LBUTTONDOWN
             | msg::WM_LBUTTONUP
             | msg::WM_LBUTTONDBLCLK
