@@ -30,7 +30,14 @@ use windows::{
 
 use crate::surface::OverlaySurface;
 
-/// A capture pool that captures frames from a [`GraphicsCaptureItem`] and generates [`UpdateSharedHandle`].
+/// Captures an item into a shared overlay texture.
+///
+/// Call [`Self::start`] to begin capture. The callback runs on a capture worker when
+/// the shared handle changes; subsequent frames update the same texture. Callback
+/// errors are returned to the event handler; texture-update failures panic there.
+///
+/// The pool retains the initial capture size, so resizing the item may crop frames.
+/// Shared textures must use the consumer's GPU adapter.
 pub struct D3DCapturePool {
     pool: Direct3D11CaptureFramePool,
     item: GraphicsCaptureItem,
@@ -38,12 +45,7 @@ pub struct D3DCapturePool {
 }
 
 impl D3DCapturePool {
-    /// Create an unstarted capture pool using a new BGRA-capable D3D11 device.
-    ///
-    /// Uses the supplied adapter or the default hardware adapter. Choose the
-    /// consumer's GPU for shared textures. Device/pool creation and event-handler
-    /// registration failures are returned. See [`Self::new_with_device`] for
-    /// callback and resizing caveats; call [`Self::start`] to begin capture.
+    /// Create a stopped capture pool on the supplied adapter or the default hardware GPU.
     pub fn new<F>(
         adapter: Option<&IDXGIAdapter>,
         item: GraphicsCaptureItem,
@@ -77,19 +79,9 @@ impl D3DCapturePool {
         Self::new_with_device(device, cx, item, on_capture)
     }
 
-    /// Create an unstarted, free-threaded capture pool with two frame buffers.
+    /// Create a stopped capture pool using a BGRA-capable device and its immediate context.
     ///
-    /// Supply a BGRA-capable device and its matching immediate context, and
-    /// synchronize external context access. The capture item must remain usable.
-    /// WinRT conversion, item-size, pool, and registration errors are returned.
-    ///
-    /// The callback runs on the capture worker only when a shared-handle update
-    /// is needed, not for every frame. Subsequent frames update the same texture.
-    /// Callback errors go to the frame event handler, not to `start`. Internal
-    /// texture-update errors currently panic in that handler.
-    ///
-    /// The pool uses the item's initial size and is not recreated on resize.
-    /// Capturing a resized item therefore does not guarantee a full-size image.
+    /// Synchronize external use of the context with capture.
     pub fn new_with_device<F>(
         device: ID3D11Device,
         cx: ID3D11DeviceContext,
@@ -148,10 +140,7 @@ impl D3DCapturePool {
             .unwrap())
     }
 
-    /// Create and start a capture session, returning any Windows error.
-    ///
-    /// Call once per stopped session. Repeated calls create another session and
-    /// replace the stored one without explicitly closing the previous session.
+    /// Start capture. Call only while stopped.
     pub fn start(&mut self) -> windows::core::Result<()> {
         let session = self.pool.CreateCaptureSession(&self.item)?;
         session.StartCapture()?;
@@ -160,11 +149,9 @@ impl D3DCapturePool {
         Ok(())
     }
 
-    /// Close the stored session; succeed without action if already stopped.
+    /// Stop capture, doing nothing if already stopped.
     ///
-    /// The session is removed before closing, so a close error cannot be retried
-    /// through this method. Cached textures and the pool remain alive, and no
-    /// removal update is sent to the consumer.
+    /// The consumer retains its last texture until sent a removal update.
     pub fn stop(&mut self) -> windows::core::Result<()> {
         if let Some(session) = self.session.take() {
             session.Close()?;

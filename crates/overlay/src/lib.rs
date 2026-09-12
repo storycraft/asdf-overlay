@@ -42,17 +42,13 @@ mod util;
 
 use anyhow::Context;
 
-/// Install graphics hooks used to discover and render overlay surfaces.
+/// Install graphics hooks for overlay rendering.
 ///
-/// Call outside `DllMain` and the Windows loader lock: setup creates a temporary
-/// window and graphics resources and may block. Install an
+/// Call outside `DllMain` and the Windows loader lock. Set an
 /// [`event_sink::OverlayEventSink`] to enable surface detection and rendering.
-/// This does not initialize the separate window/input backend.
 ///
-/// Returns an error if temporary-window setup fails. Individual graphics-hook
-/// failures may instead be logged, so success does not guarantee every graphics
-/// API is supported. Hooks are process-wide and are not undone on return or error;
-/// this is not a restart or teardown API.
+/// Individual graphics APIs may remain unavailable even on success. Installed
+/// hooks remain active if initialization fails.
 pub fn initialize() -> anyhow::Result<()> {
     hook::install().context("hook initialization failed")?;
     Ok(())

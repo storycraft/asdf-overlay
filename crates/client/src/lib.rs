@@ -1,7 +1,4 @@
-//! Library for attaching `asdf-overlay` to a process and initiating IPC channel.
-//!
-//! By utilizing this library, you can render overlay from any process and control it via IPC.
-//! It's designed to give you maximum flexibility as you can keep most of the logic in this process.
+//! Attach overlays to another process and control them through IPC.
 //!
 //! # Example
 //! ```no_run
@@ -43,7 +40,10 @@ use tokio::{net::windows::named_pipe::ClientOptions, select, time::sleep};
 
 use crate::client::{IpcClientConn, IpcClientEventStream};
 
-/// Paths to overlay DLLs for different architectures.
+/// Overlay DLL paths by target architecture.
+///
+/// Provide an absolute path accessible to the target process for each architecture
+/// you intend to inject into.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OverlayDll<'a> {
     /// Path to DLL to be used for x64 applications.
@@ -56,29 +56,15 @@ pub struct OverlayDll<'a> {
     pub arm64: Option<&'a Path>,
 }
 
-/// Load the matching overlay DLL into `pid` and open its IPC connection.
+/// Load the matching overlay DLL into `pid` and connect to it.
 ///
-/// Returns a request connection and a separate event stream. Keep the connection
-/// alive while receiving events; dropping it stops the background reader.
+/// Injection blocks the calling thread. The timeout applies separately to injection
+/// and connection setup; it is not an overall deadline. Use durations below
+/// `u32::MAX` milliseconds; `None` waits indefinitely.
 ///
-/// Supply a DLL matching the target architecture. Use an absolute path accessible
-/// to the target: relative paths are resolved by the target's loader, and a file
-/// that exists locally may still fail to load there. Injection from x86 into x64
-/// is unsupported, as are other architecture pairs rejected by the injector.
-///
-/// # Caveats
-/// Injection runs synchronously before the first await and can block the executor
-/// thread. The timeout is applied separately to the remote-thread wait and client
-/// construction, not as an overall deadline. The native wait truncates to whole
-/// milliseconds and casts to `u32`; avoid durations at or above `u32::MAX`
-/// milliseconds, which wrap or become an infinite wait. `None` can wait indefinitely.
-/// Opening the pipe is attempted once, without retry or a protocol handshake.
-/// Failure or cancellation does not unload an already injected DLL.
-///
-/// # Errors
-/// Returns errors for missing architecture paths, unsupported architecture pairs,
-/// process access, DLL loading, native wait timeout, or opening the named pipe.
-/// Successful construction does not establish that the server can handle requests.
+/// Returns an error if the architecture pair is unsupported, the matching DLL path
+/// is missing, or injection or connection fails. Connecting is attempted once.
+/// Failure or cancellation does not unload an injected DLL.
 pub async fn inject(
     pid: u32,
     dll: OverlayDll<'_>,

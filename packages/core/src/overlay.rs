@@ -25,6 +25,11 @@ use num::FromPrimitive;
 use parking_lot::Mutex;
 use tokio::runtime::Handle;
 
+/// An IPC connection to an injected overlay, with a JavaScript event emitter.
+///
+/// Request methods fail after detachment or on transport or server errors.
+/// Acknowledgment does not wait for rendering or cursor and IME changes.
+/// Use IDs from events, represented as nonnegative BigInts that fit in a u64.
 #[napi(custom_finalize)]
 pub struct Overlay {
     ipc: Option<tokio::sync::Mutex<IpcClientConn>>,
@@ -33,16 +38,13 @@ pub struct Overlay {
 
 #[napi]
 impl Overlay {
-    /// Inject the architecture-specific DLL and resolve a promise with its IPC overlay.
+    /// Inject the overlay DLL and connect to it.
     ///
-    /// The directory must contain the matching `asdf_overlay-x64.dll`,
-    /// `asdf_overlay-x86.dll`, or `asdf_overlay-aarch64.dll`. Prefer an absolute
-    /// directory accessible to the target. The optional timeout is in milliseconds;
-    /// native wait value `u32::MAX` means infinite. See [`inject`] for blocking,
-    /// timeout, architecture, and partial-failure caveats.
+    /// The directory must contain the target architecture's `asdf_overlay-x64.dll`,
+    /// `asdf_overlay-x86.dll`, or `asdf_overlay-aarch64.dll`. The timeout is in
+    /// milliseconds; `u32::MAX` waits indefinitely. See [`inject`] for injection semantics.
     ///
-    /// JavaScript emitter setup can fail immediately; injection/connection failures
-    /// reject the returned promise.
+    /// Emitter setup errors are immediate; injection and connection errors reject the promise.
     #[napi]
     pub fn attach<'env>(
         env: &'env Env,
@@ -95,10 +97,7 @@ impl Overlay {
             .await)
     }
 
-    /// Return the existing JavaScript event emitter, including after detachment.
-    ///
-    /// This does not reconnect or replay past events. Errors accessing the stored
-    /// JavaScript reference are returned.
+    /// Return the event emitter, which remains accessible after detachment.
     #[napi(getter, ts_return_type = "OverlayEventEmitter")]
     pub fn event<'env>(&self, env: &'env Env) -> anyhow::Result<Object<'env>> {
         Ok(self.emitter_ref.lock().get_value(env)?)
@@ -128,15 +127,10 @@ impl Overlay {
             .await
     }
 
-    /// Send a shared-texture replacement or removal request for a surface ID.
+    /// Replace or remove a surface's overlay texture.
     ///
-    /// Use a nonnegative ID representable in `u64` from a surface event. Sign and
-    /// lossless-conversion flags are ignored when extracting the BigInt, so invalid
-    /// values can address an unintended surface. NT handles must already be valid
-    /// in the target process; IPC does not duplicate them.
-    ///
-    /// Returns detached/transport/server errors, including unknown surface IDs.
-    /// Success acknowledges the update without waiting for presentation.
+    /// NT handles must already be valid in the target process. Unknown surfaces return
+    /// an error.
     #[napi]
     pub async fn update_handle(
         &self,
@@ -149,11 +143,9 @@ impl Overlay {
         Ok(())
     }
 
-    /// Set a surface's overlay offset in physical pixels without moving the host window.
+    /// Set the overlay offset in physical pixels, without clamping or moving the host window.
     ///
-    /// Negative and off-surface offsets are accepted. The BigInt ID has the same
-    /// conversion restrictions as [`Self::update_handle`]. Detached connections,
-    /// transport failures, and unknown surfaces return errors.
+    /// Unknown surfaces return an error.
     #[napi]
     pub async fn set_position(&self, id: BigInt, x: i32, y: i32) -> anyhow::Result<()> {
         self.surface_request(id, SetPosition { x, y }).await?;
@@ -161,10 +153,7 @@ impl Overlay {
         Ok(())
     }
 
-    /// Set the cursor used during process-wide blocking, or hide it with `None`.
-    ///
-    /// Invalid cursor values and request failures return errors. Success stores
-    /// the choice but does not wait for a cursor update on the target's threads.
+    /// Set the cursor used during input blocking, or hide it with `None`.
     #[napi]
     pub async fn set_blocking_cursor(&self, cursor: Option<Cursor>) -> anyhow::Result<()> {
         let cursor = cursor
@@ -177,11 +166,9 @@ impl Overlay {
         Ok(())
     }
 
-    /// Replace a window's cursor/keyboard listening flags without enabling blocking.
+    /// Set which input events a window reports without blocking input.
     ///
-    /// Use a window ID, not a surface ID. An unknown window currently succeeds
-    /// without effect. Global blocking captures input regardless of these flags.
-    /// Detached connections and request failures return errors.
+    /// Unknown windows are ignored. Global blocking captures input regardless of these flags.
     #[napi]
     pub async fn listen_input(&self, id: u32, cursor: bool, keyboard: bool) -> anyhow::Result<()> {
         self.window_request(id, ListenInput { cursor, keyboard })
@@ -190,10 +177,7 @@ impl Overlay {
         Ok(())
     }
 
-    /// Enable or disable input blocking across the target process's intercepted windows.
-    ///
-    /// Repeating the current state does nothing. Success does not wait for queued
-    /// cursor/IME changes. Detached connections and request failures return errors.
+    /// Set input blocking across the target process's intercepted windows.
     #[napi]
     pub async fn block_input(&self, block: bool) -> anyhow::Result<()> {
         self.request(BlockInput { block }).await?;
@@ -201,11 +185,9 @@ impl Overlay {
         Ok(())
     }
 
-    /// Drop the IPC connection and stop its background reader.
+    /// Disconnect from the overlay without unloading its DLL.
     ///
-    /// This does not unload the injected DLL or synchronously wait for server
-    /// cleanup. The event emitter remains accessible. Returns an error if already
-    /// detached; subsequent request methods also fail.
+    /// Returns an error if already detached. Server cleanup may finish after this returns.
     #[napi]
     pub fn detach(&mut self) -> anyhow::Result<()> {
         self.ipc.take().context("overlay is already detached")?;

@@ -40,12 +40,10 @@ struct VkNegotiateLayerInterface {
     pfn_get_physical_device_proc_addr: Option<PFN_vkGetInstanceProcAddr>,
 }
 
-/// Fill the instance/device lookup callbacks for the Vulkan loader.
+/// Provide instance and device lookup callbacks to the Vulkan loader.
 ///
-/// The caller must provide a non-null, aligned, writable negotiation structure
-/// with the expected loader ABI. This entry point leaves the requested version
-/// and physical-device callback unchanged and returns `SUCCESS`; it does not
-/// check version compatibility or initialize an overlay event sink.
+/// The caller must supply a non-null, aligned, writable negotiation structure with
+/// the loader ABI. The requested version and physical-device callback are unchanged.
 #[tracing::instrument(level = Level::DEBUG)]
 #[unsafe(export_name = "vkNegotiateLoaderLayerInterfaceVersion")]
 extern "system" fn layer_negotiate_loader_layer_interface_version(

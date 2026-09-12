@@ -60,12 +60,10 @@ impl MessageLoopState {
         });
     }
 
-    /// Queue a closure and post a wake-up message without waiting for execution.
+    /// Queue work on this message-loop thread without waiting for execution.
     ///
-    /// Execution requires the target thread to keep pumping intercepted messages.
-    /// Posting failures are ignored; a stopped thread may never execute the work.
-    /// The queue lock is held while callbacks run, so recursively queuing work on
-    /// this same loop from a callback deadlocks. Callback panics are not caught.
+    /// Work may never run if the thread stops processing messages. A callback must not
+    /// queue more work on the same loop, which would deadlock. Panics are not caught.
     pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         self.proc_queue.lock().push_back(Box::new(f));
 

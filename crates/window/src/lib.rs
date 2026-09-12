@@ -22,7 +22,16 @@ use crate::{
 
 static GLOBAL: LazyLock<GlobalState> = LazyLock::new(GlobalState::new);
 
-/// Access to the process-wide input backend; dropping it ends input blocking.
+/// Process-wide input interception and tracked windows.
+///
+/// Initialize once, outside the loader lock. Dropping the backend unblocks input
+/// and clears its event sink, but leaves hooks installed.
+///
+/// Input blocking captures events regardless of window listening flags. Cursor
+/// and IME changes may complete after control methods return.
+///
+/// Registry callbacks and iterators hold read access; do not mutate the same
+/// registry while using them.
 pub struct Backends {}
 
 impl Backends {
@@ -61,11 +70,8 @@ impl Backends {
         Self::get().windows.iter().map(|r| *r.key())
     }
 
-    /// Run the closure under a read guard for an already tracked window.
-    ///
-    /// Returns its result in `Some`, or `None` without calling it for an unknown
-    /// ID. An otherwise valid HWND may not have been observed by the hooks yet.
-    /// Do not mutate the registry from the closure; this can deadlock.
+    /// Access a tracked window, returning `None` if its ID has not been observed or
+    /// is no longer tracked.
     pub fn window<R>(&self, id: u32, f: impl FnOnce(&WindowProcState) -> R) -> Option<R> {
         Self::get().windows.view(&id, |_, state| f(state))
     }
@@ -75,11 +81,7 @@ impl Backends {
         Self::get().message_loops.iter().map(|r| *r.key())
     }
 
-    /// Run the closure under a read guard for a tracked Windows thread ID.
-    ///
-    /// This takes an OS thread ID, not a window ID or Rust thread ID. Unknown IDs
-    /// return `None` without running the closure; known IDs return its result in
-    /// `Some`. Avoid registry mutation from the closure, which can deadlock.
+    /// Access a tracked message loop by Windows thread ID, or return `None` if unknown.
     pub fn message_loop<R>(&self, id: u32, f: impl FnOnce(&MessageLoopState) -> R) -> Option<R> {
         Self::get().message_loops.view(&id, |_, state| f(state))
     }
@@ -90,19 +92,15 @@ impl Backends {
         Self::get().input_blocked()
     }
 
-    /// Enable input blocking across this process's intercepted windows.
-    ///
-    /// Repeated calls while blocked do nothing. Cursor and IME adjustments are
-    /// queued to message-loop threads, so they may finish after this returns.
+    /// Block input to intercepted windows, doing nothing if already blocked.
     #[inline]
     pub fn block_input(&self) {
         Self::get().block_input();
     }
 
-    /// End process-wide blocking and emit an input-blocking-ended event.
+    /// Unblock input and emit an input-blocking-ended event.
     ///
-    /// Does nothing if already unblocked. Cursor and IME restoration is queued
-    /// and may finish after this returns.
+    /// Does nothing if already unblocked.
     #[inline]
     pub fn unblock_input(&self) {
         Self::get().unblock_input();
@@ -110,17 +108,13 @@ impl Backends {
 
     /// Set the cursor used during input blocking, or hide it with `None`.
     ///
-    /// The handle is borrowed, not copied or destroyed; keep it valid while in use.
-    /// This stores the choice without waiting for a message-loop cursor update.
+    /// Keep the borrowed cursor handle valid while in use.
     #[inline]
     pub fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
         Self::get().set_blocking_cursor(cursor);
     }
 
-    /// Unblock input, clear all window listening flags, and restore the default cursor.
-    ///
-    /// Tracked windows and hooks remain installed; queued restoration can outlive
-    /// this call.
+    /// Unblock input, clear window listening flags, and restore the default cursor.
     pub fn reset(&self) {
         Self::get().reset();
     }

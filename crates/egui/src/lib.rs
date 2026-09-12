@@ -31,16 +31,12 @@ pub trait App {
     /// The default does nothing. This is repaint-driven, not a fixed-rate tick.
     fn logic(&mut self, _cx: &Context, _overlay_cx: &OverlayContext) {}
 
-    /// React to a process-wide input-blocking-ended event; default does nothing.
-    ///
-    /// The runner requests a repaint afterward. Thread-specific restoration may
-    /// still be queued when this callback runs.
+    /// Handle the end of input blocking before the next repaint. Defaults to no action.
     fn on_input_blocking_ended(&mut self) {}
 
-    /// Return the RGBA clear color used before rendering the overlay.
+    /// Return the RGBA clear color, with components in `0.0..=1.0`.
     ///
-    /// The default is transparent black. Components are passed to the renderer
-    /// unchanged; use finite normalized values in `0.0..=1.0`.
+    /// Defaults to transparent black.
     fn clear_color(&self, _visuals: &Visuals) -> [f32; 4] {
         [0.0, 0.0, 0.0, 0.0]
     }
@@ -51,6 +47,10 @@ pub struct CreationContext {
     pub egui_cx: Context,
 }
 
+/// Controls host input and exposes the selected overlay surface.
+///
+/// Input blocking applies to all intercepted windows in the process. Cursor and
+/// IME changes may complete after the control methods return.
 #[non_exhaustive]
 pub struct OverlayContext {
     pub(crate) windows: Arc<Backends>,
@@ -58,21 +58,17 @@ pub struct OverlayContext {
 }
 
 impl OverlayContext {
-    /// Block host input across intercepted windows, including those of other surfaces.
-    ///
-    /// Thread-specific cursor/IME changes are queued; repeated blocking is a no-op.
+    /// Block host input, doing nothing if already blocked.
     pub fn block_input(&self) {
         self.windows.block_input();
     }
 
-    /// End process-wide blocking; queued cursor/IME restoration may complete later.
+    /// Unblock host input.
     pub fn unblock_input(&self) {
         self.windows.unblock_input();
     }
 
-    /// Borrow metadata for the currently selected surface and its GPU.
-    ///
-    /// Composition surfaces can have no window ID; do not assume one is present.
+    /// Return metadata for the selected surface.
     pub fn surface_info(&self) -> &SurfaceInfo {
         &self.surface.info
     }

@@ -43,30 +43,23 @@ pub struct SetPosition {
 }
 impl_SurfaceRequestable!(SetPosition, ());
 
-/// Update overlay surface
+/// Replace or remove an overlay texture.
 ///
-/// ## Note
-/// * If the texture is created with `D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX` flag, the `key` of the `IDXGIKeyedMutex` must be `0`.
-///
-/// [`UpdateSharedHandle::None`] removes the overlay texture, not the tracked
-/// graphics surface. The response is `()`. Unknown surface IDs and texture-open
-/// failures are errors; acknowledgment does not wait for presentation. The texture
-/// must be compatible with the target surface's GPU adapter.
+/// The texture must use the target surface's GPU adapter and release any keyed
+/// mutex at key zero for rendering. Unknown surfaces and texture-opening failures
+/// return errors. Acknowledgment does not wait for presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateSharedHandle {
-    /// A legacy KMT shared handle; keep the source resource alive while it is used.
-    ///
-    /// An NT handle is not a valid substitute, even though both are stored as `u32`.
+    /// A legacy KMT shared handle. Keep the source resource alive while in use.
     Kmt(u32),
 
-    /// An NT shared handle already valid in the server process.
+    /// An NT shared handle valid in the server process.
     ///
-    /// The protocol does not duplicate a client-local handle. On a successful
-    /// update the server owns and eventually closes it; opening failure does not
-    /// close it. Copying this enum does not duplicate the underlying handle.
+    /// The server takes ownership on success; the caller retains ownership on failure.
+    /// Copying this value does not duplicate the handle.
     Nt(u32),
 
-    /// Remove the overlay surface.
+    /// Remove the overlay texture while retaining the tracked surface.
     None,
 }
 

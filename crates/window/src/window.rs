@@ -83,7 +83,7 @@ impl WindowProcState {
 
     /// Return cached client-area dimensions in pixels.
     ///
-    /// The two components are read separately and may straddle a concurrent resize.
+    /// A concurrent resize may produce a width and height from different updates.
     pub fn size(&self) -> (u32, u32) {
         (
             self.size.0.load(Ordering::Relaxed),
@@ -91,15 +91,13 @@ impl WindowProcState {
         )
     }
 
-    /// Return this window's configured listening flags, including retained unknown bits.
+    /// Return the configured input listening flags.
     pub fn input_flags(&self) -> ListenInputFlags {
         ListenInputFlags::from_bits_retain(self.input_flags.load(Ordering::Relaxed))
     }
 
-    /// Replace this window's listening flags without enabling input blocking.
-    ///
-    /// Unknown bits are retained but have no defined effect. Global input blocking
-    /// captures input independently of these flags.
+    /// Replace the input listening flags. Global input blocking captures events
+    /// regardless of these flags.
     pub fn set_input_flags(&self, flags: ListenInputFlags) {
         self.input_flags.store(flags.bits(), Ordering::Relaxed);
     }
@@ -160,10 +158,7 @@ impl WindowProcState {
         });
     }
 
-    /// Queue a closure on the window's message-loop thread and return immediately.
-    ///
-    /// Has the execution and reentrancy caveats of [`MessageLoopState::spawn_fn`].
-    /// The closure receives message-loop state, not window state.
+    /// Queue work on the window's message loop. See [`MessageLoopState::spawn_fn`].
     pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         Backends::get().message_loop_state(self.thread_id, |message_loop| {
             message_loop.spawn_fn(f);

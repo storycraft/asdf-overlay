@@ -20,37 +20,31 @@ static SURFACES: Lazy<Surfaces> = Lazy::new(|| Surfaces {
     map: IntDashMap::default(),
 });
 
-/// Global store for surface states.
+/// The registry of graphics surfaces available for overlays.
+///
+/// IDs can become invalid at any time. Iterators and callbacks hold read access;
+/// do not mutate the registry while using them.
 pub struct Surfaces {
     map: IntDashMap<u64, SurfaceState>,
 }
 
 impl Surfaces {
-    /// Iterate over currently tracked surface IDs in unspecified order.
-    ///
-    /// This is a live map iterator, not a snapshot; a yielded ID may disappear
-    /// before a later lookup. Avoid mutating the registry while holding an iterator.
+    /// Iterate over tracked surface IDs in unspecified order.
     pub fn iter() -> impl Iterator<Item = u64> {
         SURFACES.map.iter().map(|r| *r.key())
     }
 
-    /// Run the closure synchronously under the surface map's read guard.
-    ///
-    /// Returns `Some` of the closure's result, or `None` without calling it if
-    /// the ID is unknown or destroyed. Do not perform operations that need a
-    /// write lock on the registry from the closure; they can deadlock.
+    /// Access a surface state, or return `None` if the ID is no longer tracked.
     pub fn state<R>(id: u64, f: impl FnOnce(&SurfaceState) -> R) -> Option<R> {
         SURFACES.map.get(&id).map(|r| f(&r))
     }
 
-    /// Check whether an ID is tracked now; this does not reserve it for later use.
+    /// Return whether a surface ID is currently tracked.
     pub fn contains(id: u64) -> bool {
         SURFACES.map.contains_key(&id)
     }
 
-    /// Reset every tracked position and texture without removing surface entries.
-    ///
-    /// This does not uninstall hooks or emit surface-destruction events.
+    /// Reset all overlay positions and textures while retaining the tracked surfaces.
     pub fn reset() {
         for state in SURFACES.map.iter() {
             state.reset();
@@ -101,7 +95,10 @@ impl Surfaces {
     }
 }
 
-/// Data associated to a specific window for overlay rendering.
+/// Overlay state for a graphics surface.
+///
+/// Size and position use physical pixels. Coordinate pairs are not atomic snapshots
+/// and may contain components from different concurrent updates.
 #[non_exhaustive]
 pub struct SurfaceState {
     position: (AtomicI32, AtomicI32),
@@ -115,10 +112,7 @@ pub struct SurfaceState {
 }
 
 impl SurfaceState {
-    /// Construct an unregistered state at position `(0, 0)` with no overlay texture.
-    ///
-    /// Size and metadata are stored without validation; this does not allocate a
-    /// texture or emit an event. Currently always returns `Ok`.
+    /// Create an unregistered state at `(0, 0)` with no overlay texture.
     pub fn new(interop: DxInterop, size: (u32, u32), info: SurfaceInfo) -> anyhow::Result<Self> {
         let surface = OverlayTextureSlot::new();
 
@@ -136,10 +130,7 @@ impl SurfaceState {
         self.texture.get().as_ref().map(|surface| surface.size())
     }
 
-    /// Return the tracked graphics-surface dimensions in physical pixels.
-    ///
-    /// These are not overlay-texture dimensions. Width and height are read
-    /// separately, so a concurrent resize can produce a mixed pair.
+    /// Return the target graphics-surface dimensions.
     pub fn size(&self) -> (u32, u32) {
         (
             self.size.0.load(Ordering::Relaxed),
@@ -153,9 +144,7 @@ impl SurfaceState {
         self.size.1.store(height, Ordering::Relaxed);
     }
 
-    /// Return the overlay offset in physical pixels relative to the target surface.
-    ///
-    /// Coordinates are read separately and need not be a snapshot of a concurrent move.
+    /// Return the overlay offset relative to the target surface.
     pub fn position(&self) -> (i32, i32) {
         (
             self.position.0.load(Ordering::Relaxed),
@@ -163,26 +152,19 @@ impl SurfaceState {
         )
     }
 
-    /// Set the overlay offset for subsequent rendering without moving the host window.
-    ///
-    /// Negative and off-surface coordinates are accepted without clamping. The
-    /// two coordinates are stored separately; this does not synchronize with a frame.
+    /// Set the overlay offset relative to the target surface, without clamping.
     pub fn reposition(&self, x: i32, y: i32) {
         self.position.0.store(x, Ordering::Relaxed);
         self.position.1.store(y, Ordering::Relaxed);
     }
 
-    /// Open and replace the shared overlay texture, or remove it with `None`.
+    /// Replace the overlay texture, or remove it with `None`.
     ///
-    /// Supply a D3D11 shared texture compatible with this state's GPU. An NT
-    /// handle must already be valid in this process; it is not duplicated here.
-    /// On success the texture owns that NT handle and closes it when dropped.
-    /// Do not close it or transfer the same handle to another owner. On opening
-    /// failure the old texture remains and the supplied NT handle is not closed.
+    /// The texture must use this surface's GPU adapter. On success, ownership of an NT
+    /// handle transfers to the texture; on failure, the caller retains it and the old
+    /// texture remains. Release keyed mutexes at key zero before rendering.
     ///
-    /// KMT handles require their source resource to remain alive. If a keyed mutex
-    /// is present, producers must release key zero for rendering. Opening errors
-    /// are returned; success does not wait for a frame to display the texture.
+    /// Success does not wait for presentation.
     pub fn commit_overlay_texture(
         &self,
         handle: Option<SharedTextureHandle>,
@@ -198,10 +180,11 @@ impl SurfaceState {
     }
 }
 
-/// A shared D3D11 texture handle with its required opening mechanism.
+/// A shared D3D11 texture handle.
 ///
-/// The enum itself does not close handles. Although it is `Copy`, copying an NT
-/// value does not duplicate the OS handle or create another ownership right.
+/// This value does not close handles or duplicate them when copied. NT handles must
+/// be valid in the receiving process; transferring one to a texture gives that
+/// texture ownership. KMT handles require the source resource to remain alive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SharedTextureHandle {
     /// KMT handle.
@@ -212,9 +195,7 @@ pub enum SharedTextureHandle {
 }
 
 impl SharedTextureHandle {
-    /// Return the stored bits without duplicating, validating, or transferring ownership.
-    ///
-    /// The number alone does not distinguish NT from KMT handles.
+    /// Return the raw handle value.
     pub fn as_raw(&self) -> u32 {
         match self {
             Self::Kmt(handle) | Self::Nt(handle) => *handle,

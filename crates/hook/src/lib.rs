@@ -23,18 +23,18 @@ use tracing::{Level, debug};
 use core::{fmt::Debug, ptr};
 use std::sync::LazyLock;
 
-/// A detour function hook.
+/// A function replacement with a trampoline for calling the original.
+///
+/// Dropping the hook does not detach it.
 #[derive(Debug)]
 pub struct DetourHook<F> {
     trampoline: F,
 }
 
 impl<F: FnPtr> DetourHook<F> {
-    /// Replace calls to the target with the detour and return an original-call trampoline.
+    /// Replace calls to the target with the detour.
     ///
-    /// Even valid function pointers can be rejected when the target's machine code
-    /// cannot be intercepted, it is already replaced, or platform policy forbids it.
-    /// Dropping the returned hook does not detach it.
+    /// Returns an error if the target cannot be intercepted.
     ///
     /// # Safety
     /// Both pointers must have the same signature and calling convention. Their code
@@ -84,11 +84,10 @@ impl<F: FnPtr> DetourHook<F> {
     }
 }
 
-/// Run the closure inside a Frida Gum interceptor transaction, returning its result.
+/// Batch hook changes in a transaction and return the closure's result.
 ///
-/// Returning an error still ends the transaction; this batches hooks and does not
-/// roll them back. Cleanup runs on unwinding, but cannot run on process abort.
-/// Do not call newly installed trampolines until the transaction has finished.
+/// Errors do not roll back changes. Do not call newly installed trampolines until
+/// the transaction finishes.
 pub fn with_transaction<R>(f: impl FnOnce() -> R) -> R {
     unsafe {
         bindings::gum_bindings_interceptor_begin_transaction(INTERCEPTER.0);

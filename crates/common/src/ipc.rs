@@ -7,11 +7,7 @@ use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{event::OverlayEvent, request::Request};
 
-/// Format the local named-pipe path for a process ID and module identifier.
-///
-/// The module identifier is the low 32 bits used by the injector/server, not an
-/// independently usable module handle. This only formats a string: zero or stale
-/// IDs are accepted, and neither process existence nor pipe availability is checked.
+/// Return the named-pipe path for a process and the low 32 bits of its module handle.
 pub fn create_ipc_addr(pid: u32, module_handle: u32) -> String {
     format!("\\\\.\\pipe\\asdf-overlay-{pid}-{module_handle}")
 }
@@ -49,7 +45,9 @@ pub enum ServerToClientPacket {
     Event(OverlayEvent),
 }
 
-/// Describes a frame header for IPC communication.
+/// An IPC frame header containing a four-byte, big-endian body length.
+///
+/// The body follows the header and contains exactly `size` bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
     /// Size of the frame body in bytes.
@@ -57,21 +55,22 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Read exactly four bytes as a big-endian body length.
+    /// Read the header, leaving the body unread.
     ///
-    /// The body remains unread. Any `u32`, including zero, is accepted without a
-    /// protocol size limit; validate it before allocating a body buffer. EOF or
-    /// I/O failure returns an error. Cancellation may consume a partial header.
+    /// No size limit is enforced; validate the length before allocating.
+    ///
+    /// # Cancellation
+    /// Cancelling may consume a partial header.
     pub async fn read(mut r: impl AsyncRead + Unpin) -> io::Result<Self> {
         Ok(Self {
             size: r.read_u32().await?,
         })
     }
 
-    /// Write the body length as four big-endian bytes without writing or flushing a body.
+    /// Write the header without writing or flushing the body.
     ///
-    /// Returns an I/O error on failure. The caller must supply exactly `size`
-    /// body bytes; cancelling this operation may leave a partial header written.
+    /// # Cancellation
+    /// Cancelling may leave a partial header written.
     pub async fn write(self, mut w: impl AsyncWrite + Unpin) -> io::Result<()> {
         w.write_u32(self.size).await?;
         Ok(())

@@ -102,15 +102,15 @@ async fn next_ipc_server(module_handle: u32) -> NamedPipeServer {
     }
 }
 
-/// Handle loader notifications and start the IPC server on process attach.
+/// Start the overlay IPC server when the DLL is loaded.
 ///
-/// Other notification reasons return `true` without work. Process attach attempts
-/// to pin the DLL and starts the runtime/server; logged startup failures can also
-/// return `true`, so the return value does not establish IPC readiness. Installing
-/// the global tracing subscriber panics if a subscriber is already set.
+/// A successful return does not guarantee IPC readiness.
+///
+/// # Panics
+/// Panics if the global tracing subscriber is already set.
 ///
 /// # Safety
-/// Can be called by loader only. Must not be called manually.
+/// Only the Windows loader may call this entry point.
 #[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 pub unsafe extern "system" fn DllMain(dll_module: HINSTANCE, fdw_reason: u32, _: *mut ()) -> bool {
