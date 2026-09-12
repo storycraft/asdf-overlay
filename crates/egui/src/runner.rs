@@ -18,6 +18,17 @@ use flume::{Receiver, Sender};
 
 use crate::{App, CreationContext, OverlayContext, event::Event, state::SurfaceState};
 
+/// Initialize hooks, create the app once, and run its event/repaint loop.
+///
+/// Selects the first added surface observed after setup and waits for another
+/// added surface if it is destroyed. It does not render all surfaces at once.
+/// Waiting for a surface can last indefinitely; rendering and callbacks run as
+/// this future is polled.
+///
+/// Call outside the loader lock and only once per process. A previous window
+/// backend initialization causes a panic, even if that backend was dropped.
+/// Initialization, setup, event handling, and rendering errors are returned.
+/// Returning or cancelling does not uninstall the process-wide graphics hooks.
 pub async fn run_app<T>(
     setup_fn: impl AsyncFnOnce(&CreationContext) -> Result<T, Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>>

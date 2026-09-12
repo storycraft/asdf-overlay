@@ -102,7 +102,12 @@ async fn next_ipc_server(module_handle: u32) -> NamedPipeServer {
     }
 }
 
-/// Main entry point for DLL.
+/// Handle loader notifications and start the IPC server on process attach.
+///
+/// Other notification reasons return `true` without work. Process attach attempts
+/// to pin the DLL and starts the runtime/server; logged startup failures can also
+/// return `true`, so the return value does not establish IPC readiness. Installing
+/// the global tracing subscriber panics if a subscriber is already set.
 ///
 /// # Safety
 /// Can be called by loader only. Must not be called manually.

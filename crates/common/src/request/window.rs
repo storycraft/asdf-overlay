@@ -34,7 +34,10 @@ macro_rules! impl_WindowRequestable {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-/// Listen input events.
+/// Replace a window's cursor and keyboard listening flags without blocking input.
+///
+/// Both `false` disables ordinary listening, but global blocking still captures
+/// input. The response is `()`; an unknown window currently succeeds without effect.
 pub struct ListenInput {
     /// Whether to listen cursor related events.
     pub cursor: bool,

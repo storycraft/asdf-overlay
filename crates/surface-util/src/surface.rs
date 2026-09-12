@@ -29,8 +29,18 @@ use crate::ty::CopyRect;
 
 /// Represents an overlay surface.
 ///
-/// This buffers multiple textures to prevent flickering when updating the surface.
-/// The default buffer count is 2, but can be changed by specifying the `BUFFERS` const generic parameter.
+/// Retains a ring of textures, rotating only when dimensions or format change;
+/// same-size, same-format updates reuse the current texture. `BUFFERS` must be
+/// greater than zero or a nonempty update will panic.
+///
+/// Update methods return `Some(handle)` when the consumer must change its shared
+/// handle, `None` when the current handle remains usable, and
+/// `Some(UpdateSharedHandle::None)` to request removal. Forward only `Some`
+/// updates to the consumer. Empty updates request removal without freeing the
+/// cached textures; use [`Self::clear`] to release them.
+///
+/// Shared resources must use the consumer's GPU adapter. Keyed mutexes use key
+/// zero and infinite waits, so an unreleased mutex can block an update indefinitely.
 pub struct OverlaySurface<const BUFFERS: usize = 2> {
     device: ID3D11Device,
     cx: ID3D11DeviceContext,
@@ -68,6 +78,11 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         Ok(Self::new_with_device(device, cx))
     }
 
+    /// Wrap an existing device and its immediate context without allocating textures.
+    ///
+    /// The context must belong to this device. The pair is not validated, and
+    /// callers must synchronize any other use of the same immediate context.
+    /// The device must support shared shader-resource textures on the target GPU.
     pub fn new_with_device(device: ID3D11Device, cx: ID3D11DeviceContext) -> Self {
         Self {
             device,
@@ -76,16 +91,24 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         }
     }
 
-    /// Clear the current surface.
-    /// This will release all internal textures.
+    /// Release cached textures so the next nonempty update creates a new handle.
+    ///
+    /// This does not notify the consumer or clear its already-open texture. Send
+    /// `UpdateSharedHandle::None` separately when the overlay should disappear.
     pub fn clear(&mut self) {
         self.texture = BufferedTexture::new();
     }
 
-    /// Update the surface from a NT handle of a Direct3D texture.
-    /// * Returns [`None`]` if the update is done to an existing internal texture.
-    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
-    /// * Returns error if handle is invalid to be opened.
+    /// Open a D3D11 NT shared texture and copy it using [`Self::update_from_texture`].
+    ///
+    /// The handle must be valid in this process; a handle from another process
+    /// must first be duplicated here. KMT handles are not interchangeable with NT
+    /// handles. This borrows the handle and does not close it.
+    ///
+    /// Opening happens even for zero dimensions and can fail. If present, the
+    /// source keyed mutex is acquired at key zero with an infinite wait; its
+    /// acquire/release errors are currently ignored. See the texture-copy method
+    /// for rectangle restrictions and the three possible successful return values.
     pub fn update_from_nt_shared(
         &mut self,
         width: u32,
@@ -102,10 +125,15 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         })
     }
 
-    /// Update the surface from a KMT handle of a Direct3D texture.
-    /// * Returns [`None`] if the update is done to an existing internal texture.
-    /// * Returns [`Some`] if a new internal texture is created, due to size change.
-    /// * Returns error if handle is invalid to be opened.
+    /// Open a D3D11 KMT shared texture and copy it using [`Self::update_from_texture`].
+    ///
+    /// Supply a legacy shared-resource handle, not an NT handle, and keep its
+    /// source resource alive. The resource must be accessible on this device's GPU.
+    /// Opening happens even for zero dimensions and can return an error.
+    ///
+    /// If present, the source keyed mutex is acquired at key zero with an infinite
+    /// wait; its acquire/release errors are currently ignored. See the texture-copy
+    /// method for rectangle restrictions and successful return values.
     pub fn update_from_shared(
         &mut self,
         width: u32,
@@ -124,7 +152,24 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         })
     }
 
-    /// Update the surface from a Direct3D texture.
+    /// Copy a source texture into a shared texture of the requested dimensions.
+    ///
+    /// The source must be usable by this device. With no rectangle, this performs
+    /// a whole-resource copy: dimensions and resource layout must match; it does
+    /// not scale, resolve multisampling, or convert formats. With a rectangle,
+    /// source and destination bounds must fit, and coordinate-plus-extent sums
+    /// must not overflow `u32`. Out-of-bounds rectangles return an error.
+    ///
+    /// The source mutex is not acquired here; synchronize source access yourself.
+    /// Destination mutex acquisition can wait indefinitely. D3D copy commands do
+    /// not return validation errors, so `Ok` is not proof that an incompatible
+    /// copy succeeded. A partial copy into a newly allocated texture leaves pixels
+    /// outside the copied region uninitialized.
+    ///
+    /// Returns `None` when reusing the current texture and `Some(Kmt(_))` when
+    /// dimensions or format require a new texture. Either zero dimension returns
+    /// `Some(UpdateSharedHandle::None)` without copying or clearing cached textures.
+    /// Texture creation, sharing, and destination mutex failures return errors.
     pub fn update_from_texture(
         &mut self,
         width: u32,
@@ -177,11 +222,20 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         }
     }
 
-    /// Update the surface from a bitmap data.
-    /// The bitmap data should be in BGRA format.
-    /// * Returns [`None`]` if the update is done to an existing internal texture.
-    /// * Returns [`Some`]` if a new internal texture is created, due to size change.
-    /// * Returns error if failed to create or update the internal texture.
+    /// Upload tightly packed, four-byte BGRA pixels without row padding.
+    ///
+    /// Height is `data.len() / width / 4`, rounded down: incomplete trailing rows
+    /// are ignored, not rejected. A nonempty buffer shorter than one row yields
+    /// zero height and texture creation fails. RGBA bytes are accepted but their
+    /// red and blue channels are interpreted as BGRA. Use dimensions supported by
+    /// D3D11, with `width * 4` and the computed height representable as `u32`.
+    ///
+    /// Zero width or empty data returns `Some(UpdateSharedHandle::None)` without
+    /// releasing cached textures. Otherwise returns `None` for texture reuse or
+    /// `Some(Kmt(_))` for a new texture, including after a format change.
+    /// Allocation, sharing, and mutex failures return errors. Updating an existing
+    /// texture can wait indefinitely for its key-zero mutex; the upload itself
+    /// has no D3D error return and does not wait for presentation.
     pub fn update_bitmap(
         &mut self,
         width: u32,

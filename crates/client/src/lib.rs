@@ -14,7 +14,7 @@
 //!     let dll = OverlayDll {
 //!         x64: Some(Path::new("asdf-overlay-x64.dll")),
 //!         x86: Some(Path::new("asdf-overlay-x86.dll")),
-//!         x86: Some(Path::new("asdf-overlay-arm64.dll")),
+//!         arm64: Some(Path::new("asdf-overlay-arm64.dll")),
 //!     };
 //!
 //!    let (mut conn, mut events) = inject(
@@ -27,7 +27,7 @@
 //!
 //!   Ok(())
 //! }
-//!
+//! ```
 
 pub mod client;
 mod injector;
@@ -56,10 +56,29 @@ pub struct OverlayDll<'a> {
     pub arm64: Option<&'a Path>,
 }
 
-/// Inject overlay DLL into target process and create IPC connection.
-/// * If you didn't supply DLL path for the target architecture, it will return an error.
-/// * If injection or IPC connection fails, it will return an error.
-/// * If timeout is `None`, it may wait indefinitely.
+/// Load the matching overlay DLL into `pid` and open its IPC connection.
+///
+/// Returns a request connection and a separate event stream. Keep the connection
+/// alive while receiving events; dropping it stops the background reader.
+///
+/// Supply a DLL matching the target architecture. Use an absolute path accessible
+/// to the target: relative paths are resolved by the target's loader, and a file
+/// that exists locally may still fail to load there. Injection from x86 into x64
+/// is unsupported, as are other architecture pairs rejected by the injector.
+///
+/// # Caveats
+/// Injection runs synchronously before the first await and can block the executor
+/// thread. The timeout is applied separately to the remote-thread wait and client
+/// construction, not as an overall deadline. The native wait truncates to whole
+/// milliseconds and casts to `u32`; avoid durations at or above `u32::MAX`
+/// milliseconds, which wrap or become an infinite wait. `None` can wait indefinitely.
+/// Opening the pipe is attempted once, without retry or a protocol handshake.
+/// Failure or cancellation does not unload an already injected DLL.
+///
+/// # Errors
+/// Returns errors for missing architecture paths, unsupported architecture pairs,
+/// process access, DLL loading, native wait timeout, or opening the named pipe.
+/// Successful construction does not establish that the server can handle requests.
 pub async fn inject(
     pid: u32,
     dll: OverlayDll<'_>,

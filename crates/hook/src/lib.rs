@@ -1,7 +1,8 @@
-//! Hooking library for Windows using Detours.
+//! Function hooking for Windows using Frida Gum.
 //!
 //! This crate is intended to be used only as `asdf-overlay`'s internal dependency.
-//! It provides a safe abstraction over the Detours library for function hooking.
+//! Hook installation is unsafe: callers must uphold function-pointer and code-lifetime
+//! requirements. Dropping a hook does not undo the replacement.
 
 #[allow(
     non_camel_case_types,
@@ -29,10 +30,16 @@ pub struct DetourHook<F> {
 }
 
 impl<F: FnPtr> DetourHook<F> {
-    /// Attach a hook to the target function.
+    /// Replace calls to the target with the detour and return an original-call trampoline.
+    ///
+    /// Even valid function pointers can be rejected when the target's machine code
+    /// cannot be intercepted, it is already replaced, or platform policy forbids it.
+    /// Dropping the returned hook does not detach it.
     ///
     /// # Safety
-    /// func and detour should be valid function pointers with same signature.
+    /// Both pointers must have the same signature and calling convention. Their code
+    /// must remain loaded while the hook is installed, and the detour must uphold
+    /// the target's contract.
     #[tracing::instrument(level = Level::TRACE)]
     pub unsafe fn attach(func: F, detour: F) -> DetourResult<Self> {
         let mut trampoline: UntypedFnPtr = ptr::null_mut();
@@ -77,6 +84,11 @@ impl<F: FnPtr> DetourHook<F> {
     }
 }
 
+/// Run the closure inside a Frida Gum interceptor transaction, returning its result.
+///
+/// Returning an error still ends the transaction; this batches hooks and does not
+/// roll them back. Cleanup runs on unwinding, but cannot run on process abort.
+/// Do not call newly installed trampolines until the transaction has finished.
 pub fn with_transaction<R>(f: impl FnOnce() -> R) -> R {
     unsafe {
         bindings::gum_bindings_interceptor_begin_transaction(INTERCEPTER.0);

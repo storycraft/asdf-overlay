@@ -123,7 +123,11 @@ pub struct Key {
 }
 
 impl Key {
-    /// Create a new [`Key`] from a virtual-key code.
+    /// Store the supplied virtual code, extended flag, and physical code unchanged.
+    ///
+    /// Nonzero codes are not necessarily assigned Windows key codes. This does
+    /// not validate their meaning or consistency, normalize modifiers, or derive
+    /// a physical code from the current keyboard layout.
     pub fn new(code: NonZeroU8, extended: bool, physical_code: NonZeroU8) -> Self {
         Key {
             code,

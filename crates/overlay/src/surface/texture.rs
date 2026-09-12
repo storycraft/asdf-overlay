@@ -93,7 +93,10 @@ impl OverlaySurface {
     }
 
     #[inline]
-    /// Shared handle of the surface texture.
+    /// Return a copy of the handle value, not a duplicated OS handle.
+    ///
+    /// Ownership stays with this texture. In particular, do not close the returned
+    /// NT handle or transfer it into another owning texture.
     pub fn shared_handle(&self) -> SharedTextureHandle {
         self.handle
     }
@@ -128,6 +131,7 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
+    /// Mark the slot changed for renderers without modifying texture contents.
     pub fn invalidate(&self) {
         self.updated.store(true, Ordering::Relaxed);
     }
@@ -148,6 +152,10 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
+    /// Return and clear the change flag atomically.
+    ///
+    /// Only one concurrent caller observes each pending flag. This indicates a
+    /// slot update or invalidation, not completion of GPU work or a new frame.
     pub fn take_update(&self) -> bool {
         self.updated.swap(false, Ordering::Relaxed)
     }

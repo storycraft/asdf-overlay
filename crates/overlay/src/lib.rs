@@ -1,32 +1,22 @@
-//! ## Asdf Overlay
-//! Asdf overlay let you put overlay infront of existing windows gpu framebuffer.
+//! Render overlays into graphics surfaces in the current Windows process.
 //!
-//! It hooks various graphics API call to detect graphical windows in the process.
-//! Asdf overlay automatically decides which graphics API the window is using,
-//! chooses suitable renderer.
+//! Graphics hooks discover surfaces as the application presents them. Install an
+//! event sink to receive lifecycle events and enable rendering. Input interception
+//! is provided separately by `asdf-overlay-window`.
 //!
-//! It can also capture inputs going through the target window.
-//! You can listen them or even block them from reaching application handlers.
-//!
-//! ## Example
+//! # Example
 //! ```no_run
-//! use asdf_overlay::initialize;
-//! use asdf_overlay::event_sink::OverlayEventSink;
+//! use asdf_overlay::{event_sink::OverlayEventSink, initialize, surface::Surfaces};
 //!
-//! let module_handle, window_hwnd;
-//! // Initialize asdf-overlay.
-//! initialize(module_handle).expect("initialization failed");
-//!
-//! // Initialize Event sink.
-//! // Without setting it, the overlay will not render.
-//! // This is intended because windows state will be out of sync if you miss any events.
-//! OverlayEventSink::set(move |event| {
-//!     // Do something with events.
+//! // Run outside DllMain / the Windows loader lock.
+//! OverlayEventSink::set(|event| {
+//!     // Queue events for your application to process.
 //! });
+//! initialize().expect("initialization failed");
 //!
-//! Backends::with_backend(window_hwnd, |backend| {
-//!     // Do something with overlay window backend.
-//! });
+//! for id in Surfaces::iter() {
+//!     Surfaces::state(id, |state| state.reposition(16, 16));
+//! }
 //! ```
 
 #[allow(unsafe_op_in_unsafe_fn, clippy::all)]
@@ -52,10 +42,17 @@ mod util;
 
 use anyhow::Context;
 
-/// Initialize overlay, hooks.
+/// Install graphics hooks used to discover and render overlay surfaces.
 ///
-/// * Calling more than once will fail.
-/// * Calling with holding loader lock (DllMain) will fail.
+/// Call outside `DllMain` and the Windows loader lock: setup creates a temporary
+/// window and graphics resources and may block. Install an
+/// [`event_sink::OverlayEventSink`] to enable surface detection and rendering.
+/// This does not initialize the separate window/input backend.
+///
+/// Returns an error if temporary-window setup fails. Individual graphics-hook
+/// failures may instead be logged, so success does not guarantee every graphics
+/// API is supported. Hooks are process-wide and are not undone on return or error;
+/// this is not a restart or teardown API.
 pub fn initialize() -> anyhow::Result<()> {
     hook::install().context("hook initialization failed")?;
     Ok(())

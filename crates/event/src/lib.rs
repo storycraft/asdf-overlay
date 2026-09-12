@@ -100,6 +100,10 @@ pub enum SurfaceType {
 }
 
 impl SurfaceType {
+    /// Return the associated window ID, if the surface has one.
+    ///
+    /// Direct3D 11/12 composition swapchains may return `None`. A returned ID
+    /// describes the event metadata and does not validate that the window is alive.
     pub fn window_id(self) -> Option<u32> {
         match self {
             SurfaceType::Opengl { window_id } => Some(window_id),

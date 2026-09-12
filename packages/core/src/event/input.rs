@@ -134,7 +134,10 @@ impl From<input::Key> for Key {
     }
 }
 
-/// Utility function to create `Key` using key code and optional extended flag.
+/// Store a key code and optional extended flag, defaulting the flag to `false`.
+///
+/// No Windows key validation or modifier normalization is performed. Even zero
+/// and unassigned codes are accepted; the result is a data object, not injected input.
 #[napi]
 pub fn key(code: u8, extended: Option<bool>) -> Key {
     Key {

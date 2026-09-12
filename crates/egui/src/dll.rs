@@ -15,6 +15,11 @@ use windows::{
     core::PCSTR,
 };
 
+/// Export a Windows `DllMain` that runs the supplied closure on a new thread.
+///
+/// Use once in a DLL crate. On process attach the helper attempts to pin the DLL
+/// for the process lifetime. The closure's termination code is logged; it does
+/// not determine whether loading the DLL succeeds.
 #[macro_export]
 macro_rules! impl_dll {
     ($main:expr) => {

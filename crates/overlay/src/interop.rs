@@ -34,9 +34,11 @@ pub struct DxInterop {
 }
 
 impl DxInterop {
-    /// Create new [`DxInterop`].
-    /// * If `adapter` is provided, it will use provided GPU adapter.
-    /// * If `adapter` it not provided, it will use system provided GPU adapter.
+    /// Create a BGRA-capable D3D11 device, context, and adapter identifier.
+    ///
+    /// Uses the supplied adapter or the default hardware GPU. On multi-GPU systems
+    /// the default may not match the target surface; shared textures must use the
+    /// compatible adapter. Returns device-creation or adapter-query errors.
     pub fn new(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         unsafe {
             let mut device = None;

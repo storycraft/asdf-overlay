@@ -1,4 +1,4 @@
-//! Provides [`OverlayEventSink`] for receiving [`OverlayEvent`] from overlay system.
+//! Receive overlay [`Event`] values through the global [`OverlayEventSink`].
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
@@ -30,14 +30,20 @@ impl OverlayEventSink {
 
     /// Set event sink function.
     ///
-    /// Overlay will not detect windows or render before setting it.
+    /// Enables surface detection and rendering, replacing any previous sink.
+    /// Existing surfaces are not replayed. The callback runs synchronously on
+    /// emitting threads, potentially concurrently and while internal locks are
+    /// held. Keep it short and queue work that accesses the surface registry to
+    /// avoid reentrant locking. A callback panic propagates into the emitting code.
     pub fn set(sink: impl Fn(Event) + Send + Sync + 'static) {
         CURRENT.store(Some(Arc::new(Self {
             sink: Box::new(sink),
         })));
     }
 
-    /// Clear event sink function.
+    /// Remove the sink for future emissions without resetting surfaces or hooks.
+    ///
+    /// A callback already in progress may finish after this returns.
     pub fn clear() {
         CURRENT.store(None);
     }

@@ -39,6 +39,10 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub struct Error(serde_error::Error);
 
 impl Error {
+    /// Capture an error's message and source chain into an owned serializable error.
+    ///
+    /// This preserves diagnostic text, not the original concrete error type for
+    /// downcasting after transmission.
     pub fn new(error: &(impl ?Sized + core::error::Error)) -> Self {
         Self(serde_error::Error::new(error))
     }
@@ -70,7 +74,10 @@ macro_rules! impl_Requestable {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-/// Block input events from reaching window and listen all input events
+/// Set process-wide input blocking and capture input regardless of listening flags.
+///
+/// The response is `()`. Repeating the current state is a no-op; acknowledgment
+/// does not wait for queued cursor and IME changes on window threads.
 pub struct BlockInput {
     /// Whether to block input events from reaching to window.
     pub block: bool,

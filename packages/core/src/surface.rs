@@ -17,7 +17,10 @@ pub struct OverlaySurface(surface::OverlaySurface);
 
 #[napi]
 impl OverlaySurface {
-    /// Create a new overlay surface.
+    /// Create a D3D11 surface on the matching adapter, or the default hardware GPU.
+    ///
+    /// A supplied LUID that cannot be found silently falls back to the default
+    /// adapter; it does not guarantee a GPU match. Device/factory errors propagate.
     #[napi(constructor)]
     pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
         let adapter = luid.map(create_adapter_by_luid).transpose()?.flatten();
@@ -25,13 +28,24 @@ impl OverlaySurface {
         Ok(Self(surface))
     }
 
-    /// Clear the surface.
+    /// Release locally cached textures without notifying an attached overlay.
+    ///
+    /// Send an explicit removal update to hide the remote texture. The next
+    /// nonempty upload returns a new handle.
     #[napi]
     pub fn clear(&mut self) {
         self.0.clear();
     }
 
-    /// Update surface using D3D11 NT shared texture.
+    /// Copy a D3D11 NT shared texture using a handle valid in this process.
+    ///
+    /// The buffer must contain exactly one native-endian, pointer-sized integer;
+    /// its value is then truncated to `u32`. A four-byte buffer on a 64-bit build
+    /// is rejected. The handle is borrowed and must not be a KMT handle.
+    ///
+    /// Inherits [`surface::OverlaySurface::update_from_nt_shared`] copy, GPU,
+    /// synchronization, and return-value caveats. Outer `None` means reuse;
+    /// `Some(UpdateSharedHandle::None)` means request remote removal.
     #[napi]
     pub fn update_nt_shtex(
         &mut self,
@@ -48,7 +62,15 @@ impl OverlaySurface {
             .map(From::from))
     }
 
-    /// Update surface using D3D11 KMT shared texture.
+    /// Copy a D3D11 texture from a legacy KMT shared handle.
+    ///
+    /// The buffer must contain exactly one native-endian, pointer-sized integer;
+    /// its value is then truncated to `u32`. NT handles cannot be used here.
+    /// Keep the source resource alive while copying.
+    ///
+    /// Inherits [`surface::OverlaySurface::update_from_shared`] copy, GPU,
+    /// synchronization, and return-value caveats. Outer `None` means reuse;
+    /// `Some(UpdateSharedHandle::None)` means request remote removal.
     #[napi]
     pub fn update_kmt_shtex(
         &mut self,
@@ -65,7 +87,12 @@ impl OverlaySurface {
             .map(From::from))
     }
 
-    /// Update surface using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
+    /// Upload tightly packed four-byte BGRA pixels, with height derived from the buffer.
+    ///
+    /// Inherits [`surface::OverlaySurface::update_bitmap`] restrictions: incomplete
+    /// trailing rows are ignored, RGBA is not converted, and mutex waits can block.
+    /// Zero width or empty data returns a removal update without freeing cached
+    /// textures. Outer `None` means reuse; a new texture returns `Some(Kmt(_))`.
     #[napi]
     pub fn update_bitmap(
         &mut self,
