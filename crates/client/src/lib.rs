@@ -59,8 +59,7 @@ pub struct OverlayDll<'a> {
 /// Load the matching overlay DLL into `pid` and connect to it.
 ///
 /// Injection blocks the calling thread. The timeout applies separately to injection
-/// and connection setup; it is not an overall deadline. Use durations below
-/// `u32::MAX` milliseconds; `None` waits indefinitely.
+/// and connection setup; it is not an overall deadline. [`None`] waits indefinitely.
 ///
 /// Returns an error if the architecture pair is unsupported, the matching DLL path
 /// is missing, or injection or connection fails. Connecting is attempted once.
