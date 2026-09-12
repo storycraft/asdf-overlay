@@ -175,7 +175,7 @@ fn peek_message<const UNICODE: bool>(
     if remove.contains(PM_REMOVE) {
         read_message::<UNICODE>(msg);
 
-        if should_filter {
+        if should_filter && call_def_proc(msg) {
             filtered_proc::<UNICODE>(msg);
         }
     }
