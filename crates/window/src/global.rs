@@ -55,19 +55,25 @@ impl GlobalState {
 
     /// Block all inputs of the process.
     pub fn block_input(&self) {
-        let mut blocking_state = self.blocking_state.write();
-        if blocking_state.is_some() {
-            return;
+        // NOTE: the lock has to be released before blocking the message loops and
+        // windows below. Both reach `message_loop_state` and `window_state`, which read
+        // this same lock when they insert a state they have not seen yet, and the lock
+        // is not reentrant: holding it across those calls deadlocks the thread.
+        {
+            let mut blocking_state = self.blocking_state.write();
+            if blocking_state.is_some() {
+                return;
+            }
+            let clip_cursor = get_clip_cursor();
+            // Remember where the cursor was so `GetCursorPos` can keep reporting it while
+            // blocked. Games that steer the camera from the cursor delta (e.g. RTS edge
+            // scrolling) jump to the screen corner if this reports a fixed origin instead.
+            let last_cursor_pos = get_cursor_pos();
+            *blocking_state = Some(InputBlockingState {
+                clip_cursor,
+                last_cursor_pos,
+            });
         }
-        let clip_cursor = get_clip_cursor();
-        // Remember where the cursor was so `GetCursorPos` can keep reporting it while
-        // blocked. Games that steer the camera from the cursor delta (e.g. RTS edge
-        // scrolling) jump to the screen corner if this reports a fixed origin instead.
-        let last_cursor_pos = get_cursor_pos();
-        *blocking_state = Some(InputBlockingState {
-            clip_cursor,
-            last_cursor_pos,
-        });
 
         for message_loop in self.message_loops.iter() {
             message_loop.block_input();
