@@ -94,7 +94,10 @@ pub fn draw_overlay(
     with_or_init_renderer_data(swapchain, move |data| {
         trace!("Using Direct3D11 renderer");
 
-        if state.texture.take_update() {
+        if state
+            .texture
+            .take_update(&mut data.renderer.texture_generation)
+        {
             data.renderer
                 .update_texture(device, state.texture.get().as_ref())
                 .context("renderer texture update")?;
