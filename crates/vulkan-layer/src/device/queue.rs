@@ -181,7 +181,7 @@ fn draw_overlay(
         return Ok(None);
     };
 
-    if state.texture.take_update() {
+    if renderer.texture_generation.take_update(&state.texture) {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         renderer
