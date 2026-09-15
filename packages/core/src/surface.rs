@@ -6,7 +6,7 @@ use napi::bindgen_prelude::BufferSlice;
 use napi_derive::napi;
 use windows::Win32::{
     Foundation::LUID,
-    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4},
 };
 
 use crate::event::surface::GpuLuid;
@@ -29,7 +29,7 @@ impl OverlaySurface {
     /// Uses the default hardware GPU if the LUID is omitted or not found.
     #[napi(constructor)]
     pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
-        let adapter = luid.map(create_adapter_by_luid).transpose()?.flatten();
+        let adapter = luid.map(create_adapter_by_luid).transpose()?;
         let surface = surface::OverlaySurface::new(adapter.as_ref())?;
         Ok(Self(surface))
     }
@@ -150,25 +150,15 @@ pub struct Rect {
     pub height: u32,
 }
 
-fn create_adapter_by_luid(luid: GpuLuid) -> anyhow::Result<Option<IDXGIAdapter>> {
+fn create_adapter_by_luid(luid: GpuLuid) -> anyhow::Result<IDXGIAdapter> {
     let factory =
-        unsafe { CreateDXGIFactory1::<IDXGIFactory1>().context("failed to create DXGI factory")? };
+        unsafe { CreateDXGIFactory1::<IDXGIFactory4>().context("failed to create DXGI factory")? };
 
-    let luid = LUID {
-        LowPart: luid.low,
-        HighPart: luid.high,
-    };
-    let mut i = 0;
-    while let Ok(adapter) = unsafe { factory.EnumAdapters(i) } {
-        i += 1;
-        let Ok(desc) = (unsafe { adapter.GetDesc() }) else {
-            continue;
-        };
-
-        if desc.AdapterLuid == luid {
-            return Ok(Some(adapter));
-        }
+    unsafe {
+        factory.EnumAdapterByLuid::<IDXGIAdapter>(LUID {
+            LowPart: luid.low,
+            HighPart: luid.high,
+        })
     }
-
-    Ok(None)
+    .with_context(|| format!("no GPU adapter with luid {}:{}", luid.high, luid.low))
 }
