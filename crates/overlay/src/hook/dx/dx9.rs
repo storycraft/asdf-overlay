@@ -107,6 +107,18 @@ extern "system" fn hooked_swapchain_present(
 }
 
 #[tracing::instrument(level = Level::TRACE)]
+extern "system" fn hooked_swapchain_release(this: *mut c_void) -> u32 {
+    trace!("IDirect3DSwapChain9::Release called");
+
+    let count = unsafe { HOOK.swapchain_release.wait().original_fn()(this) };
+    if count == 0 {
+        cleanup_surface(this as _);
+    }
+
+    count
+}
+
+#[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_release(this: *mut c_void) -> u32 {
     trace!("IDirect3DDevice9::Release called");
 
@@ -115,7 +127,6 @@ extern "system" fn hooked_release(this: *mut c_void) -> u32 {
     // renderer includes refs from IDirect3DVertexBuffer9, IDirect3DStateBlock9 and optionally texture.
     if count == 2 || count == 3 {
         reset_renderer(this as _);
-        cleanup_renderer(this as _);
     }
 
     count
@@ -151,8 +162,9 @@ extern "system" fn hooked_present_ex(
 }
 
 fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> anyhow::Result<()> {
-    // Use device pointer as key.
-    let id = device.as_raw() as u64;
+    // Use swapchain pointer as key, so a device presenting through more than one
+    // swapchain gets a surface for each.
+    let id = swapchain.as_raw() as u64;
 
     Surfaces::with(
         id,
@@ -198,43 +210,41 @@ fn present(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
 }
 
 fn post_reset(device: &IDirect3DDevice9) {
-    let id = device.as_raw() as _;
+    let Ok(swapchain) = (unsafe { device.GetSwapChain(0) }) else {
+        return;
+    };
+    let id = swapchain.as_raw() as u64;
 
     Surfaces::state(id, |state| {
-        let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-
         let mut present_params = D3DPRESENT_PARAMETERS::default();
-        _ = unsafe { default_swapchain.GetPresentParameters(&mut present_params) };
+        _ = unsafe { swapchain.GetPresentParameters(&mut present_params) };
 
         let width = present_params.BackBufferWidth;
         let height = present_params.BackBufferHeight;
         state.texture.invalidate();
         state.resize(width, height);
         OverlayEventSink::emit(Event::Surface {
-            id: device.as_raw() as _,
+            id,
             event: SurfaceEvent::Resized { width, height },
         });
     });
 }
 
-fn cleanup_renderer(device: usize) {
-    info!("Direct3D9 renderer cleanup");
+fn cleanup_surface(swapchain: usize) {
+    if !Surfaces::contains(swapchain as _) {
+        return;
+    }
+    info!("Direct3D9 surface cleanup");
 
     // HACK:: workaround for recursive lock
     thread::spawn(move || {
-        Surfaces::cleanup_state(device as _);
+        Surfaces::cleanup_state(swapchain as _);
     });
 }
 
 fn reset_renderer(device: usize) {
     info!("Direct3D9 renderer reset");
-    if RENDERERS.remove(&device).is_none() {
-        return;
-    };
-
-    Surfaces::state(device as _, |state| {
-        state.texture.invalidate();
-    });
+    RENDERERS.remove(&device);
 }
 
 fn setup_fn(
@@ -351,6 +361,7 @@ struct Hook {
     release: OnceCell<DetourHook<ReleaseFn>>,
     present_ex: OnceCell<DetourHook<PresentExFn>>,
     swapchain_present: OnceCell<DetourHook<SwapchainPresentFn>>,
+    swapchain_release: OnceCell<DetourHook<ReleaseFn>>,
     reset: OnceCell<DetourHook<ResetFn>>,
     reset_ex: OnceCell<DetourHook<ResetExFn>>,
 }
@@ -360,12 +371,13 @@ static HOOK: Hook = Hook {
     release: OnceCell::new(),
     present_ex: OnceCell::new(),
     swapchain_present: OnceCell::new(),
+    swapchain_release: OnceCell::new(),
     reset: OnceCell::new(),
     reset_ex: OnceCell::new(),
 };
 
 pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
-    let (present, release, swapchain_present, present_ex, reset, reset_ex) =
+    let (present, release, swapchain_present, swapchain_release, present_ex, reset, reset_ex) =
         get_addr(dummy_hwnd).context("failed to load dx9 addrs")?;
 
     debug!("hooking IDirect3DDevice9::Reset");
@@ -384,6 +396,10 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
     HOOK.swapchain_present.get_or_try_init(|| unsafe {
         DetourHook::attach(swapchain_present, hooked_swapchain_present as _)
     })?;
+    debug!("hooking IDirect3DSwapChain9::Release");
+    HOOK.swapchain_release.get_or_try_init(|| unsafe {
+        DetourHook::attach(swapchain_release, hooked_swapchain_release as _)
+    })?;
     debug!("hooking IDirect3DDevice9Ex::PresentEx");
     HOOK.present_ex
         .get_or_try_init(|| unsafe { DetourHook::attach(present_ex, hooked_present_ex as _) })?;
@@ -392,13 +408,15 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 }
 
 /// Get pointer to IDirect3DDevice9::Present, IDirect3DDevice9::Release, IDirect3DSwapChain9::Present,
-/// IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset, IDirect3DDevice9Ex::ResetEx by creating dummy device
+/// IDirect3DSwapChain9::Release, IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset,
+/// IDirect3DDevice9Ex::ResetEx by creating dummy device
 fn get_addr(
     dummy_hwnd: HWND,
 ) -> anyhow::Result<(
     PresentFn,
     ReleaseFn,
     SwapchainPresentFn,
+    ReleaseFn,
     PresentExFn,
     ResetFn,
     ResetExFn,
@@ -442,6 +460,12 @@ fn get_addr(
         swapchain_present
     );
 
+    let swapchain_release = swapchain_vtable.base__.Release;
+    debug!(
+        "IDirect3DSwapChain9::Release found: {:p}",
+        swapchain_release
+    );
+
     let reset = vtable.Reset;
     debug!("IDirect3DDevice9::Reset found: {:p}", reset);
 
@@ -456,6 +480,7 @@ fn get_addr(
         present,
         release,
         swapchain_present,
+        swapchain_release,
         present_ex,
         reset,
         reset_ex,
