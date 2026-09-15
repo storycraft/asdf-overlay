@@ -1,12 +1,7 @@
-//! Overlay surface abstraction.
+//! Shared D3D11 textures for overlay rendering.
 //!
-//! The surface texture must be Direct3D 11 texture created with shared flags.
-//! Direct3D 11 was chosen, because it is well supported on almost every gpus nowadays.
-//!
-//! If you create surface texture with keyed mutex, it will uses it for synchronization.
-//! You must keep mutex key to `0` otherwise, it will wait indefinitely when rendering overlay.
-//! You can still have surface texture without keyed mutex,
-//! however you must flush it manually on changes and will have worse performance.
+//! Release keyed mutexes at key zero before rendering. Without a keyed mutex,
+//! flush texture changes manually.
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -93,7 +88,8 @@ impl OverlaySurface {
     }
 
     #[inline]
-    /// Shared handle of the surface texture.
+    /// Borrow the handle value. The texture retains ownership; do not close or
+    /// transfer the returned NT handle.
     pub fn shared_handle(&self) -> SharedTextureHandle {
         self.handle
     }
@@ -128,6 +124,7 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
+    /// Mark the slot changed for renderers without modifying texture contents.
     pub fn invalidate(&self) {
         self.updated.store(true, Ordering::Relaxed);
     }
@@ -148,6 +145,10 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
+    /// Return and clear the pending slot-change flag.
+    ///
+    /// Only one concurrent caller observes each pending change. This does not indicate
+    /// GPU completion.
     pub fn take_update(&self) -> bool {
         self.updated.swap(false, Ordering::Relaxed)
     }

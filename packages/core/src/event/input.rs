@@ -134,7 +134,7 @@ impl From<input::Key> for Key {
     }
 }
 
-/// Utility function to create `Key` using key code and optional extended flag.
+/// Create a key code, defaulting the extended flag to `false`.
 #[napi]
 pub fn key(code: u8, extended: Option<bool>) -> Key {
     Key {

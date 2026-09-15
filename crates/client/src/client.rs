@@ -1,6 +1,4 @@
-//! Client side IPC connection and event stream implementation.
-//!
-//! Provides interfaces for sending requests via ipc and receive events.
+//! IPC requests and server events.
 
 use std::sync::{Arc, Weak};
 
@@ -23,7 +21,9 @@ use tokio::{
     task::JoinHandle,
 };
 
-/// IPC client connection for handling requests and responses.
+/// An IPC connection for sending requests to an overlay server.
+///
+/// Dropping the connection ends its event stream after buffered events are drained.
 pub struct IpcClientConn {
     next_id: u32,
     tx: WriteHalf<NamedPipeClient>,
@@ -33,7 +33,10 @@ pub struct IpcClientConn {
 }
 
 impl IpcClientConn {
-    /// Create a new [`IpcClientConn`] and [`IpcClientEventStream`] from a connected named pipe client.
+    /// Create a request connection and event stream from a connected pipe.
+    ///
+    /// # Panics
+    /// Panics when called outside a Tokio runtime.
     pub async fn new(client: NamedPipeClient) -> anyhow::Result<(Self, IpcClientEventStream)> {
         let (mut rx, tx) = split(client);
 
@@ -79,22 +82,25 @@ impl IpcClientConn {
         Ok((conn, stream))
     }
 
-    /// Get request interface for a specific window id.
-    /// The returned interface can be used to send window-specific requests.
+    /// Return a request interface for a window ID from server events.
     #[inline]
     pub const fn window(&mut self, id: u32) -> IpcClientConnWindow<'_> {
         IpcClientConnWindow { inner: self, id }
     }
 
-    /// Get request interface for a specific surface id.
-    /// The returned interface can be used to send surface-specific requests.
+    /// Return a request interface for a surface ID from server events.
     #[inline]
     pub const fn surface(&mut self, id: u64) -> IpcClientConnSurface<'_> {
         IpcClientConnSurface { inner: self, id }
     }
 
-    /// Send a request and wait for the response.
-    /// Returns an error if the connection is closed or the request fails.
+    /// Send a request and wait for its response without a timeout.
+    ///
+    /// Returns transport, protocol, or server errors.
+    ///
+    /// # Cancellation
+    /// Cancelling does not retract a sent request. Discard the connection if cancellation
+    /// may have interrupted a write.
     pub async fn request<T: Requestable>(&mut self, req: T) -> Result<T::Response> {
         self.request_inner::<T::Response>(req.into()).await
     }
@@ -162,14 +168,20 @@ pub enum Error {
     Request(#[from] request::Error),
 }
 
-/// Request interface for a specific window id.
+/// An IPC request interface for a specific window.
 pub struct IpcClientConnWindow<'a> {
     inner: &'a mut IpcClientConn,
     id: u32,
 }
 
 impl IpcClientConnWindow<'_> {
-    /// Send a window request.
+    /// Send a request to this window and wait for its response without a timeout.
+    ///
+    /// Returns transport, protocol, or server errors.
+    ///
+    /// # Cancellation
+    /// Cancelling does not retract a sent request. Discard the connection if cancellation
+    /// may have interrupted a write.
     pub async fn request<T: WindowRequestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
         self.inner
             .request_inner::<T::Response>(Request::Window(WindowRequest {
@@ -179,14 +191,22 @@ impl IpcClientConnWindow<'_> {
             .await
     }
 }
-/// Request interface for a specific surface id.
+/// An IPC request interface for a specific surface.
+///
+/// The server rejects requests for unknown or destroyed surfaces.
 pub struct IpcClientConnSurface<'a> {
     inner: &'a mut IpcClientConn,
     id: u64,
 }
 
 impl IpcClientConnSurface<'_> {
-    /// Send a surface request.
+    /// Send a request to this surface and wait for its response without a timeout.
+    ///
+    /// Returns transport, protocol, or server errors.
+    ///
+    /// # Cancellation
+    /// Cancelling does not retract a sent request. Discard the connection if cancellation
+    /// may have interrupted a write.
     pub async fn request<T: SurfaceRequestable>(&mut self, req: T) -> anyhow::Result<T::Response> {
         self.inner
             .request_inner::<T::Response>(Request::Surface(SurfaceRequest {
@@ -197,14 +217,18 @@ impl IpcClientConnSurface<'_> {
     }
 }
 
-/// Event stream for receiving server events.
+/// Server events received through an [`IpcClientConn`].
+///
+/// Events are buffered without a size limit; drain the stream while the connection
+/// is active. Connection and protocol errors end the stream without exposing the error.
 pub struct IpcClientEventStream {
     inner: mpsc::UnboundedReceiver<OverlayEvent>,
 }
 
 impl IpcClientEventStream {
-    /// Receive the next event.
-    /// Returns `None` if the connection is closed.
+    /// Wait for the next event, or return [`None`] when the closed stream is drained.
+    ///
+    /// Cancelling this wait does not consume an event.
     #[inline]
     pub async fn recv(&mut self) -> Option<OverlayEvent> {
         self.inner.recv().await

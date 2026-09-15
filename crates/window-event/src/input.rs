@@ -123,7 +123,7 @@ pub struct Key {
 }
 
 impl Key {
-    /// Create a new [`Key`] from a virtual-key code.
+    /// Create a key from its virtual code, extended flag, and physical code.
     pub fn new(code: NonZeroU8, extended: bool, physical_code: NonZeroU8) -> Self {
         Key {
             code,

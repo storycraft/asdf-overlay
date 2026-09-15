@@ -18,6 +18,14 @@ use flume::{Receiver, Sender};
 
 use crate::{App, CreationContext, OverlayContext, event::Event, state::SurfaceState};
 
+/// Initialize the overlay and run the application.
+///
+/// Renders on the first observed surface, waiting for another if it is destroyed.
+/// Call once per process, outside the loader lock. Returning or cancelling leaves
+/// graphics hooks installed.
+///
+/// # Panics
+/// Panics if the window backend has already been initialized.
 pub async fn run_app<T>(
     setup_fn: impl AsyncFnOnce(&CreationContext) -> Result<T, Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>>

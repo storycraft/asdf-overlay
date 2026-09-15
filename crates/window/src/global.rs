@@ -55,11 +55,12 @@ impl GlobalState {
 
     /// Block all inputs of the process.
     pub fn block_input(&self) {
-        if self.blocking_state.write().is_some() {
+        let mut blocking_state = self.blocking_state.write();
+        if blocking_state.is_some() {
             return;
         }
         let clip_cursor = get_clip_cursor();
-        *self.blocking_state.write() = Some(InputBlockingState { clip_cursor });
+        *blocking_state = Some(InputBlockingState { clip_cursor });
 
         for message_loop in self.message_loops.iter() {
             message_loop.block_input();

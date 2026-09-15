@@ -1,6 +1,4 @@
-//! Injector module for injecting overlay DLL into target process.
-//!
-//! Uses the most typical DLL injection method of creating a remote thread that requires least permissions.
+//! Load an overlay DLL into a target process.
 
 use core::{mem, time::Duration};
 use std::{ffi::OsStr, fs, os::windows::ffi::OsStrExt, path::PathBuf};

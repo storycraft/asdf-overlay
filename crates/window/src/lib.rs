@@ -1,3 +1,8 @@
+//! Process-wide Windows input interception and tracked window/message-loop state.
+//!
+//! Construct [`Backends`] once outside the loader lock. Dropping it unblocks input
+//! and clears its sink, but leaves hooks installed and does not permit reinitialization.
+
 mod event;
 mod global;
 pub mod message_loop;
@@ -17,10 +22,28 @@ use crate::{
 
 static GLOBAL: LazyLock<GlobalState> = LazyLock::new(GlobalState::new);
 
+/// Process-wide input interception and tracked windows.
+///
+/// Initialize once, outside the loader lock. Dropping the backend unblocks input
+/// and clears its event sink, but leaves hooks installed.
+///
+/// Input blocking captures events regardless of window listening flags. Cursor
+/// and IME changes may complete after control methods return.
+///
+/// Registry callbacks and iterators hold read access; do not mutate the same
+/// registry while using them.
 pub struct Backends {}
 
 impl Backends {
-    /// Initialize new [`Backends`] instance. This should only be called once.
+    /// Install process-wide input hooks and replace the window event sink.
+    ///
+    /// The callback runs synchronously on emitting threads, possibly concurrently
+    /// and under internal locks. Queue work instead of reentering backend operations.
+    /// Hook failures return an error without rolling back installed hooks or the sink.
+    ///
+    /// # Panics
+    /// Panics on every attempt after the first, even if initialization failed or
+    /// the previous backend was dropped.
     pub fn new<F>(f: F) -> anyhow::Result<Self>
     where
         F: Fn(Event) + Send + Sync + 'static,
@@ -47,7 +70,7 @@ impl Backends {
         Self::get().windows.iter().map(|r| *r.key())
     }
 
-    /// View the state of a window with the given ID.
+    /// Access a tracked window, returning [`None`] if its ID is not associated to any windows.
     pub fn window<R>(&self, id: u32, f: impl FnOnce(&WindowProcState) -> R) -> Option<R> {
         Self::get().windows.view(&id, |_, state| f(state))
     }
@@ -57,7 +80,7 @@ impl Backends {
         Self::get().message_loops.iter().map(|r| *r.key())
     }
 
-    /// View the state of a message loop with the given ID.
+    /// Access a tracked message loop by ID, or return [`None`] if unknown.
     pub fn message_loop<R>(&self, id: u32, f: impl FnOnce(&MessageLoopState) -> R) -> Option<R> {
         Self::get().message_loops.view(&id, |_, state| f(state))
     }
@@ -68,24 +91,29 @@ impl Backends {
         Self::get().input_blocked()
     }
 
-    /// Blocks or unblocks input for the window.
+    /// Block input to intercepted windows, doing nothing if already blocked.
     #[inline]
     pub fn block_input(&self) {
         Self::get().block_input();
     }
 
-    /// Unblock input for the window.
+    /// Unblock input and emit an input-blocking-ended event.
+    ///
+    /// Does nothing if already unblocked.
     #[inline]
     pub fn unblock_input(&self) {
         Self::get().unblock_input();
     }
 
-    /// Sets the cursor to be displayed while input is blocked.
+    /// Set the cursor used during input blocking, or hide it with `None`.
+    ///
+    /// Keep the borrowed cursor handle valid while in use.
     #[inline]
     pub fn set_blocking_cursor(&self, cursor: Option<HCURSOR>) {
         Self::get().set_blocking_cursor(cursor);
     }
 
+    /// Unblock input, clear window listening flags, and restore the default cursor.
     pub fn reset(&self) {
         Self::get().reset();
     }

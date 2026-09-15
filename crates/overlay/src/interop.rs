@@ -18,12 +18,10 @@ use windows::{
     core::Interface,
 };
 
-/// Direct3D 11 device for storing and sharing overlay texture with other graphics backend.
+/// A D3D11 device for sharing overlay textures with graphics backends.
 #[non_exhaustive]
 pub struct DxInterop {
-    /// This is the GPU adapter used by the surface.
-    /// Overlay surface texture must be created with this GPU.
-    /// Otherwise, surface cannot be rendered.
+    /// The GPU adapter on which overlay textures must be created.
     pub gpu_id: GpuLuid,
 
     /// Interop Direct3D 11 device.
@@ -34,9 +32,8 @@ pub struct DxInterop {
 }
 
 impl DxInterop {
-    /// Create new [`DxInterop`].
-    /// * If `adapter` is provided, it will use provided GPU adapter.
-    /// * If `adapter` it not provided, it will use system provided GPU adapter.
+    /// Create a BGRA-capable D3D11 device on the supplied adapter or the default
+    /// hardware GPU.
     pub fn new(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
         unsafe {
             let mut device = None;

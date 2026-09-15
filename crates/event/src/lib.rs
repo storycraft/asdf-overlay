@@ -100,6 +100,7 @@ pub enum SurfaceType {
 }
 
 impl SurfaceType {
+    /// Return the associated window ID, if any.
     pub fn window_id(self) -> Option<u32> {
         match self {
             SurfaceType::Opengl { window_id } => Some(window_id),

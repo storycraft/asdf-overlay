@@ -1,7 +1,4 @@
-//! Library for attaching `asdf-overlay` to a process and initiating IPC channel.
-//!
-//! By utilizing this library, you can render overlay from any process and control it via IPC.
-//! It's designed to give you maximum flexibility as you can keep most of the logic in this process.
+//! Attach overlays to another process and control them through IPC.
 //!
 //! # Example
 //! ```no_run
@@ -14,7 +11,7 @@
 //!     let dll = OverlayDll {
 //!         x64: Some(Path::new("asdf-overlay-x64.dll")),
 //!         x86: Some(Path::new("asdf-overlay-x86.dll")),
-//!         x86: Some(Path::new("asdf-overlay-arm64.dll")),
+//!         arm64: Some(Path::new("asdf-overlay-arm64.dll")),
 //!     };
 //!
 //!    let (mut conn, mut events) = inject(
@@ -27,7 +24,7 @@
 //!
 //!   Ok(())
 //! }
-//!
+//! ```
 
 pub mod client;
 mod injector;
@@ -43,7 +40,10 @@ use tokio::{net::windows::named_pipe::ClientOptions, select, time::sleep};
 
 use crate::client::{IpcClientConn, IpcClientEventStream};
 
-/// Paths to overlay DLLs for different architectures.
+/// Overlay DLL paths by target architecture.
+///
+/// Provide an absolute path accessible to the target process for each architecture
+/// you intend to inject into.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OverlayDll<'a> {
     /// Path to DLL to be used for x64 applications.
@@ -56,10 +56,14 @@ pub struct OverlayDll<'a> {
     pub arm64: Option<&'a Path>,
 }
 
-/// Inject overlay DLL into target process and create IPC connection.
-/// * If you didn't supply DLL path for the target architecture, it will return an error.
-/// * If injection or IPC connection fails, it will return an error.
-/// * If timeout is `None`, it may wait indefinitely.
+/// Load the matching overlay DLL into `pid` and connect to it.
+///
+/// Injection blocks the calling thread. The timeout applies separately to injection
+/// and connection setup; it is not an overall deadline. [`None`] waits indefinitely.
+///
+/// Returns an error if the architecture pair is unsupported, the matching DLL path
+/// is missing, or injection or connection fails. Connecting is attempted once.
+/// Failure or cancellation does not unload an injected DLL.
 pub async fn inject(
     pid: u32,
     dll: OverlayDll<'_>,
