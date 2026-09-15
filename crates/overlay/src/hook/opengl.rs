@@ -141,7 +141,7 @@ fn draw_overlay(hdc: HDC) {
 
             let position = state.position();
             let screen = state.size();
-            if state.texture.take_update() {
+            if renderer.texture_generation.take_update(&state.texture) {
                 renderer
                     .update_texture(
                         &state.interop.device,

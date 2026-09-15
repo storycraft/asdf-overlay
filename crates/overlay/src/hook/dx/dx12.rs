@@ -101,7 +101,7 @@ pub fn draw_overlay(
     let screen = state.size();
     with_or_init_renderer_data(swapchain, move |data| {
         trace!("Using Direct3D12 renderer");
-        if state.texture.take_update() {
+        if data.renderer.texture_generation.take_update(&state.texture) {
             data.renderer
                 .update_texture(device, state.texture.get().as_ref())
                 .context("updating renderer texture")?;

@@ -3,7 +3,7 @@
 //! Release keyed mutexes at key zero before rendering. Without a keyed mutex,
 //! flush texture changes manually.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Context;
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -107,14 +107,14 @@ impl Drop for OverlaySurface {
 
 pub struct OverlayTextureSlot {
     inner: RwLock<Option<OverlaySurface>>,
-    updated: AtomicBool,
+    generation: AtomicU64,
 }
 
 impl OverlayTextureSlot {
     pub(crate) const fn new() -> Self {
         Self {
             inner: RwLock::new(None),
-            updated: AtomicBool::new(true),
+            generation: AtomicU64::new(1),
         }
     }
 
@@ -123,10 +123,17 @@ impl OverlayTextureSlot {
         self.inner.read()
     }
 
+    /// Mark the current texture as changed, so every renderer uploads it again.
     #[inline]
     /// Mark the slot changed for renderers without modifying texture contents.
     pub fn invalidate(&self) {
-        self.updated.store(true, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    /// Current texture generation, bumped on every change.
+    #[inline]
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     pub(super) fn update(
@@ -134,22 +141,51 @@ impl OverlayTextureSlot {
         device: &ID3D11Device,
         handle: Option<SharedTextureHandle>,
     ) -> anyhow::Result<()> {
-        self.updated.store(true, Ordering::Relaxed);
         let Some(handle) = handle else {
             *self.inner.write() = None;
+            self.generation.fetch_add(1, Ordering::Release);
             return Ok(());
         };
 
-        *self.inner.write() = Some(OverlaySurface::open(device, handle)?);
+        let surface = OverlaySurface::open(device, handle)?;
+        *self.inner.write() = Some(surface);
+        // Bump after the texture is in place, so a renderer that observes the new
+        // generation is guaranteed to read the texture that goes with it.
+        self.generation.fetch_add(1, Ordering::Release);
         Ok(())
     }
+}
 
+/// Tracks the texture generation a single renderer has uploaded.
+///
+/// A renderer cannot re-read the texture it already holds, so the slot cannot simply
+/// clear a shared "updated" flag: the first renderer to draw would consume the update
+/// and every other renderer of the same surface would miss it. Keeping the last
+/// uploaded generation per renderer also means a renderer recreated from scratch
+/// starts at zero and uploads again, instead of drawing nothing until the client
+/// happens to commit a new texture.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TextureGeneration(u64);
+
+impl TextureGeneration {
     #[inline]
-    /// Return and clear the pending slot-change flag.
+    pub const fn new() -> Self {
+        Self(0)
+    }
+
+    /// Return whether `slot` holds a texture this renderer has not uploaded yet,
+    /// recording it as uploaded.
     ///
-    /// Only one concurrent caller observes each pending change. This does not indicate
-    /// GPU completion.
-    pub fn take_update(&self) -> bool {
-        self.updated.swap(false, Ordering::Relaxed)
+    /// Unlike a shared flag, every renderer of the same surface observes the change.
+    /// This does not indicate GPU completion.
+    #[inline]
+    pub fn take_update(&mut self, slot: &OverlayTextureSlot) -> bool {
+        let generation = slot.generation();
+        if self.0 == generation {
+            return false;
+        }
+
+        self.0 = generation;
+        true
     }
 }
