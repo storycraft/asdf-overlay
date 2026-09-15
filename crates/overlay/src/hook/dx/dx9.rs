@@ -166,6 +166,29 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> a
                 }
             }
 
+            // A Direct3D9 game can resize its render target without ever calling
+            // `Reset`, by recreating an additional swapchain. `Reset` also reports the
+            // device's implicit swapchain, which such a game leaves as a dummy, so its
+            // size is not usable either. Take the size from the swapchain actually
+            // being presented, and report a change like `Reset` does.
+            let mut present_params = D3DPRESENT_PARAMETERS::default();
+            if unsafe { swapchain.GetPresentParameters(&mut present_params) }.is_ok() {
+                let size = (
+                    present_params.BackBufferWidth,
+                    present_params.BackBufferHeight,
+                );
+                if size.0 != 0 && size.1 != 0 && size != state.size() {
+                    state.resize(size.0, size.1);
+                    OverlayEventSink::emit(Event::Surface {
+                        id,
+                        event: SurfaceEvent::Resized {
+                            width: size.0,
+                            height: size.1,
+                        },
+                    });
+                }
+            }
+
             let position = state.position();
             let screen = state.size();
             with_or_init_renderer(device, |renderer| {
