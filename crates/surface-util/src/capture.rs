@@ -102,7 +102,8 @@ impl D3DCapturePool {
             item.Size()?,
         )?;
 
-        let surface = Mutex::new(OverlaySurface::<2>::new_with_device(device, cx));
+        // There is no overlay server to ask here, so keep the keyed mutex.
+        let surface = Mutex::new(OverlaySurface::<2>::new_with_device(device, cx, true));
         pool.FrameArrived(&TypedEventHandler::new(
             move |sender: Ref<Direct3D11CaptureFramePool>, _| {
                 let Some(update) = Self::frame_handler(sender.ok()?, &mut surface.lock().unwrap())?

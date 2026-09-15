@@ -8,6 +8,11 @@ pub struct SurfaceInfo {
 
     /// GPU LUID of the surface.
     pub gpu_id: GpuLuid,
+
+    /// Whether the overlay surface can be shared with a keyed mutex.
+    ///
+    /// Pass this to `OverlaySurface`.
+    pub keyed_mutex: bool,
 }
 
 impl From<common::event::surface::SurfaceInfo> for SurfaceInfo {
@@ -15,6 +20,7 @@ impl From<common::event::surface::SurfaceInfo> for SurfaceInfo {
         Self {
             ty: SurfaceType::from(v.api),
             gpu_id: GpuLuid::from(v.gpu_id),
+            keyed_mutex: v.keyed_mutex,
         }
     }
 }

@@ -1,7 +1,7 @@
 mod rtv;
 mod util;
 
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use parking_lot::Once;
 pub use util::original_execute_command_lists;
 
@@ -143,14 +143,10 @@ pub(super) fn setup_fn(
     } else {
         Some(desc.OutputWindow.0 as u32)
     };
-    let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D12 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D12 { window_id },
     )
 }
 

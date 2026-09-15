@@ -27,10 +27,12 @@ impl OverlaySurface {
     /// Create a surface on the adapter matching the LUID.
     ///
     /// Uses the default hardware GPU if the LUID is omitted or not found.
+    ///
+    /// Pass `keyed_mutex` as `SurfaceInfo` reported it. Defaults to `true`.
     #[napi(constructor)]
-    pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
+    pub fn new(luid: Option<GpuLuid>, keyed_mutex: Option<bool>) -> anyhow::Result<Self> {
         let adapter = luid.map(create_adapter_by_luid).transpose()?;
-        let surface = surface::OverlaySurface::new(adapter.as_ref())?;
+        let surface = surface::OverlaySurface::new(adapter.as_ref(), keyed_mutex.unwrap_or(true))?;
         Ok(Self(surface))
     }
 

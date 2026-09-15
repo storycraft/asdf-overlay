@@ -9,7 +9,7 @@ use core::{
 use std::{collections::HashSet, ffi::CString};
 
 use anyhow::{Context, bail};
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -190,16 +190,12 @@ fn setup_fn(hdc: HDC) -> anyhow::Result<SurfaceState> {
     let hwnd = unsafe { WindowFromDC(hdc) };
     let size = get_client_size(hwnd).unwrap_or_default();
     let interop = DxInterop::new(get_dxgi_adapter().as_ref())?;
-    let gpu_id = interop.gpu_id;
 
     SurfaceState::new(
         interop,
         size,
-        SurfaceInfo {
-            api: SurfaceType::Opengl {
-                window_id: hwnd.0 as _,
-            },
-            gpu_id,
+        SurfaceType::Opengl {
+            window_id: hwnd.0 as _,
         },
     )
 }

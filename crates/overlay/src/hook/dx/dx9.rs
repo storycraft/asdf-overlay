@@ -2,7 +2,7 @@ use core::{ffi::c_void, ptr};
 use std::thread;
 
 use anyhow::Context;
-use asdf_overlay_event::{Event, SurfaceEvent, SurfaceInfo, SurfaceType};
+use asdf_overlay_event::{Event, SurfaceEvent, SurfaceType};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -253,17 +253,13 @@ fn setup_fn(
     };
 
     let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
-    let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
         (
             present_params.BackBufferWidth,
             present_params.BackBufferHeight,
         ),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D9 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D9 { window_id },
     )
 }
 
