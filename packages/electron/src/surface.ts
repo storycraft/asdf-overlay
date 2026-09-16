@@ -30,6 +30,7 @@ export class ElectronOverlaySurface {
   private constructor(
     private readonly surface: OverlaySurface,
     private readonly contents: WebContents,
+    private readonly autoClose: boolean,
   ) {
     this.inner = new CoreOverlaySurface(surface.info.gpuId);
 
@@ -52,12 +53,17 @@ export class ElectronOverlaySurface {
 
   /**
    * Connect Electron `WebContents` surface to target overlay window.
+   *
+   * Set `autoClose` to `false` to keep the shared texture of each paint alive after
+   * copying, and release it yourself. Required when more than one surface is connected
+   * to the same `WebContents`, since the texture is shared between their handlers.
    */
   static connect(
     surface: OverlaySurface,
     contents: WebContents,
+    autoClose = true,
   ): ElectronOverlaySurface {
-    return new ElectronOverlaySurface({ ...surface }, contents);
+    return new ElectronOverlaySurface({ ...surface }, contents, autoClose);
   }
 
   /**
@@ -93,7 +99,9 @@ export class ElectronOverlaySurface {
         },
       );
     } finally {
-      texture.release();
+      if (this.autoClose) {
+        texture.release();
+      }
     }
   }
 
