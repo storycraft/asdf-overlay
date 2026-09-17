@@ -26,7 +26,8 @@ pub struct OverlaySurface(surface::OverlaySurface);
 impl OverlaySurface {
     /// Create a surface on the adapter matching the LUID.
     ///
-    /// Uses the default hardware GPU if the LUID is omitted or not found.
+    /// Uses the default hardware GPU when the LUID is omitted, and fails when it names
+    /// an adapter that does not exist.
     ///
     /// Pass `keyed_mutex` as `SurfaceInfo` reported it. Defaults to `true`.
     #[napi(constructor)]
