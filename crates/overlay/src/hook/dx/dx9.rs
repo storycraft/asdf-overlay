@@ -194,10 +194,10 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> a
                     .context("updating renderer texture")?;
 
                 unsafe { device.BeginScene() }.context("BeginScene failed")?;
-                renderer.draw(device, position, screen)?;
+                let res = renderer.draw(device, position, screen);
                 unsafe { device.EndScene() }.context("EndScene failed")?;
 
-                Ok(())
+                res
             })
         },
     )
