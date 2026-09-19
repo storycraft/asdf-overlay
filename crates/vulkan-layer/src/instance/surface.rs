@@ -56,8 +56,9 @@ pub(super) extern "system" fn destroy_surface(
             .destroy_surface
             .unwrap())(instance, surface, callback);
     }
-    info!("vulkan surface cleanup");
 
-    SURFACE_MAP.remove(&surface.as_raw());
     Surfaces::cleanup_state(surface.as_raw());
+    SURFACE_MAP.remove(&surface.as_raw());
+
+    info!("vulkan surface cleanup");
 }

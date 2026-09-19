@@ -71,7 +71,10 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx11Renderer::new(&device)?,
                 state,
             });
-            register_swapchain_destruction_callback(swapchain, cleanup_swapchain);
+            register_swapchain_destruction_callback(swapchain, {
+                let swapchain = swapchain.as_raw() as usize;
+                move || cleanup_swapchain(swapchain)
+            });
 
             ref_mut
         }
@@ -152,10 +155,10 @@ pub(super) fn setup_fn(
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D11 renderer cleanup");
-
-    Surfaces::cleanup_state(swapchain as _);
 }
