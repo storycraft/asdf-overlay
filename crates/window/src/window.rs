@@ -47,9 +47,17 @@ impl WindowProcState {
             let res = unsafe {
                 let hwnd = HWND(id as _);
                 let original_proc = if IsWindowUnicode(hwnd).as_bool() {
-                    SetWindowLongPtrW(hwnd, GWLP_WNDPROC, hooked_wnd_proc::<true> as *const () as _)
+                    SetWindowLongPtrW(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<true> as *const () as _,
+                    )
                 } else {
-                    SetWindowLongPtrA(hwnd, GWLP_WNDPROC, hooked_wnd_proc::<false> as *const () as _)
+                    SetWindowLongPtrA(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<false> as *const () as _,
+                    )
                 } as isize;
 
                 mem::transmute::<isize, WNDPROC>(original_proc)
