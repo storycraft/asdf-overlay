@@ -136,15 +136,13 @@ impl OverlayTextureSlot {
     ) -> anyhow::Result<()> {
         let Some(handle) = handle else {
             *self.inner.write() = None;
-            self.generation.fetch_add(1, Ordering::Release);
+            self.invalidate();
             return Ok(());
         };
 
         let surface = OverlaySurface::open(device, handle)?;
         *self.inner.write() = Some(surface);
-        // Bump after the texture is in place so a renderer observing the new
-        // generation reads the texture that goes with it.
-        self.generation.fetch_add(1, Ordering::Release);
+        self.invalidate();
         Ok(())
     }
 

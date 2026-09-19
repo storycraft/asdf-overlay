@@ -103,11 +103,5 @@ pub(super) extern "system" fn destroy_swapchain(
 }
 
 fn cleanup_swapchain(swapchain: vk::SwapchainKHR) {
-    let Some((_, data)) = SWAPCHAIN_MAP.remove(&swapchain.as_raw()) else {
-        return;
-    };
-
-    Surfaces::state(data.surface.as_raw(), |state| {
-        state.texture.invalidate();
-    });
+    SWAPCHAIN_MAP.remove(&swapchain.as_raw());
 }
