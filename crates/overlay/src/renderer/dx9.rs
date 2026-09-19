@@ -51,7 +51,6 @@ pub struct Dx9Renderer {
 
     texture: Option<Dx9Texture>,
     vertex_buffer: IDirect3DVertexBuffer9,
-    state_block: IDirect3DStateBlock9,
 }
 
 impl Dx9Renderer {
@@ -68,16 +67,18 @@ impl Dx9Renderer {
                 0 as _,
             )?;
             let vertex_buffer = vertex_buffer.unwrap();
-            let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
 
             Ok(Self {
                 size: (0, 0),
 
                 texture: None,
                 vertex_buffer,
-                state_block,
             })
         }
+    }
+
+    pub fn reference_count(&self) -> u32 {
+        1 + self.texture.is_some() as u32
     }
 
     #[inline]
@@ -206,12 +207,6 @@ impl Dx9Renderer {
         };
 
         unsafe {
-            let state_block = &self.state_block;
-            state_block.Capture()?;
-            defer!({
-                _ = state_block.Apply();
-            });
-
             let mut buf = ptr::null_mut();
             self.vertex_buffer.Lock(
                 0,
