@@ -5,18 +5,18 @@
 
 #[cfg(feature = "dll")]
 pub mod dll;
+
 mod event;
 pub mod prelude;
 pub mod runner;
 mod state;
+mod window;
 
 use std::sync::Arc;
 
 use asdf_overlay_event::SurfaceInfo;
 use asdf_overlay_window::Backends;
 use egui::{Context, Ui, Visuals};
-
-use crate::state::SurfaceState;
 
 /// Application callbacks invoked by the overlay runner.
 pub trait App {
@@ -54,7 +54,7 @@ pub struct CreationContext {
 #[non_exhaustive]
 pub struct OverlayContext {
     pub(crate) windows: Arc<Backends>,
-    pub(crate) surface: SurfaceState,
+    pub(crate) info: SurfaceInfo,
 }
 
 impl OverlayContext {
@@ -70,6 +70,6 @@ impl OverlayContext {
 
     /// Return metadata for the selected surface.
     pub fn surface_info(&self) -> &SurfaceInfo {
-        &self.surface.info
+        &self.info
     }
 }

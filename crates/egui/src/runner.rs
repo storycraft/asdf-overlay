@@ -3,20 +3,15 @@ use std::{sync::Arc, time::Instant};
 
 use anyhow::Context as _;
 use asdf_overlay::event_sink::OverlayEventSink;
-use asdf_overlay_event::SurfaceEvent;
+use asdf_overlay_event::{SurfaceEvent, SurfaceInfo};
 use asdf_overlay_window::{Backends, window::ListenInputFlags};
-use asdf_overlay_window_event::{
-    WindowEvent,
-    input::{
-        CursorAction, CursorEvent, CursorInput, CursorInputState, Ime, InputEvent, Key,
-        KeyInputState, KeyboardInput, ScrollAxis,
-    },
-};
-use egui::{Context, ImeEvent, Modifiers, MouseWheelUnit, PointerButton, RawInput, TouchPhase};
+use egui::{Context, RawInput};
 use egui_directx11::split_output;
 use flume::{Receiver, Sender};
 
-use crate::{App, CreationContext, OverlayContext, event::Event, state::SurfaceState};
+use crate::{
+    App, CreationContext, OverlayContext, event::Event, state::State, window::window_event,
+};
 
 /// Initialize the overlay and run the application.
 ///
@@ -72,48 +67,54 @@ async fn inner(
         }
     });
 
-    let surface = next_main_surface(&mut rx)
+    let surface = main_surface(&mut rx)
         .await
         .context("waiting for main surface")?;
-    init_windows(&windows);
-    egui_cx.request_repaint();
+    let mut state = State::new(egui_cx, surface.info, surface.width, surface.height)
+        .context("creating state")?;
+    state.commit_to_surface(surface.id);
 
-    let mut cx = OverlayContext { windows, surface };
+    init_windows(&windows);
+
+    let mut cx = OverlayContext {
+        windows,
+        info: surface.info,
+    };
     let mut input = RawInput {
-        viewport_id: egui_cx.viewport_id(),
+        viewport_id: state.egui_cx.viewport_id(),
         screen_rect: Some(egui::Rect {
             min: (0.0, 0.0).into(),
-            max: (cx.surface.width as f32, cx.surface.height as f32).into(),
+            max: (surface.width as f32, surface.height as f32).into(),
         }),
         focused: true,
-        modifiers: egui_cx.input(|state| state.modifiers),
         ..RawInput::default()
     };
+    let mut surface = Some(surface);
 
     let start = Instant::now();
     while let Ok(event) = rx.recv_async().await {
         match event {
             Event::Overlay(event) => {
-                overlay_event(&egui_cx, &mut rx, &mut cx.surface, &mut input, event)
+                overlay_event(&mut cx, &mut surface, &mut state, &mut input, event)
                     .await
                     .context("handling overlay event")?
             }
 
             Event::Window(event) => match event {
                 asdf_overlay_window_event::Event::Window { id, event } => {
-                    window_event(&egui_cx, &cx, &mut input, id, event)
+                    window_event(&state.egui_cx, &cx, &mut input, id, event)
                         .await
                         .context("handling window event")?
                 }
 
                 asdf_overlay_window_event::Event::InputBlockingEnded => {
                     app.on_input_blocking_ended();
-                    egui_cx.request_repaint();
+                    state.egui_cx.request_repaint();
                 }
             },
 
             Event::RequestRepaint(info) => {
-                let cumulative_pass_nr = egui_cx.cumulative_pass_nr();
+                let cumulative_pass_nr = state.egui_cx.cumulative_pass_nr();
                 if info.current_cumulative_pass_nr != cumulative_pass_nr
                     && info.current_cumulative_pass_nr + 1 != cumulative_pass_nr
                 {
@@ -121,15 +122,15 @@ async fn inner(
                 }
                 input.time = Some(start.elapsed().as_secs_f64());
 
-                app.logic(&egui_cx, &cx);
-                let output = egui_cx.run_ui(input.take(), |ui| {
+                app.logic(&state.egui_cx, &cx);
+                let output = state.egui_cx.run_ui(input.take(), |ui| {
                     app.ui(ui, &cx);
                 });
 
-                let clear_color = app.clear_color(&egui_cx.global_style().visuals);
+                let clear_color = app.clear_color(&state.egui_cx.global_style().visuals);
                 let (renderer_output, _, _) = split_output(output);
-                cx.surface
-                    .render(&egui_cx, renderer_output, clear_color)
+                state
+                    .render(renderer_output, clear_color)
                     .context("rendering failed")?;
             }
         }
@@ -145,170 +146,82 @@ fn init_windows(window: &Backends) {
     }
 }
 
-async fn window_event(
-    egui_cx: &Context,
-    cx: &OverlayContext,
-    raw_input: &mut RawInput,
-    id: u32,
-    event: WindowEvent,
-) -> anyhow::Result<()> {
-    match event {
-        WindowEvent::Added { .. } => {
-            cx.windows.window(id, |state| {
-                state.set_input_flags(ListenInputFlags::all());
-            });
-        }
-
-        WindowEvent::Input(event) => {
-            match event {
-                InputEvent::Cursor(input) => handle_cursor_input(raw_input, input),
-                InputEvent::Keyboard(input) => handle_keyboard_input(raw_input, input),
-            }
-            egui_cx.request_repaint();
-        }
-
-        _ => {}
-    }
-
-    Ok(())
-}
-
-fn handle_cursor_input(raw_input: &mut RawInput, input: CursorInput) {
-    let inputs = &mut raw_input.events;
-
-    match input.event {
-        CursorEvent::Move => {
-            inputs.push(egui::Event::PointerMoved(
-                (input.pos.x as f32, input.pos.y as f32).into(),
-            ));
-        }
-
-        CursorEvent::Leave => inputs.push(egui::Event::PointerGone),
-
-        CursorEvent::Action { state, action } => {
-            inputs.push(egui::Event::PointerButton {
-                pos: (input.pos.x as f32, input.pos.y as f32).into(),
-                button: match action {
-                    CursorAction::Left => PointerButton::Primary,
-                    CursorAction::Right => PointerButton::Secondary,
-                    CursorAction::Middle => PointerButton::Middle,
-                    CursorAction::Back => PointerButton::Extra1,
-                    CursorAction::Forward => PointerButton::Extra2,
-                },
-                pressed: matches!(state, CursorInputState::Pressed { .. }),
-                modifiers: raw_input.modifiers,
-            });
-        }
-
-        CursorEvent::Scroll { axis, delta } => inputs.push(egui::Event::MouseWheel {
-            unit: MouseWheelUnit::Point,
-            delta: match axis {
-                ScrollAxis::X => (delta as f32, 0.0).into(),
-                ScrollAxis::Y => (0.0, delta as f32).into(),
-            },
-            phase: TouchPhase::Move,
-            modifiers: raw_input.modifiers,
-        }),
-
-        _ => {}
-    }
-}
-
-fn handle_keyboard_input(raw: &mut RawInput, input: KeyboardInput) {
-    let inputs = &mut raw.events;
-
-    match input {
-        KeyboardInput::Key { key, state } => {
-            let Some(key) = conv_key(key) else {
-                return;
-            };
-
-            let pressed = state == KeyInputState::Pressed;
-            update_modifiers(&mut raw.modifiers, key, pressed);
-
-            inputs.push(egui::Event::Key {
-                key,
-                physical_key: Some(key),
-                pressed,
-                repeat: false,
-                modifiers: raw.modifiers,
-            });
-        }
-
-        KeyboardInput::Char(ch) => {
-            if ch.is_ascii_control() {
-                return;
-            }
-
-            inputs.push(egui::Event::Text(ch.to_string()))
-        }
-
-        KeyboardInput::Ime(ime) => match ime {
-            Ime::Compose { text, caret } => {
-                let range = caret..text.chars().count();
-                inputs.push(egui::Event::Ime(ImeEvent::Preedit {
-                    text,
-                    active_range_chars: Some(range),
-                }));
-            }
-
-            Ime::Commit(text) => {
-                inputs.push(egui::Event::Ime(ImeEvent::Commit(text)));
-            }
-
-            _ => {}
-        },
-    }
-}
-
-fn update_modifiers(modifiers: &mut Modifiers, key: egui::Key, pressed: bool) {
-    match key {
-        egui::Key::ShiftLeft | egui::Key::ShiftRight => modifiers.shift = pressed,
-        egui::Key::ControlLeft | egui::Key::ControlRight => modifiers.ctrl = pressed,
-        egui::Key::AltLeft | egui::Key::AltRight => modifiers.alt = pressed,
-        egui::Key::SuperLeft | egui::Key::SuperRight => modifiers.command = pressed,
-
-        _ => {}
-    }
-}
-
 async fn overlay_event(
-    cx: &Context,
-    rx: &mut Receiver<Event>,
-    surface: &mut SurfaceState,
+    cx: &mut OverlayContext,
+    surface: &mut Option<Surface>,
+    state: &mut State,
     input: &mut RawInput,
     event: asdf_overlay_event::Event,
 ) -> anyhow::Result<()> {
     let asdf_overlay_event::Event::Surface { id, event } = event;
-    if id != surface.id {
-        return Ok(());
-    }
 
     match event {
-        SurfaceEvent::Resized { width, height } => {
-            surface.resize(width, height);
+        SurfaceEvent::Added {
+            width,
+            height,
+            info,
+        } => {
+            if surface.is_some() {
+                return Ok(());
+            }
+
             input.screen_rect = Some(egui::Rect {
                 min: (0.0, 0.0).into(),
                 max: (width as f32, height as f32).into(),
             });
+            state.resize(width, height);
+            state.commit_to_surface(id);
 
-            cx.request_repaint();
+            cx.info = info;
+            *surface = Some(Surface {
+                id,
+                width,
+                height,
+                info,
+            });
+        }
+
+        SurfaceEvent::Resized { width, height } => {
+            let Some(inner) = surface.as_ref() else {
+                return Ok(());
+            };
+
+            if id != inner.id {
+                return Ok(());
+            }
+
+            state.resize(width, height);
+            input.screen_rect = Some(egui::Rect {
+                min: (0.0, 0.0).into(),
+                max: (width as f32, height as f32).into(),
+            });
         }
 
         SurfaceEvent::Destroyed => {
-            *surface = next_main_surface(rx)
-                .await
-                .context("waiting for main surface")?;
+            let Some(inner) = surface.as_ref() else {
+                return Ok(());
+            };
 
-            cx.request_repaint();
+            if id != inner.id {
+                return Ok(());
+            }
+
+            *surface = None;
         }
-        _ => {}
     }
 
     Ok(())
 }
 
-async fn next_main_surface(rx: &mut Receiver<Event>) -> anyhow::Result<SurfaceState> {
+#[derive(Clone, Copy)]
+struct Surface {
+    id: u64,
+    width: u32,
+    height: u32,
+    info: SurfaceInfo,
+}
+
+async fn main_surface(rx: &mut Receiver<Event>) -> anyhow::Result<Surface> {
     while let Ok(event) = rx.recv_async().await {
         let Event::Overlay(asdf_overlay_event::Event::Surface { id, event }) = event else {
             continue;
@@ -323,140 +236,13 @@ async fn next_main_surface(rx: &mut Receiver<Event>) -> anyhow::Result<SurfaceSt
             continue;
         };
 
-        return SurfaceState::new(id, info, width, height);
+        return Ok(Surface {
+            id,
+            width,
+            height,
+            info,
+        });
     }
 
     anyhow::bail!("surface not found");
-}
-
-fn conv_key(key: Key) -> Option<egui::Key> {
-    Some(match key.code.get() {
-        8 => egui::Key::Backspace,
-        9 => egui::Key::Tab,
-        13 => egui::Key::Enter,
-        16 => {
-            if key.extended {
-                egui::Key::ShiftRight
-            } else {
-                egui::Key::ShiftLeft
-            }
-        }
-        17 => {
-            if key.extended {
-                egui::Key::ControlRight
-            } else {
-                egui::Key::ControlLeft
-            }
-        }
-        18 => {
-            if key.extended {
-                egui::Key::AltRight
-            } else {
-                egui::Key::AltLeft
-            }
-        }
-        27 => egui::Key::Escape,
-        32 => egui::Key::Space,
-        33 => egui::Key::PageUp,
-        34 => egui::Key::PageDown,
-        35 => egui::Key::End,
-        36 => egui::Key::Home,
-        37 => egui::Key::ArrowLeft,
-        38 => egui::Key::ArrowUp,
-        39 => egui::Key::ArrowRight,
-        45 => egui::Key::Insert,
-        46 => egui::Key::Delete,
-        48 => egui::Key::Num0,
-        49 => egui::Key::Num1,
-        50 => egui::Key::Num2,
-        51 => egui::Key::Num3,
-        52 => egui::Key::Num4,
-        53 => egui::Key::Num5,
-        54 => egui::Key::Num6,
-        55 => egui::Key::Num7,
-        56 => egui::Key::Num8,
-        57 => egui::Key::Num9,
-        65 => egui::Key::A,
-        66 => egui::Key::B,
-        67 => egui::Key::C,
-        68 => egui::Key::D,
-        69 => egui::Key::E,
-        70 => egui::Key::F,
-        71 => egui::Key::G,
-        72 => egui::Key::H,
-        73 => egui::Key::I,
-        74 => egui::Key::J,
-        75 => egui::Key::K,
-        76 => egui::Key::L,
-        77 => egui::Key::M,
-        78 => egui::Key::N,
-        79 => egui::Key::O,
-        80 => egui::Key::P,
-        81 => egui::Key::Q,
-        82 => egui::Key::R,
-        83 => egui::Key::S,
-        84 => egui::Key::T,
-        85 => egui::Key::U,
-        86 => egui::Key::V,
-        87 => egui::Key::W,
-        88 => egui::Key::X,
-        89 => egui::Key::Y,
-        90 => egui::Key::Z,
-        91 => egui::Key::SuperLeft,
-        92 => egui::Key::SuperRight,
-        96 => egui::Key::Num0,
-        97 => egui::Key::Num1,
-        98 => egui::Key::Num2,
-        99 => egui::Key::Num3,
-        100 => egui::Key::Num4,
-        101 => egui::Key::Num5,
-        102 => egui::Key::Num6,
-        103 => egui::Key::Num7,
-        104 => egui::Key::Num8,
-        105 => egui::Key::Num9,
-        106 => egui::Key::Delete,
-        108 => egui::Key::Minus,
-        109 => egui::Key::Minus,
-        110 => egui::Key::Period,
-        111 => egui::Key::Slash,
-        112 => egui::Key::F1,
-        113 => egui::Key::F2,
-        114 => egui::Key::F3,
-        115 => egui::Key::F4,
-        116 => egui::Key::F5,
-        117 => egui::Key::F6,
-        118 => egui::Key::F7,
-        119 => egui::Key::F8,
-        120 => egui::Key::F9,
-        121 => egui::Key::F10,
-        122 => egui::Key::F11,
-        123 => egui::Key::F12,
-        124 => egui::Key::F13,
-        125 => egui::Key::F14,
-        126 => egui::Key::F15,
-        127 => egui::Key::F16,
-        128 => egui::Key::F17,
-        129 => egui::Key::F18,
-        130 => egui::Key::F19,
-        131 => egui::Key::F20,
-        132 => egui::Key::F21,
-        133 => egui::Key::F22,
-        134 => egui::Key::F23,
-        135 => egui::Key::F24,
-        186 => egui::Key::Semicolon,
-        187 => egui::Key::Equals,
-        188 => egui::Key::Comma,
-        189 => egui::Key::Minus,
-        190 => egui::Key::Period,
-        191 => egui::Key::Slash,
-        192 => egui::Key::Backtick,
-        219 => egui::Key::OpenCurlyBracket,
-        220 => egui::Key::Backslash,
-        221 => egui::Key::CloseCurlyBracket,
-        222 => egui::Key::Quote,
-        225 => egui::Key::AltRight,
-
-        // Unknown key code
-        _ => return None,
-    })
 }
