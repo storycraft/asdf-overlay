@@ -6,7 +6,10 @@ use crate::{
         self,
         types::{GLint, GLuint},
     },
-    surface::{SharedTextureHandle, texture::OverlaySurface},
+    surface::{
+        SharedTextureHandle,
+        texture::{OverlaySurface, TextureGeneration},
+    },
     wgl,
 };
 use anyhow::{Context, bail};
@@ -28,6 +31,8 @@ static VERTEX_SHADER: &str = include_str!("opengl/shaders/texture.vert");
 static FRAGMENT_SHADER: &str = include_str!("opengl/shaders/texture.frag");
 
 pub struct OpenglRenderer {
+    pub texture_generation: TextureGeneration,
+
     interop: Option<GlInteropTexture>,
     vao: GLuint,
     program: GLuint,
@@ -71,6 +76,8 @@ impl OpenglRenderer {
             gl::DeleteShader(frag_shader);
 
             Ok(Self {
+                texture_generation: TextureGeneration::new(),
+
                 interop: None,
                 vao,
                 program,

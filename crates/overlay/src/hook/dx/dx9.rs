@@ -1,21 +1,25 @@
-use core::{ffi::c_void, ptr};
-use std::thread;
+mod callback;
+
+use core::{cell::Cell, ffi::c_void, ptr};
 
 use anyhow::Context;
+
 use asdf_overlay_event::{Event, SurfaceEvent, SurfaceType};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
+use scopeguard::defer;
 use tracing::{Level, debug, error, info, trace};
 use windows::{
     Win32::{
         Foundation::{HWND, LUID, RECT},
         Graphics::{
             Direct3D9::{
-                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DCREATE_HARDWARE_VERTEXPROCESSING,
-                D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL, D3DDISPLAYMODEEX,
-                D3DPRESENT_PARAMETERS, D3DSWAPEFFECT_DISCARD, Direct3DCreate9Ex, IDirect3D9Ex,
-                IDirect3DDevice9, IDirect3DSwapChain9,
+                D3D_SDK_VERSION, D3DADAPTER_DEFAULT, D3DBACKBUFFER_TYPE_MONO,
+                D3DCREATE_HARDWARE_VERTEXPROCESSING, D3DDEVICE_CREATION_PARAMETERS, D3DDEVTYPE_HAL,
+                D3DDISPLAYMODEEX, D3DPRESENT_PARAMETERS, D3DSBT_ALL, D3DSWAPEFFECT_DISCARD,
+                Direct3DCreate9Ex, IDirect3D9Ex, IDirect3DDevice9, IDirect3DDevice9Ex,
+                IDirect3DSurface9, IDirect3DSwapChain9,
             },
             Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
             Gdi::RGNDATA,
@@ -26,6 +30,7 @@ use windows::{
 
 use crate::{
     event_sink::OverlayEventSink,
+    hook::dx::dx9::callback::register_destruction_callback,
     interop::DxInterop,
     renderer::dx9::Dx9Renderer,
     surface::{SurfaceState, Surfaces},
@@ -33,23 +38,60 @@ use crate::{
     util::find_adapter_by_luid,
 };
 
-/// Mapping from [`IDirect3DDevice9`] to [`Dx9Renderer`].
-static RENDERERS: Lazy<IntDashMap<usize, Dx9Renderer>> = Lazy::new(IntDashMap::default);
+struct Data {
+    /// Implicit swapchain renderer key
+    main_surface: usize,
+
+    /// Mapping from [`IDirect3DSurface9`] to [`Renderer`]
+    renderers: IntDashMap<usize, Renderer>,
+}
+
+struct Renderer(Dx9Renderer);
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        info!("Direct3D9 renderer cleanup");
+    }
+}
+
+/// Mapping from [`IDirect3DDevice9`] to [`Data`]
+static MAP: Lazy<IntDashMap<usize, Data>> = Lazy::new(IntDashMap::default);
 
 #[inline]
 fn with_or_init_renderer<R>(
     device: &IDirect3DDevice9,
+    id: usize,
     f: impl FnOnce(&mut Dx9Renderer) -> anyhow::Result<R>,
 ) -> anyhow::Result<R> {
-    let mut data = match RENDERERS.entry(device.as_raw() as _) {
+    let key = device.as_raw() as usize;
+    let data = match MAP.get(&key) {
+        Some(data) => data,
+        None => MAP
+            .entry(key)
+            .or_try_insert_with(|| {
+                with_release_disabled(|_| {
+                    let main_surface =
+                        unsafe { device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO) }
+                            .context("getting main surface")?
+                            .as_raw() as usize;
+
+                    Ok::<_, anyhow::Error>(Data {
+                        main_surface,
+                        renderers: IntDashMap::default(),
+                    })
+                })
+            })?
+            .downgrade(),
+    };
+
+    let mut renderer = match data.renderers.entry(id) {
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
             info!("initializing dx9 renderer");
-            entry.insert(Dx9Renderer::new(device)?)
+            entry.insert(Renderer(Dx9Renderer::new(device)?))
         }
     };
-
-    f(&mut data)
+    f(&mut renderer.0)
 }
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -64,8 +106,7 @@ extern "system" fn hooked_present(
 
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        present(device, &swapchain);
+        present(device, None);
     }
 
     unsafe {
@@ -90,9 +131,20 @@ extern "system" fn hooked_swapchain_present(
 ) -> HRESULT {
     trace!("IDirect3DSwapChain9::Present called");
 
-    let swapchain = unsafe { IDirect3DSwapChain9::from_raw_borrowed(&this) }.unwrap();
-    let device = unsafe { swapchain.GetDevice() }.unwrap();
-    present(&device, swapchain);
+    if OverlayEventSink::connected() {
+        let swapchain = unsafe { IDirect3DSwapChain9::from_raw_borrowed(&this) }.unwrap();
+
+        // Swapchain still holds reference to device, release owned silently.
+        if let Ok(device) = unsafe { swapchain.GetDevice() } {
+            let device = device.into_raw();
+            let device = unsafe {
+                (HOOK.release.wait().original_fn())(device);
+                IDirect3DDevice9::from_raw_borrowed(&device).unwrap()
+            };
+
+            present(device, Some(swapchain));
+        }
+    }
 
     unsafe {
         HOOK.swapchain_present.wait().original_fn()(
@@ -106,19 +158,53 @@ extern "system" fn hooked_swapchain_present(
     }
 }
 
+fn release(device: usize, count: u32) -> Option<u32> {
+    if count == 0 {
+        MAP.remove(&device);
+        return None;
+    }
+
+    let renderer_device_count = {
+        let data = MAP.get(&device)?;
+        data.renderers.get(&data.main_surface)?.0.reference_count()
+    };
+    if count > renderer_device_count {
+        return Some(count - renderer_device_count);
+    }
+
+    MAP.remove(&device);
+    Some(0)
+}
+
+fn with_release_disabled<R>(f: impl FnOnce(bool) -> R) -> R {
+    thread_local! {
+        static ENABLED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    if ENABLED.get() {
+        return f(false);
+    }
+
+    ENABLED.set(true);
+    defer!({
+        ENABLED.set(false);
+    });
+    f(true)
+}
+
 #[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_release(this: *mut c_void) -> u32 {
     trace!("IDirect3DDevice9::Release called");
 
     let count = unsafe { HOOK.release.wait().original_fn()(this) };
 
-    // renderer includes refs from IDirect3DVertexBuffer9, IDirect3DStateBlock9 and optionally texture.
-    if count == 2 || count == 3 {
-        reset_renderer(this as _);
-        cleanup_renderer(this as _);
-    }
+    with_release_disabled(|locked| {
+        if !locked {
+            return count;
+        }
 
-    count
+        release(this as usize, count).unwrap_or(count)
+    })
 }
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -134,8 +220,7 @@ extern "system" fn hooked_present_ex(
 
     if OverlayEventSink::connected() {
         let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
-        let swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-        present(device, &swapchain);
+        present(device, None);
     }
 
     unsafe {
@@ -150,13 +235,21 @@ extern "system" fn hooked_present_ex(
     }
 }
 
-fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> anyhow::Result<()> {
-    // Use device pointer as key.
-    let id = device.as_raw() as u64;
+fn draw_overlay(
+    device: &IDirect3DDevice9,
+    swapchain: Option<&IDirect3DSwapChain9>,
+) -> anyhow::Result<()> {
+    let dx9_surface = unsafe {
+        match swapchain {
+            Some(swapchain) => swapchain.GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO)?,
+            None => device.GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO)?,
+        }
+    };
+    let id = dx9_surface.as_raw() as usize;
 
     Surfaces::with(
-        id,
-        || setup_fn(device, swapchain),
+        id as u64,
+        move || setup_fn(device, swapchain, &dx9_surface),
         |state| {
             match state.info.api {
                 SurfaceType::Direct3D9 { .. } => {}
@@ -168,7 +261,7 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> a
 
             let position = state.position();
             let screen = state.size();
-            with_or_init_renderer(device, |renderer| {
+            with_or_init_renderer(device, id, |renderer| {
                 trace!("Using Direct3D9 renderer");
 
                 let surface_lock = state.texture.get();
@@ -181,68 +274,61 @@ fn draw_overlay(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) -> a
                     .update_texture(device, surface, &interop.device, &interop.cx.lock())
                     .context("updating renderer texture")?;
 
-                unsafe { device.BeginScene() }.context("BeginScene failed")?;
-                renderer.draw(device, position, screen)?;
-                unsafe { device.EndScene() }.context("EndScene failed")?;
+                unsafe {
+                    device.BeginScene().context("BeginScene failed")?;
+                    defer!({
+                        _ = device.EndScene();
+                    });
 
-                Ok(())
+                    let state_block = device
+                        .CreateStateBlock(D3DSBT_ALL)
+                        .context("creating StateBlock failed")?;
+                    defer!({
+                        _ = state_block.Apply();
+                    });
+
+                    renderer.draw(device, position, screen)
+                }
             })
         },
     )
 }
 
-fn present(device: &IDirect3DDevice9, swapchain: &IDirect3DSwapChain9) {
-    if let Err(err) = draw_overlay(device, swapchain) {
-        error!("Failed to draw Direct3D9 overlay. err: {:?}", err);
-    }
-}
-
-fn post_reset(device: &IDirect3DDevice9) {
-    let id = device.as_raw() as _;
-
-    Surfaces::state(id, |state| {
-        let default_swapchain = unsafe { device.GetSwapChain(0) }.unwrap();
-
-        let mut present_params = D3DPRESENT_PARAMETERS::default();
-        _ = unsafe { default_swapchain.GetPresentParameters(&mut present_params) };
-
-        let width = present_params.BackBufferWidth;
-        let height = present_params.BackBufferHeight;
-        state.texture.invalidate();
-        state.resize(width, height);
-        OverlayEventSink::emit(Event::Surface {
-            id: device.as_raw() as _,
-            event: SurfaceEvent::Resized { width, height },
-        });
+fn present(device: &IDirect3DDevice9, swapchain: Option<&IDirect3DSwapChain9>) {
+    with_release_disabled(move |_| {
+        if let Err(err) = draw_overlay(device, swapchain) {
+            error!("Failed to draw Direct3D9 overlay. err: {:?}", err);
+        }
     });
 }
 
-fn cleanup_renderer(device: usize) {
-    info!("Direct3D9 renderer cleanup");
+fn cleanup_surface(device: usize, key: usize) {
+    with_release_disabled(|_| {
+        if !Surfaces::cleanup_state(key as _) {
+            return;
+        }
 
-    // HACK:: workaround for recursive lock
-    thread::spawn(move || {
-        Surfaces::cleanup_state(device as _);
-    });
-}
+        let Some(entry) = MAP.get(&device) else {
+            return;
+        };
 
-fn reset_renderer(device: usize) {
-    info!("Direct3D9 renderer reset");
-    if RENDERERS.remove(&device).is_none() {
-        return;
-    };
-
-    Surfaces::state(device as _, |state| {
-        state.texture.invalidate();
-    });
+        entry.renderers.remove(&key);
+    })
 }
 
 fn setup_fn(
     device: &IDirect3DDevice9,
-    swapchain: &IDirect3DSwapChain9,
+    swapchain: Option<&IDirect3DSwapChain9>,
+    surface: &IDirect3DSurface9,
 ) -> anyhow::Result<SurfaceState> {
+    let swapchain = match swapchain {
+        Some(swapchain) => swapchain,
+        None => &unsafe { device.GetSwapChain(0) }?,
+    };
     let mut present_params = D3DPRESENT_PARAMETERS::default();
-    unsafe { swapchain.GetPresentParameters(&mut present_params) }?;
+    unsafe {
+        swapchain.GetPresentParameters(&mut present_params)?;
+    };
 
     let window_id = if !present_params.hDeviceWindow.is_invalid() {
         present_params.hDeviceWindow.0 as u32
@@ -253,6 +339,14 @@ fn setup_fn(
     };
 
     let interop = DxInterop::new(get_dxgi_adapter(device).as_ref())?;
+
+    register_destruction_callback(surface, {
+        let device = device.as_raw() as usize;
+        let key = surface.as_raw() as usize;
+        move || {
+            cleanup_surface(device, key);
+        }
+    })?;
     SurfaceState::new(
         interop,
         (
@@ -279,18 +373,19 @@ fn get_dxgi_adapter(device: &IDirect3DDevice9) -> Option<IDXGIAdapter> {
     find_adapter_by_luid(&factory, luid)
 }
 
+fn reset(device: &IDirect3DDevice9) {
+    // Cleanup device state
+    MAP.remove(&(device.as_raw() as _));
+}
+
 #[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_reset(this: *mut c_void, param: *mut D3DPRESENT_PARAMETERS) -> HRESULT {
     trace!("Reset called");
-    reset_renderer(this as _);
 
-    let res = unsafe { HOOK.reset.wait().original_fn()(this, param) };
-    if res.is_err() {
-        return res;
-    }
+    let device = unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap();
+    reset(device);
 
-    post_reset(unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap());
-    res
+    unsafe { HOOK.reset.wait().original_fn()(this, param) }
 }
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -300,15 +395,11 @@ extern "system" fn hooked_reset_ex(
     fullscreen_display_mode: *mut D3DDISPLAYMODEEX,
 ) -> HRESULT {
     trace!("ResetEx called");
-    reset_renderer(this as _);
 
-    let res = unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) };
-    if res.is_err() {
-        return res;
-    }
+    let device = unsafe { IDirect3DDevice9Ex::from_raw_borrowed(&this) }.unwrap();
+    reset(device);
 
-    post_reset(unsafe { IDirect3DDevice9::from_raw_borrowed(&this) }.unwrap());
-    res
+    unsafe { HOOK.reset_ex.wait().original_fn()(this, param, fullscreen_display_mode) }
 }
 
 type PresentFn = unsafe extern "system" fn(
@@ -388,7 +479,8 @@ pub fn hook(dummy_hwnd: HWND) -> anyhow::Result<()> {
 }
 
 /// Get pointer to IDirect3DDevice9::Present, IDirect3DDevice9::Release, IDirect3DSwapChain9::Present,
-/// IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset, IDirect3DDevice9Ex::ResetEx by creating dummy device
+/// IDirect3DDevice9Ex::PresentEx, IDirect3DDevice9::Reset,
+/// IDirect3DDevice9Ex::ResetEx by creating dummy device
 fn get_addr(
     dummy_hwnd: HWND,
 ) -> anyhow::Result<(
@@ -437,7 +529,6 @@ fn get_addr(
         "IDirect3DSwapChain9::Present found: {:p}",
         swapchain_present
     );
-
     let reset = vtable.Reset;
     debug!("IDirect3DDevice9::Reset found: {:p}", reset);
 

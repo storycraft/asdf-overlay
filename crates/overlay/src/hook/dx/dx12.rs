@@ -63,8 +63,9 @@ fn with_or_init_renderer_data<R>(
                 rtv: RtvDescriptors::new(&device)?,
             });
             register_swapchain_destruction_callback(swapchain, {
+                let swapchain = swapchain.as_raw() as usize;
                 let device = device.as_raw() as usize;
-                move |this| cleanup_swapchain(this, device)
+                move || cleanup_swapchain(swapchain, device)
             });
 
             ref_mut
@@ -101,7 +102,10 @@ pub fn draw_overlay(
     let screen = state.size();
     with_or_init_renderer_data(swapchain, move |data| {
         trace!("Using Direct3D12 renderer");
-        if state.texture.take_update() {
+        if state
+            .texture
+            .take_update(&mut data.renderer.texture_generation)
+        {
             data.renderer
                 .update_texture(device, state.texture.get().as_ref())
                 .context("updating renderer texture")?;
@@ -167,13 +171,14 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain) {
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize, device: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
-    Surfaces::cleanup_state(swapchain as _);
 }
 
 #[tracing::instrument(level = Level::TRACE)]
