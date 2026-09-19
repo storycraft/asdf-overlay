@@ -32,7 +32,9 @@ static GLOBAL: LazyLock<GlobalState> = LazyLock::new(GlobalState::new);
 ///
 /// Registry callbacks and iterators hold read access; do not mutate the same
 /// registry while using them.
-pub struct Backends {}
+pub struct Backends {
+    _tmp: (),
+}
 
 impl Backends {
     /// Install process-wide input hooks and replace the window event sink.
@@ -62,7 +64,7 @@ impl Backends {
             Ok::<_, anyhow::Error>(())
         })
         .context("hook failed")?;
-        Ok(Self {})
+        Ok(Self { _tmp: () })
     }
 
     /// Returns an iterator over the IDs of all windows.
