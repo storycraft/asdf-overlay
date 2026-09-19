@@ -4,7 +4,7 @@ use core::{cell::Cell, ffi::c_void, ptr};
 
 use anyhow::Context;
 
-use asdf_overlay_event::{Event, SurfaceEvent, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
