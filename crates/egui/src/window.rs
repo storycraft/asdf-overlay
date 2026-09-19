@@ -8,9 +8,11 @@ use asdf_overlay_window_event::{
         KeyboardInput, ScrollAxis,
     },
 };
-use egui::{Context, ImeEvent, Modifiers, MouseWheelUnit, PointerButton, RawInput, TouchPhase};
+use egui::{Context, ImeEvent, Modifiers, MouseWheelUnit, PlatformOutput, PointerButton, RawInput, TouchPhase};
 
 use crate::{OverlayContext, window::conv::conv_key};
+
+pub fn update_platform(_cx: &OverlayContext, _output: PlatformOutput) {}
 
 pub async fn window_event(
     egui_cx: &Context,

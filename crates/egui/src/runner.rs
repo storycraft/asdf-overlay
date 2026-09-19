@@ -10,7 +10,10 @@ use egui_directx11::split_output;
 use flume::{Receiver, Sender};
 
 use crate::{
-    App, CreationContext, OverlayContext, event::Event, state::State, window::window_event,
+    App, CreationContext, OverlayContext,
+    event::Event,
+    state::State,
+    window::{update_platform, window_event},
 };
 
 /// Initialize the overlay and run the application.
@@ -122,19 +125,33 @@ async fn inner(
                 }
                 input.time = Some(start.elapsed().as_secs_f64());
 
-                app.logic(&state.egui_cx, &cx);
-                let output = state.egui_cx.run_ui(input.take(), |ui| {
-                    app.ui(ui, &cx);
-                });
-
-                let clear_color = app.clear_color(&state.egui_cx.global_style().visuals);
-                let (renderer_output, _, _) = split_output(output);
-                state
-                    .render(renderer_output, clear_color)
-                    .context("rendering failed")?;
+                paint(&mut app, &mut state, &cx, input.take())?;
             }
         }
     }
+    Ok(())
+}
+
+fn paint(
+    app: &mut impl App,
+    state: &mut State,
+    cx: &OverlayContext,
+    input: RawInput,
+) -> anyhow::Result<()> {
+    app.logic(&state.egui_cx, &cx);
+
+    let output = state.egui_cx.run_ui(input, |ui| {
+        app.ui(ui, &cx);
+    });
+    let (renderer_output, platform, _) = split_output(output);
+
+    update_platform(cx, platform);
+
+    let clear_color = app.clear_color(&state.egui_cx.global_style().visuals);
+    state
+        .render(renderer_output, clear_color)
+        .context("rendering failed")?;
+
     Ok(())
 }
 
