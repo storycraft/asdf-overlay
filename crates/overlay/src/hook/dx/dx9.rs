@@ -3,7 +3,8 @@ mod callback;
 use core::{cell::Cell, ffi::c_void, ptr};
 
 use anyhow::Context;
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+
+use asdf_overlay_event::{Event, SurfaceEvent, SurfaceType};
 use asdf_overlay_hook::DetourHook;
 use dashmap::Entry;
 use once_cell::sync::{Lazy, OnceCell};
@@ -346,18 +347,13 @@ fn setup_fn(
             cleanup_surface(device, key);
         }
     })?;
-
-    let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
         (
             present_params.BackBufferWidth,
             present_params.BackBufferHeight,
         ),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D9 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D9 { window_id },
     )
 }
 

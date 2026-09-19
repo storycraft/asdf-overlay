@@ -39,13 +39,17 @@ use crate::ty::CopyRect;
 pub struct OverlaySurface<const BUFFERS: usize = 2> {
     device: ID3D11Device,
     cx: ID3D11DeviceContext,
+    keyed_mutex: bool,
 
     texture: BufferedTexture<BUFFERS>,
 }
 
 impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
     /// Create a surface on the supplied adapter, or the default hardware adapter.
-    pub fn new(adapter: Option<&IDXGIAdapter>) -> anyhow::Result<Self> {
+    /// Create a surface.
+    ///
+    /// Pass `keyed_mutex` as the server reported it in `SurfaceInfo`.
+    pub fn new(adapter: Option<&IDXGIAdapter>, keyed_mutex: bool) -> anyhow::Result<Self> {
         let mut device = None;
         let mut cx = None;
         unsafe {
@@ -68,17 +72,22 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
         let device = device.context("failed to create Dx11 Device")?;
         let cx = cx.context("failed to create Dx11 Context")?;
 
-        Ok(Self::new_with_device(device, cx))
+        Ok(Self::new_with_device(device, cx, keyed_mutex))
     }
 
     /// Create a surface using a device and its matching immediate context.
     ///
     /// The device must support shared shader-resource textures. Synchronize any other
     /// use of the context with surface updates.
-    pub fn new_with_device(device: ID3D11Device, cx: ID3D11DeviceContext) -> Self {
+    pub fn new_with_device(
+        device: ID3D11Device,
+        cx: ID3D11DeviceContext,
+        keyed_mutex: bool,
+    ) -> Self {
         Self {
             device,
             cx,
+            keyed_mutex,
             texture: BufferedTexture::new(),
         }
     }
@@ -160,35 +169,43 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
 
         let format = desc.Format;
         match *self.texture.texture_for(width, height, format) {
-            Some((ref surface, ref mutex)) => {
-                unsafe {
-                    mutex.AcquireSync(0, u32::MAX)?;
-                    defer!({
-                        _ = mutex.ReleaseSync(0);
-                    });
-
-                    copy_to_surface(&self.cx, width, height, surface, src_texture, rect)?;
-                }
+            Some(ref surface) => {
+                surface.locked(&self.cx, || {
+                    copy_to_surface(
+                        &self.cx,
+                        width,
+                        height,
+                        surface.texture(),
+                        src_texture,
+                        rect,
+                    )
+                })?;
 
                 Ok(None)
             }
 
             ref mut slot @ None => {
-                let (surface, mutex) =
-                    create_surface_texture(&self.device, width, height, format, None)?;
-                unsafe {
-                    mutex.AcquireSync(0, u32::MAX)?;
-                    defer!({
-                        _ = mutex.ReleaseSync(0);
-                    });
+                let surface = create_surface_texture(
+                    &self.device,
+                    width,
+                    height,
+                    format,
+                    None,
+                    self.keyed_mutex,
+                )?;
+                surface.locked(&self.cx, || {
+                    copy_to_surface(
+                        &self.cx,
+                        width,
+                        height,
+                        surface.texture(),
+                        src_texture,
+                        rect,
+                    )
+                })?;
 
-                    copy_to_surface(&self.cx, width, height, &surface, src_texture, rect)?;
-                }
-
-                let update = UpdateSharedHandle::Kmt(
-                    unsafe { surface.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as _,
-                );
-                *slot = Some((surface, mutex));
+                let update = UpdateSharedHandle::Kmt(surface.shared_handle()?);
+                *slot = Some(surface);
                 Ok(Some(update))
             }
         }
@@ -217,16 +234,20 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
 
         let row_pitch = width * 4;
         match *surface {
-            Some((ref texture, ref mutex)) => {
-                unsafe {
-                    mutex.AcquireSync(0, u32::MAX)?;
-                    defer!({
-                        _ = mutex.ReleaseSync(0);
-                    });
-
-                    self.cx
-                        .UpdateSubresource(texture, 0, None, data.as_ptr().cast(), row_pitch, 0);
-                }
+            Some(ref shared) => {
+                shared.locked(&self.cx, || {
+                    unsafe {
+                        self.cx.UpdateSubresource(
+                            shared.texture(),
+                            0,
+                            None,
+                            data.as_ptr().cast(),
+                            row_pitch,
+                            0,
+                        );
+                    }
+                    Ok(())
+                })?;
 
                 Ok(None)
             }
@@ -242,19 +263,13 @@ impl<const BUFFERS: usize> OverlaySurface<BUFFERS> {
                         SysMemPitch: row_pitch,
                         SysMemSlicePitch: 0,
                     }),
+                    self.keyed_mutex,
                 )?;
 
-                let (ref texture, ref mutex) = *surface.insert(texture);
-                unsafe {
-                    mutex.AcquireSync(0, u32::MAX)?;
-                    defer!({
-                        _ = mutex.ReleaseSync(0);
-                    });
+                let shared = surface.insert(texture);
+                shared.locked(&self.cx, || Ok(()))?;
 
-                    Ok(Some(UpdateSharedHandle::Kmt(
-                        texture.cast::<IDXGIResource>()?.GetSharedHandle()?.0 as _,
-                    )))
-                }
+                Ok(Some(UpdateSharedHandle::Kmt(shared.shared_handle()?)))
             }
         }
     }
@@ -342,14 +357,55 @@ fn with_external_texture<R>(texture: &ID3D11Texture2D, f: impl FnOnce(&ID3D11Tex
     }
 }
 
-/// Create a Direct3D texture and returns texture with its keyed mutex.
+/// A shared texture, together with its keyed mutex when one was asked for.
+///
+/// Without a mutex there is nothing to hold, so writes are flushed instead.
+struct SharedTexture {
+    texture: ID3D11Texture2D,
+    mutex: Option<IDXGIKeyedMutex>,
+}
+
+impl SharedTexture {
+    #[inline]
+    fn texture(&self) -> &ID3D11Texture2D {
+        &self.texture
+    }
+
+    /// Return the legacy shared handle of the texture.
+    fn shared_handle(&self) -> anyhow::Result<u32> {
+        Ok(unsafe { self.texture.cast::<IDXGIResource>()?.GetSharedHandle() }?.0 as _)
+    }
+
+    /// Run `f` with the texture held for writing.
+    fn locked<R>(
+        &self,
+        cx: &ID3D11DeviceContext,
+        f: impl FnOnce() -> anyhow::Result<R>,
+    ) -> anyhow::Result<R> {
+        let Some(ref mutex) = self.mutex else {
+            let result = f();
+            unsafe { cx.Flush() };
+            return result;
+        };
+
+        unsafe { mutex.AcquireSync(0, u32::MAX) }?;
+        defer!({
+            _ = unsafe { mutex.ReleaseSync(0) };
+        });
+
+        f()
+    }
+}
+
+/// Create a shared Direct3D texture, with a keyed mutex when `keyed_mutex` is set.
 fn create_surface_texture(
     device: &ID3D11Device,
     width: u32,
     height: u32,
     format: DXGI_FORMAT,
     initial: Option<&D3D11_SUBRESOURCE_DATA>,
-) -> anyhow::Result<(ID3D11Texture2D, IDXGIKeyedMutex)> {
+    keyed_mutex: bool,
+) -> anyhow::Result<SharedTexture> {
     let mut texture = None;
     unsafe {
         device
@@ -367,22 +423,31 @@ fn create_surface_texture(
                     Usage: D3D11_USAGE_DEFAULT,
                     BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as _,
                     CPUAccessFlags: 0,
-                    MiscFlags: D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0 as u32,
+                    MiscFlags: if keyed_mutex {
+                        D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0 as u32
+                    } else {
+                        D3D11_RESOURCE_MISC_SHARED.0 as u32
+                    },
                 },
                 initial.map(|r| r as *const _),
                 Some(&mut texture),
             )
             .context("cannot create buffer texture")?;
         let texture = texture.unwrap();
-        let mutex = texture.cast::<IDXGIKeyedMutex>()?;
 
-        Ok((texture, mutex))
+        let mutex = if keyed_mutex {
+            Some(texture.cast::<IDXGIKeyedMutex>()?)
+        } else {
+            None
+        };
+
+        Ok(SharedTexture { texture, mutex })
     }
 }
 
 /// A simple ring buffer for Direct3D textures.
 struct BufferedTexture<const BUFFERS: usize> {
-    texture: [Option<(ID3D11Texture2D, IDXGIKeyedMutex)>; BUFFERS],
+    texture: [Option<SharedTexture>; BUFFERS],
     index: usize,
 }
 
@@ -401,11 +466,11 @@ impl<const BUFFERS: usize> BufferedTexture<BUFFERS> {
         width: u32,
         height: u32,
         format: DXGI_FORMAT,
-    ) -> &mut Option<(ID3D11Texture2D, IDXGIKeyedMutex)> {
-        let prev = if let Some((ref texture, _)) = self.texture[self.index] {
+    ) -> &mut Option<SharedTexture> {
+        let prev = if let Some(ref shared) = self.texture[self.index] {
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             unsafe {
-                texture.GetDesc(&mut desc);
+                shared.texture().GetDesc(&mut desc);
             }
 
             (desc.Width, desc.Height, desc.Format)

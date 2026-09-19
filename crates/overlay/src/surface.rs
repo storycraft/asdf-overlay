@@ -8,7 +8,7 @@ pub mod texture;
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use anyhow::Context;
-use asdf_overlay_event::{Event, SurfaceEvent, SurfaceInfo};
+use asdf_overlay_event::{Event, SurfaceEvent, SurfaceInfo, SurfaceType};
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -116,8 +116,13 @@ pub struct SurfaceState {
 
 impl SurfaceState {
     /// Create an unregistered state at `(0, 0)` with no overlay texture.
-    pub fn new(interop: DxInterop, size: (u32, u32), info: SurfaceInfo) -> anyhow::Result<Self> {
+    pub fn new(interop: DxInterop, size: (u32, u32), api: SurfaceType) -> anyhow::Result<Self> {
         let surface = OverlayTextureSlot::new();
+        let info = SurfaceInfo {
+            api,
+            gpu_id: interop.gpu_id,
+            keyed_mutex: interop.keyed_mutex,
+        };
 
         Ok(Self {
             position: (AtomicI32::new(0), AtomicI32::new(0)),

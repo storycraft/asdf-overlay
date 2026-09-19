@@ -32,7 +32,7 @@ export class ElectronOverlaySurface {
     private readonly contents: WebContents,
     private readonly autoClose: boolean,
   ) {
-    this.inner = new CoreOverlaySurface(surface.info.gpuId);
+    this.inner = new CoreOverlaySurface(surface.info.gpuId, surface.info.keyedMutex);
 
     this.handler = (e, rect, image) => {
       try {

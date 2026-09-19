@@ -1,5 +1,5 @@
 use anyhow::Context;
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
@@ -145,14 +145,10 @@ pub(super) fn setup_fn(
     };
 
     let interop = DxInterop::new(adapter.as_ref())?;
-    let gpu_id = interop.gpu_id;
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D11 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D11 { window_id },
     )
 }
 
