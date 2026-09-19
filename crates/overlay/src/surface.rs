@@ -86,7 +86,9 @@ impl Surfaces {
 
     #[doc(hidden)]
     pub fn cleanup_state(id: u64) {
-        SURFACES.map.remove(&id);
+        if SURFACES.map.remove(&id).is_none() {
+            return;
+        }
 
         OverlayEventSink::emit(Event::Surface {
             id,
