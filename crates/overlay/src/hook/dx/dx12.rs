@@ -63,8 +63,9 @@ fn with_or_init_renderer_data<R>(
                 rtv: RtvDescriptors::new(&device)?,
             });
             register_swapchain_destruction_callback(swapchain, {
+                let swapchain = swapchain.as_raw() as usize;
                 let device = device.as_raw() as usize;
-                move |this| cleanup_swapchain(this, device)
+                move || cleanup_swapchain(swapchain, device)
             });
 
             ref_mut

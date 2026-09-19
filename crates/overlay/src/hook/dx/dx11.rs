@@ -71,7 +71,10 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx11Renderer::new(&device)?,
                 state,
             });
-            register_swapchain_destruction_callback(swapchain, cleanup_swapchain);
+            register_swapchain_destruction_callback(swapchain, {
+                let swapchain = swapchain.as_raw() as usize;
+                move || cleanup_swapchain(swapchain)
+            });
 
             ref_mut
         }
