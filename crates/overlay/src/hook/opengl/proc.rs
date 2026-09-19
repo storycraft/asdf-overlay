@@ -7,7 +7,8 @@ use tracing::{Level, trace};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::WindowsAndMessaging::{
-        self as msg, CallWindowProcA, GWLP_WNDPROC, SetWindowLongPtrA, WNDPROC,
+        self as msg, CallWindowProcA, CallWindowProcW, GWLP_WNDPROC, IsWindowUnicode,
+        SetWindowLongPtrA, SetWindowLongPtrW, WNDPROC,
     },
 };
 
@@ -26,11 +27,13 @@ pub fn install(hwnd: HWND) {
     }
 
     MAP.entry(key).or_insert_with(|| unsafe {
-        mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
-            hwnd,
-            GWLP_WNDPROC,
-            ogl_wnd_proc as *const () as _,
-        ) as _)
+        let ogl_proc = if IsWindowUnicode(hwnd).as_bool() {
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, ogl_wnd_proc::<true> as *const () as _)
+        } else {
+            SetWindowLongPtrA(hwnd, GWLP_WNDPROC, ogl_wnd_proc::<false> as *const () as _)
+        } as isize;
+
+        mem::transmute::<isize, WNDPROC>(ogl_proc)
     });
 }
 
@@ -63,7 +66,7 @@ fn proc(hwnd: u32, msg: u32, lparam: LPARAM) {
 }
 
 #[tracing::instrument(level = Level::TRACE)]
-unsafe extern "system" fn ogl_wnd_proc(
+unsafe extern "system" fn ogl_wnd_proc<const UNICODE: bool>(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
@@ -82,5 +85,11 @@ unsafe extern "system" fn ogl_wnd_proc(
     let last_wnd_proc = *MAP.get(&key).unwrap();
 
     proc(key, msg, lparam);
-    unsafe { CallWindowProcA(last_wnd_proc, hwnd, msg, wparam, lparam) }
+    unsafe {
+        if UNICODE {
+            CallWindowProcW(last_wnd_proc, hwnd, msg, wparam, lparam)
+        } else {
+            CallWindowProcA(last_wnd_proc, hwnd, msg, wparam, lparam)
+        }
+    }
 }

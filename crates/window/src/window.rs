@@ -13,8 +13,8 @@ use windows::Win32::{
     UI::{
         Input::Ime::{HIMC, ImmAssociateContext, ImmCreateContext, ImmDestroyContext},
         WindowsAndMessaging::{
-            DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
-            SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
+            DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId, IsWindowUnicode,
+            SetWindowLongPtrA, SetWindowLongPtrW, WM_IME_SETCONTEXT, WNDPROC,
         },
     },
 };
@@ -45,11 +45,22 @@ impl WindowProcState {
     pub(crate) fn init(id: u32) -> anyhow::Result<Self> {
         let original_proc: WNDPROC = {
             let res = unsafe {
-                mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
-                    HWND(id as _),
-                    GWLP_WNDPROC,
-                    hooked_wnd_proc as *const () as _,
-                ) as _)
+                let hwnd = HWND(id as _);
+                let original_proc = if IsWindowUnicode(hwnd).as_bool() {
+                    SetWindowLongPtrW(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<true> as *const () as _,
+                    )
+                } else {
+                    SetWindowLongPtrA(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<false> as *const () as _,
+                    )
+                } as isize;
+
+                mem::transmute::<isize, WNDPROC>(original_proc)
             };
 
             if res.is_none() {
