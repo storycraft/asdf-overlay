@@ -41,8 +41,16 @@ struct Data {
     /// Implicit swapchain renderer key
     main_surface: usize,
 
-    /// Mapping from [`IDirect3DSurface9`] to [`Dx9Renderer`]
-    renderers: IntDashMap<usize, Dx9Renderer>,
+    /// Mapping from [`IDirect3DSurface9`] to [`Renderer`]
+    renderers: IntDashMap<usize, Renderer>,
+}
+
+struct Renderer(Dx9Renderer);
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        info!("Direct3D9 renderer cleanup");
+    }
 }
 
 /// Mapping from [`IDirect3DDevice9`] to [`Data`]
@@ -79,10 +87,10 @@ fn with_or_init_renderer<R>(
         Entry::Occupied(entry) => entry.into_ref(),
         Entry::Vacant(entry) => {
             info!("initializing dx9 renderer");
-            entry.insert(Dx9Renderer::new(device)?)
+            entry.insert(Renderer(Dx9Renderer::new(device)?))
         }
     };
-    f(&mut renderer)
+    f(&mut renderer.0)
 }
 
 #[tracing::instrument(level = Level::TRACE)]
@@ -157,7 +165,7 @@ fn release(device: usize, count: u32) -> Option<u32> {
 
     let renderer_device_count = {
         let data = MAP.get(&device)?;
-        data.renderers.get(&data.main_surface)?.reference_count()
+        data.renderers.get(&data.main_surface)?.0.reference_count()
     };
     if count > renderer_device_count {
         return Some(count - renderer_device_count);
@@ -303,11 +311,7 @@ fn cleanup_surface(device: usize, key: usize) {
             return;
         };
 
-        if entry.renderers.remove(&key).is_none() {
-            return;
-        }
-
-        info!("Direct3D9 renderer cleanup");
+        entry.renderers.remove(&key);
     })
 }
 
