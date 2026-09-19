@@ -152,10 +152,10 @@ pub(super) fn setup_fn(
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D11 renderer cleanup");
-
-    Surfaces::cleanup_state(swapchain as _);
 }

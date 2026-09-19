@@ -171,13 +171,14 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain) {
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize, device: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
-    Surfaces::cleanup_state(swapchain as _);
 }
 
 #[tracing::instrument(level = Level::TRACE)]
