@@ -16,8 +16,9 @@ pub fn register_destruction_callback(
             notifier.as_raw() as _,
             mem::size_of::<IUnknown>() as _,
             D3DSPD_IUNKNOWN as _,
-        )?;
-    };
+        )
+    }
+    .unwrap();
     Ok(guid)
 }
 
