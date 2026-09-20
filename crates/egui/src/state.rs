@@ -3,7 +3,6 @@ use core::ptr;
 use anyhow::Context as _;
 use asdf_overlay::surface::{SharedTextureHandle, Surfaces};
 use asdf_overlay_event::{GpuLuid, SurfaceInfo};
-use egui::Context;
 use egui_directx11::{Renderer, RendererOutput};
 use scopeguard::defer;
 use tracing::error;
@@ -29,80 +28,48 @@ use windows::{
     core::Interface as _,
 };
 
-pub struct SurfaceState {
-    pub id: u64,
-    pub width: u32,
-    pub height: u32,
-    pub info: SurfaceInfo,
-
+pub struct State {
+    pub egui_cx: egui::Context,
     d3d11_device: ID3D11Device,
     d3d11_cx: ID3D11DeviceContext,
     renderer: Renderer,
     surface_texture: (ID3D11Texture2D, IDXGIKeyedMutex, ID3D11RenderTargetView),
 }
 
-impl SurfaceState {
-    pub(crate) fn new(id: u64, info: SurfaceInfo, width: u32, height: u32) -> anyhow::Result<Self> {
+impl State {
+    pub fn new(
+        egui_cx: egui::Context,
+        info: SurfaceInfo,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<Self> {
         let (d3d11_device, d3d11_cx) =
             create_device(info.gpu_id).context("creating d3d11 device")?;
         let renderer = Renderer::new(&d3d11_device).context("creating renderer")?;
         let surface_texture = create_surface_texture(&d3d11_device, width, height)
             .context("creating surface texture")?;
+        egui_cx.request_repaint();
 
-        let this = Self {
-            id,
-            width,
-            height,
-            info,
-
+        Ok(Self {
+            egui_cx,
             d3d11_device,
             d3d11_cx,
             renderer,
             surface_texture,
-        };
-
-        this.update_surface();
-        Ok(this)
+        })
     }
 
-    pub(crate) fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
-        self.on_resized();
-    }
-
-    pub(crate) fn render(
-        &mut self,
-        cx: &Context,
-        renderer_output: RendererOutput,
-        clear_color: [f32; 4],
-    ) -> anyhow::Result<()> {
-        let (_, keyed_mutex, rtv) = &self.surface_texture;
-        unsafe {
-            keyed_mutex.AcquireSync(0, u32::MAX)?;
-            defer!({
-                _ = keyed_mutex.ReleaseSync(0);
-            });
-
-            self.d3d11_cx.ClearRenderTargetView(rtv, &clear_color);
-            self.renderer
-                .render(&self.d3d11_cx, rtv, cx, renderer_output)?;
-        }
-
-        Ok(())
-    }
-
-    fn on_resized(&mut self) {
-        if self.width == 0 || self.height == 0 {
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
             return;
         }
-        self.surface_texture = create_surface_texture(&self.d3d11_device, self.width, self.height)
-            .expect("creating surface texture");
 
-        self.update_surface();
+        self.surface_texture = create_surface_texture(&self.d3d11_device, width, height)
+            .expect("creating surface texture");
+        self.egui_cx.request_repaint();
     }
 
-    fn update_surface(&self) {
+    pub fn commit_to_surface(&self, surface_id: u64) {
         let shared_handle = unsafe {
             let res = self
                 .surface_texture
@@ -116,7 +83,7 @@ impl SurfaceState {
             SharedTextureHandle::Nt(handle.0 as _)
         };
 
-        if Surfaces::state(self.id, |state| {
+        if Surfaces::state(surface_id, |state| {
             if let Err(err) = state.commit_overlay_texture(Some(shared_handle)) {
                 error!("failed to commit overlay texture: {err:?}");
             }
@@ -125,6 +92,26 @@ impl SurfaceState {
         {
             error!("failed to commit overlay texture: surface not found");
         }
+    }
+
+    pub fn render(
+        &mut self,
+        renderer_output: RendererOutput,
+        clear_color: [f32; 4],
+    ) -> anyhow::Result<()> {
+        let (_, keyed_mutex, rtv) = &self.surface_texture;
+        unsafe {
+            keyed_mutex.AcquireSync(0, u32::MAX)?;
+            defer!({
+                _ = keyed_mutex.ReleaseSync(0);
+            });
+
+            self.d3d11_cx.ClearRenderTargetView(rtv, &clear_color);
+            self.renderer
+                .render(&self.d3d11_cx, rtv, &self.egui_cx, renderer_output)?;
+        }
+
+        Ok(())
     }
 }
 
