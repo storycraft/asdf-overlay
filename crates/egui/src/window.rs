@@ -8,7 +8,10 @@ use asdf_overlay_window_event::{
         KeyboardInput, ScrollAxis,
     },
 };
-use egui::{Context, ImeEvent, Modifiers, MouseWheelUnit, PlatformOutput, PointerButton, RawInput, TouchPhase};
+use egui::{
+    Context, ImeEvent, Modifiers, MouseWheelUnit, PlatformOutput, PointerButton, RawInput,
+    TouchPhase,
+};
 
 use crate::{OverlayContext, window::conv::conv_key};
 
