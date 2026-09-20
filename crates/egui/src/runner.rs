@@ -207,11 +207,12 @@ async fn overlay_event(
                 return Ok(());
             }
 
-            state.resize(width, height);
             input.screen_rect = Some(egui::Rect {
                 min: (0.0, 0.0).into(),
                 max: (width as f32, height as f32).into(),
             });
+            state.resize(width, height);
+            state.commit_to_surface(id);
         }
 
         SurfaceEvent::Destroyed => {
