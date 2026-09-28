@@ -126,9 +126,8 @@ async fn inner(
                 input.time = Some(start.elapsed().as_secs_f64());
 
                 app.logic(&state.egui_cx, &cx);
-                if surface.is_some() {
-                    paint(&mut app, &mut state, &cx, input.take())?;
-                }
+                // FIX: paint when surface is recreated
+                paint(&mut app, &mut state, &cx, input.take())?;
             }
         }
     }
