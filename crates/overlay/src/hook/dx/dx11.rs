@@ -71,10 +71,6 @@ fn with_or_init_renderer_data<R>(
                 renderer: Dx11Renderer::new(&device)?,
                 state,
             });
-            register_swapchain_destruction_callback(swapchain, {
-                let swapchain = swapchain.as_raw() as usize;
-                move || cleanup_swapchain(swapchain)
-            });
 
             ref_mut
         }
@@ -143,8 +139,13 @@ pub(super) fn setup_fn(
     } else {
         Some(desc.OutputWindow.0 as u32)
     };
-
     let interop = DxInterop::new(adapter.as_ref())?;
+
+    register_swapchain_destruction_callback(swapchain, {
+        let swapchain = swapchain.as_raw() as usize;
+        move || cleanup_swapchain(swapchain)
+    });
+
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),

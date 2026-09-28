@@ -58,17 +58,10 @@ fn with_or_init_renderer_data<R>(
             info!("Initializing Direct3D12 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
-            let ref_mut = entry.insert(RendererData {
+            entry.insert(RendererData {
                 renderer: Dx12Renderer::new(&device, swapchain)?,
                 rtv: RtvDescriptors::new(&device)?,
-            });
-            register_swapchain_destruction_callback(swapchain, {
-                let swapchain = swapchain.as_raw() as usize;
-                let device = device.as_raw() as usize;
-                move || cleanup_swapchain(swapchain, device)
-            });
-
-            ref_mut
+            })
         }
     };
 
@@ -147,6 +140,12 @@ pub(super) fn setup_fn(
     } else {
         Some(desc.OutputWindow.0 as u32)
     };
+
+    register_swapchain_destruction_callback(swapchain, {
+        let swapchain = swapchain.as_raw() as usize;
+        let device = device.as_raw() as usize;
+        move || cleanup_swapchain(swapchain, device)
+    });
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
