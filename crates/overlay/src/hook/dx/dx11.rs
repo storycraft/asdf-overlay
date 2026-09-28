@@ -67,12 +67,10 @@ fn with_or_init_renderer_data<R>(
                 state.unwrap()
             };
 
-            let ref_mut = entry.insert(RendererData {
+            entry.insert(RendererData {
                 renderer: Dx11Renderer::new(&device)?,
                 state,
-            });
-
-            ref_mut
+            })
         }
     };
 
@@ -145,7 +143,6 @@ pub(super) fn setup_fn(
         let swapchain = swapchain.as_raw() as usize;
         move || cleanup_swapchain(swapchain)
     });
-
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
