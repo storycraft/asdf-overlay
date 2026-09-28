@@ -18,6 +18,10 @@ pub enum InputEvent {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CursorInput {
+    /// The distinguishable identifier of the cursor input.
+    pub id: u32,
+    /// If this cursor input is the primary input.
+    pub primary: bool,
     /// The type of cursor input.
     pub event: CursorEvent,
     /// Cursor position relative to the left-top corner client area of the window.
