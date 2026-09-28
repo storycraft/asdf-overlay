@@ -142,7 +142,7 @@ fn paint(
     input: RawInput,
 ) -> anyhow::Result<()> {
     let output = state.egui_cx.run_ui(input, |ui| {
-        app.ui(ui, &cx);
+        app.ui(ui, cx);
     });
     let (renderer_output, platform, _) = split_output(output);
 
@@ -187,7 +187,7 @@ async fn overlay_event(
                 min: (0.0, 0.0).into(),
                 max: (width as f32, height as f32).into(),
             });
-            state.resize(width, height);
+            state.resize(info, width, height);
             state.commit_to_surface(id);
 
             cx.info = info;
@@ -212,7 +212,7 @@ async fn overlay_event(
                 min: (0.0, 0.0).into(),
                 max: (width as f32, height as f32).into(),
             });
-            state.resize(width, height);
+            state.resize(inner.info, width, height);
             state.commit_to_surface(id);
         }
 

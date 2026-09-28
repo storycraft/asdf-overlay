@@ -33,7 +33,11 @@ pub struct State {
     d3d11_device: ID3D11Device,
     d3d11_cx: ID3D11DeviceContext,
     renderer: Renderer,
-    surface_texture: (ID3D11Texture2D, IDXGIKeyedMutex, ID3D11RenderTargetView),
+    surface_texture: (
+        ID3D11Texture2D,
+        Option<IDXGIKeyedMutex>,
+        ID3D11RenderTargetView,
+    ),
 }
 
 impl State {
@@ -46,8 +50,9 @@ impl State {
         let (d3d11_device, d3d11_cx) =
             create_device(info.gpu_id).context("creating d3d11 device")?;
         let renderer = Renderer::new(&d3d11_device).context("creating renderer")?;
-        let surface_texture = create_surface_texture(&d3d11_device, width, height)
-            .context("creating surface texture")?;
+        let surface_texture =
+            create_surface_texture(&d3d11_device, width, height, info.keyed_mutex)
+                .context("creating surface texture")?;
         egui_cx.request_repaint();
 
         Ok(Self {
@@ -59,13 +64,14 @@ impl State {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, info: SurfaceInfo, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
         }
 
-        self.surface_texture = create_surface_texture(&self.d3d11_device, width, height)
-            .expect("creating surface texture");
+        self.surface_texture =
+            create_surface_texture(&self.d3d11_device, width, height, info.keyed_mutex)
+                .expect("creating surface texture");
         self.egui_cx.request_repaint();
     }
 
@@ -100,15 +106,30 @@ impl State {
         clear_color: [f32; 4],
     ) -> anyhow::Result<()> {
         let (_, keyed_mutex, rtv) = &self.surface_texture;
-        unsafe {
-            keyed_mutex.AcquireSync(0, u32::MAX)?;
-            defer!({
+        let draw = || {
+            unsafe {
+                self.d3d11_cx.ClearRenderTargetView(rtv, &clear_color);
+            }
+
+            self.renderer
+                .render(&self.d3d11_cx, rtv, &self.egui_cx, renderer_output)
+        };
+
+        if let Some(keyed_mutex) = keyed_mutex {
+            unsafe {
+                keyed_mutex.AcquireSync(0, u32::MAX)?;
+            }
+            defer!(unsafe {
                 _ = keyed_mutex.ReleaseSync(0);
             });
 
-            self.d3d11_cx.ClearRenderTargetView(rtv, &clear_color);
-            self.renderer
-                .render(&self.d3d11_cx, rtv, &self.egui_cx, renderer_output)?;
+            draw()?;
+        } else {
+            draw()?;
+
+            unsafe {
+                self.d3d11_cx.Flush();
+            }
         }
 
         Ok(())
@@ -119,7 +140,12 @@ fn create_surface_texture(
     device: &ID3D11Device,
     width: u32,
     height: u32,
-) -> anyhow::Result<(ID3D11Texture2D, IDXGIKeyedMutex, ID3D11RenderTargetView)> {
+    keyed_mutex: bool,
+) -> anyhow::Result<(
+    ID3D11Texture2D,
+    Option<IDXGIKeyedMutex>,
+    ID3D11RenderTargetView,
+)> {
     let desc = D3D11_TEXTURE2D_DESC {
         Width: width,
         Height: height,
@@ -133,8 +159,11 @@ fn create_surface_texture(
         Usage: D3D11_USAGE_DEFAULT,
         BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
         CPUAccessFlags: 0,
-        MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0 | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0)
-            as u32,
+        MiscFlags: if keyed_mutex {
+            D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0 | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0
+        } else {
+            D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0
+        } as u32,
     };
 
     unsafe {
@@ -146,7 +175,7 @@ fn create_surface_texture(
         device.CreateRenderTargetView(&texture, None, Some(&mut rtv))?;
         let rtv = rtv.unwrap();
 
-        let keyed_mutex = texture.cast::<IDXGIKeyedMutex>()?;
+        let keyed_mutex = texture.cast::<IDXGIKeyedMutex>().ok();
         Ok((texture, keyed_mutex, rtv))
     }
 }
