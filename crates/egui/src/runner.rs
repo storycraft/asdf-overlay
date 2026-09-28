@@ -125,7 +125,10 @@ async fn inner(
                 }
                 input.time = Some(start.elapsed().as_secs_f64());
 
-                paint(&mut app, &mut state, &cx, input.take())?;
+                app.logic(&state.egui_cx, &cx);
+                if surface.is_some() {
+                    paint(&mut app, &mut state, &cx, input.take())?;
+                }
             }
         }
     }
@@ -138,8 +141,6 @@ fn paint(
     cx: &OverlayContext,
     input: RawInput,
 ) -> anyhow::Result<()> {
-    app.logic(&state.egui_cx, &cx);
-
     let output = state.egui_cx.run_ui(input, |ui| {
         app.ui(ui, &cx);
     });
