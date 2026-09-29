@@ -124,7 +124,9 @@ fn get_message<const UNICODE: bool>(
     read_message::<UNICODE>(msg);
 
     if should_filter(msg) {
-        filtered_proc::<UNICODE>(msg);
+        if call_def_proc(msg) {
+            filtered_proc::<UNICODE>(msg);
+        }
         msg.message = msg::WM_NULL;
     }
     original_read
@@ -166,7 +168,7 @@ fn peek_message<const UNICODE: bool>(
     if remove.contains(PM_REMOVE) {
         read_message::<UNICODE>(msg);
 
-        if should_filter {
+        if should_filter && call_def_proc(msg) {
             filtered_proc::<UNICODE>(msg);
         }
     }
@@ -545,6 +547,25 @@ fn is_filter_target(message: u32) -> bool {
             | msg::WM_XBUTTONDBLCLK
             | msg::WM_MOUSEWHEEL
             | msg::WM_MOUSEHWHEEL
+            | msg::WM_NCHITTEST
+            | msg::WM_NCLBUTTONDBLCLK
+            | msg::WM_NCLBUTTONDOWN
+            | msg::WM_NCLBUTTONUP
+            | msg::WM_NCMBUTTONDBLCLK
+            | msg::WM_NCMBUTTONDOWN
+            | msg::WM_NCMBUTTONUP
+            | msg::WM_NCMOUSEHOVER
+            | msg::WM_NCMOUSELEAVE
+            | msg::WM_NCMOUSEMOVE
+            | msg::WM_NCRBUTTONDBLCLK
+            | msg::WM_NCRBUTTONDOWN
+            | msg::WM_NCRBUTTONUP
+            | msg::WM_NCXBUTTONDBLCLK
+            | msg::WM_NCXBUTTONDOWN
+            | msg::WM_NCXBUTTONUP
+
+            // Touch messages
+            | msg::WM_TOUCH
 
             // Keyboard messages
             | msg::WM_KEYDOWN
@@ -556,6 +577,32 @@ fn is_filter_target(message: u32) -> bool {
 
             // Raw input messages
             | msg::WM_INPUT
+    )
+}
+
+fn call_def_proc(msg: &MSG) -> bool {
+    !matches!(
+        msg.message,
+        // Touch messages
+        msg::WM_TOUCH
+
+        // Client mouse messages
+            | msg::WM_MOUSEMOVE
+            | msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_LBUTTONDBLCLK
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_RBUTTONDBLCLK
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_MBUTTONDBLCLK
+            | msg::WM_XBUTTONDOWN
+            | Controls::WM_MOUSELEAVE
+            | msg::WM_XBUTTONUP
+            | msg::WM_XBUTTONDBLCLK
+            | msg::WM_MOUSEWHEEL
+            | msg::WM_MOUSEHWHEEL
     )
 }
 
