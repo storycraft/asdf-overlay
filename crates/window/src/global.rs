@@ -8,7 +8,7 @@ use core::{
 use asdf_overlay_window_event::{Event, WindowEvent};
 use parking_lot::RwLock;
 use windows::Win32::{
-    Foundation::RECT,
+    Foundation::{POINT, RECT},
     UI::WindowsAndMessaging::{
         GetSystemMetrics, HCURSOR, IDC_ARROW, LoadCursorW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     },
@@ -55,11 +55,25 @@ impl GlobalState {
 
     /// Block all inputs of the process.
     pub fn block_input(&self) {
-        if self.blocking_state.write().is_some() {
-            return;
+        // NOTE: the lock has to be released before blocking the message loops and
+        // windows below. Both reach `message_loop_state` and `window_state`, which read
+        // this same lock when they insert a state they have not seen yet, and the lock
+        // is not reentrant: holding it across those calls deadlocks the thread.
+        {
+            let mut blocking_state = self.blocking_state.write();
+            if blocking_state.is_some() {
+                return;
+            }
+            let clip_cursor = get_clip_cursor();
+            // Remember where the cursor was so `GetCursorPos` can keep reporting it while
+            // blocked. Games that steer the camera from the cursor delta (e.g. RTS edge
+            // scrolling) jump to the screen corner if this reports a fixed origin instead.
+            let last_cursor_pos = get_cursor_pos();
+            *blocking_state = Some(InputBlockingState {
+                clip_cursor,
+                last_cursor_pos,
+            });
         }
-        let clip_cursor = get_clip_cursor();
-        *self.blocking_state.write() = Some(InputBlockingState { clip_cursor });
 
         for message_loop in self.message_loops.iter() {
             message_loop.block_input();
@@ -174,6 +188,18 @@ impl GlobalState {
 pub struct InputBlockingState {
     // Old cursor clipping rectangle, if any.
     pub clip_cursor: Option<RECT>,
+
+    // Cursor position captured right before blocking started.
+    pub last_cursor_pos: POINT,
+}
+
+fn get_cursor_pos() -> POINT {
+    let mut point = POINT::default();
+    unsafe {
+        _ = hook::HOOK.wait().get_cursor_pos.original_fn()(&mut point);
+    }
+
+    point
 }
 
 fn get_clip_cursor() -> Option<RECT> {

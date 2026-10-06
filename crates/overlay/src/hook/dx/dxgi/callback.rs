@@ -5,32 +5,21 @@ use windows::{
     core::Interface,
 };
 
-pub fn register_swapchain_destruction_callback<F: FnOnce(usize) + Send + 'static>(
+pub fn register_swapchain_destruction_callback<F: FnOnce() + Send + 'static>(
     swapchain: &IDXGISwapChain,
     f: F,
 ) {
-    struct Data<F> {
-        this: usize,
-        f: F,
-    }
-
     #[tracing::instrument(level = Level::DEBUG)]
-    extern "system" fn callback<F: FnOnce(usize)>(this: *mut c_void) {
-        let this = unsafe { Box::from_raw(this.cast::<Data<F>>()) };
-        (this.f)(this.this)
+    extern "system" fn callback<F: FnOnce()>(this: *mut c_void) {
+        let this = unsafe { Box::from_raw(this.cast::<F>()) };
+        this()
     }
 
     let notifier = swapchain.cast::<ID3DDestructionNotifier>().unwrap();
     unsafe {
         // register with swapchain pointer without increasing ref
         notifier
-            .RegisterDestructionCallback(
-                Some(callback::<F>),
-                Box::leak(Box::new(Data {
-                    this: swapchain.as_raw() as _,
-                    f,
-                })) as *mut _ as _,
-            )
+            .RegisterDestructionCallback(Some(callback::<F>), Box::leak(Box::new(f)) as *mut _ as _)
             .unwrap();
     }
 }

@@ -43,21 +43,23 @@ pub struct SetPosition {
 }
 impl_SurfaceRequestable!(SetPosition, ());
 
-/// Update overlay surface
+/// Replace or remove an overlay texture.
 ///
-/// ## Note
-/// * If the texture is created with `D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX` flag, the `key` of the `IDXGIKeyedMutex` must be `0`.
-///
-/// If [`UpdateSharedHandle::None`] is given, the overlay surface will be removed.
+/// The texture must use the target surface's GPU adapter and release any keyed
+/// mutex at key zero for rendering. Unknown surfaces and texture-opening failures
+/// return errors. Acknowledgment does not wait for presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateSharedHandle {
-    /// A KMT shared handle.
+    /// A legacy KMT shared handle. Keep the source resource alive while in use.
     Kmt(u32),
 
-    /// A NT shared handle.
+    /// An NT shared handle valid in the server process.
+    ///
+    /// The server takes ownership on success; the caller retains ownership on failure.
+    /// Copying this value does not duplicate the handle.
     Nt(u32),
 
-    /// Remove the overlay surface.
+    /// Remove the overlay texture while retaining the tracked surface.
     None,
 }
 

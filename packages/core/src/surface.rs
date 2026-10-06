@@ -6,32 +6,46 @@ use napi::bindgen_prelude::BufferSlice;
 use napi_derive::napi;
 use windows::Win32::{
     Foundation::LUID,
-    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1},
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory4},
 };
 
 use crate::event::surface::GpuLuid;
 
-/// Represent a surface for overlay
+/// A shared overlay texture backed by [`surface::OverlaySurface`].
+///
+/// Update methods return [`None`] when the consumer can reuse its handle. Forward
+/// [`Some`] updates to the consumer to replace or remove the texture.
+///
+/// Shared resources must use the consumer's GPU. Handle buffers contain one
+/// native-endian, pointer-sized integer whose low 32 bits identify the handle.
+/// See [`surface::OverlaySurface`] for synchronization requirements.
 #[napi]
 pub struct OverlaySurface(surface::OverlaySurface);
 
 #[napi]
 impl OverlaySurface {
-    /// Create a new overlay surface.
+    /// Create a surface on the adapter matching the LUID.
+    ///
+    /// Uses the default hardware GPU when the LUID is omitted, and fails when it names
+    /// an adapter that does not exist.
+    ///
+    /// Pass `keyed_mutex` as `SurfaceInfo` reported it. Defaults to `true`.
     #[napi(constructor)]
-    pub fn new(luid: Option<GpuLuid>) -> anyhow::Result<Self> {
-        let adapter = luid.map(create_adapter_by_luid).transpose()?.flatten();
-        let surface = surface::OverlaySurface::new(adapter.as_ref())?;
+    pub fn new(luid: Option<GpuLuid>, keyed_mutex: Option<bool>) -> anyhow::Result<Self> {
+        let adapter = luid.map(create_adapter_by_luid).transpose()?;
+        let surface = surface::OverlaySurface::new(adapter.as_ref(), keyed_mutex.unwrap_or(true))?;
         Ok(Self(surface))
     }
 
-    /// Clear the surface.
+    /// Release cached textures. Send a removal update separately to hide the overlay.
     #[napi]
     pub fn clear(&mut self) {
         self.0.clear();
     }
 
-    /// Update surface using D3D11 NT shared texture.
+    /// Copy a texture from a borrowed NT handle valid in this process.
+    ///
+    /// See [`surface::OverlaySurface::update_from_nt_shared`] for copy requirements.
     #[napi]
     pub fn update_nt_shtex(
         &mut self,
@@ -48,7 +62,9 @@ impl OverlaySurface {
             .map(From::from))
     }
 
-    /// Update surface using D3D11 KMT shared texture.
+    /// Copy a texture from a legacy KMT shared handle.
+    ///
+    /// See [`surface::OverlaySurface::update_from_shared`] for copy requirements.
     #[napi]
     pub fn update_kmt_shtex(
         &mut self,
@@ -65,7 +81,11 @@ impl OverlaySurface {
             .map(From::from))
     }
 
-    /// Update surface using bitmap buffer. The size of overlay is `width x (data.byteLength / 4 / width)`
+    /// Upload tightly packed BGRA pixels.
+    ///
+    /// Height is derived from complete rows; trailing partial rows are ignored.
+    /// Zero width or empty data requests removal. See
+    /// [`surface::OverlaySurface::update_bitmap`] for buffer requirements.
     #[napi]
     pub fn update_bitmap(
         &mut self,
@@ -133,25 +153,15 @@ pub struct Rect {
     pub height: u32,
 }
 
-fn create_adapter_by_luid(luid: GpuLuid) -> anyhow::Result<Option<IDXGIAdapter>> {
+fn create_adapter_by_luid(luid: GpuLuid) -> anyhow::Result<IDXGIAdapter> {
     let factory =
-        unsafe { CreateDXGIFactory1::<IDXGIFactory1>().context("failed to create DXGI factory")? };
+        unsafe { CreateDXGIFactory1::<IDXGIFactory4>().context("failed to create DXGI factory")? };
 
-    let luid = LUID {
-        LowPart: luid.low,
-        HighPart: luid.high,
-    };
-    let mut i = 0;
-    while let Ok(adapter) = unsafe { factory.EnumAdapters(i) } {
-        i += 1;
-        let Ok(desc) = (unsafe { adapter.GetDesc() }) else {
-            continue;
-        };
-
-        if desc.AdapterLuid == luid {
-            return Ok(Some(adapter));
-        }
+    unsafe {
+        factory.EnumAdapterByLuid::<IDXGIAdapter>(LUID {
+            LowPart: luid.low,
+            HighPart: luid.high,
+        })
     }
-
-    Ok(None)
+    .with_context(|| format!("no GPU adapter with luid {}:{}", luid.high, luid.low))
 }

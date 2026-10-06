@@ -16,7 +16,10 @@ use windows::{
 
 use crate::{
     renderer::dx::shaders,
-    surface::{SharedTextureHandle, texture::OverlaySurface},
+    surface::{
+        SharedTextureHandle,
+        texture::{OverlaySurface, TextureGeneration},
+    },
     util::with_keyed_mutex,
 };
 
@@ -34,6 +37,8 @@ const SAMPLER_DESC: D3D11_SAMPLER_DESC = D3D11_SAMPLER_DESC {
 };
 
 pub struct Dx11Renderer {
+    pub texture_generation: TextureGeneration,
+
     constant_buffer: ID3D11Buffer,
     texture: Option<(ID3D11ShaderResourceView, Option<IDXGIKeyedMutex>)>,
 
@@ -105,6 +110,8 @@ impl Dx11Renderer {
             let sampler_state = sampler_state.unwrap();
 
             Ok(Self {
+                texture_generation: TextureGeneration::new(),
+
                 constant_buffer,
                 texture: None,
 

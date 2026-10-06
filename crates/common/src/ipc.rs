@@ -7,10 +7,7 @@ use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{event::OverlayEvent, request::Request};
 
-/// Creates a unique IPC address for the given process ID and module handle.
-/// Because there can be multiple overlays in the same process, we need to distinguish with the module handle.
-///
-/// This function is used internally by `asdf-overlay-client` and `asdf-overlay-dll` crates to establish IPC communication.
+/// Return the named-pipe path for a process and the low 32 bits of its module handle.
 pub fn create_ipc_addr(pid: u32, module_handle: u32) -> String {
     format!("\\\\.\\pipe\\asdf-overlay-{pid}-{module_handle}")
 }
@@ -48,7 +45,9 @@ pub enum ServerToClientPacket {
     Event(OverlayEvent),
 }
 
-/// Describes a frame header for IPC communication.
+/// An IPC frame header containing a four-byte, big-endian body length.
+///
+/// The body follows the header and contains exactly `size` bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
     /// Size of the frame body in bytes.
@@ -56,14 +55,22 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Reads a frame header from the given async reader.
+    /// Read the header, leaving the body unread.
+    ///
+    /// No size limit is enforced; validate the length before allocating.
+    ///
+    /// # Cancellation
+    /// Cancelling may consume a partial header.
     pub async fn read(mut r: impl AsyncRead + Unpin) -> io::Result<Self> {
         Ok(Self {
             size: r.read_u32().await?,
         })
     }
 
-    /// Writes the frame header to the given async writer.
+    /// Write the header without writing or flushing the body.
+    ///
+    /// # Cancellation
+    /// Cancelling may leave a partial header written.
     pub async fn write(self, mut w: impl AsyncWrite + Unpin) -> io::Result<()> {
         w.write_u32(self.size).await?;
         Ok(())

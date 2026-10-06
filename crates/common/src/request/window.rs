@@ -34,7 +34,10 @@ macro_rules! impl_WindowRequestable {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-/// Listen input events.
+/// Set which input events a window reports without blocking input.
+///
+/// Global blocking captures events regardless of these flags. Requests for unknown
+/// windows succeed without effect.
 pub struct ListenInput {
     /// Whether to listen cursor related events.
     pub cursor: bool,

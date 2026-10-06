@@ -137,13 +137,23 @@ extern "system" fn hooked_get_clip_cursor(lprect: *mut RECT) -> BOOL {
 
 #[tracing::instrument(level = Level::TRACE)]
 extern "system" fn hooked_get_cursor_pos(lppoint: *mut POINT) -> BOOL {
-    if !Backends::get().input_blocked() {
+    // Freeze the cursor at where it was when blocking started, instead of reporting a
+    // fixed origin. Both hide the real movement from the game, but an origin of (0, 0)
+    // is a position the game will act on: cursor driven cameras snap to the top left
+    // corner for as long as the overlay is open.
+    let Some(pos) = Backends::get()
+        .blocking_state
+        .read()
+        .as_ref()
+        .map(|state| state.last_cursor_pos)
+    else {
         return unsafe { HOOK.wait().get_cursor_pos.original_fn()(lppoint) };
-    }
+    };
 
-    // Return a fixed position instead of the real cursor position to prevent games from tracking mouse movement
-    unsafe {
-        lppoint.write(POINT { x: 0, y: 0 });
+    if !lppoint.is_null() {
+        unsafe {
+            lppoint.write(pos);
+        }
     }
     BOOL(1)
 }

@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         .request(SetPosition { x: 100, y: 100 })
         .await?;
 
-    let mut surface: OverlaySurface = OverlaySurface::new(None)?;
+    let mut surface: OverlaySurface = OverlaySurface::new(None, true)?;
     let mut data = Vec::new();
     for i in 0..200 {
         // make noise rectangle bigger

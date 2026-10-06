@@ -1,14 +1,9 @@
-//! Overlay surface abstraction.
+//! Shared D3D11 textures for overlay rendering.
 //!
-//! The surface texture must be Direct3D 11 texture created with shared flags.
-//! Direct3D 11 was chosen, because it is well supported on almost every gpus nowadays.
-//!
-//! If you create surface texture with keyed mutex, it will uses it for synchronization.
-//! You must keep mutex key to `0` otherwise, it will wait indefinitely when rendering overlay.
-//! You can still have surface texture without keyed mutex,
-//! however you must flush it manually on changes and will have worse performance.
+//! Release keyed mutexes at key zero before rendering. Without a keyed mutex,
+//! flush texture changes manually.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Context;
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -93,7 +88,8 @@ impl OverlaySurface {
     }
 
     #[inline]
-    /// Shared handle of the surface texture.
+    /// Borrow the handle value. The texture retains ownership; do not close or
+    /// transfer the returned NT handle.
     pub fn shared_handle(&self) -> SharedTextureHandle {
         self.handle
     }
@@ -111,14 +107,14 @@ impl Drop for OverlaySurface {
 
 pub struct OverlayTextureSlot {
     inner: RwLock<Option<OverlaySurface>>,
-    updated: AtomicBool,
+    generation: AtomicU64,
 }
 
 impl OverlayTextureSlot {
     pub(crate) const fn new() -> Self {
         Self {
             inner: RwLock::new(None),
-            updated: AtomicBool::new(true),
+            generation: AtomicU64::new(1),
         }
     }
 
@@ -128,8 +124,9 @@ impl OverlayTextureSlot {
     }
 
     #[inline]
+    /// Mark the slot changed for renderers without modifying texture contents.
     pub fn invalidate(&self) {
-        self.updated.store(true, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
     }
 
     pub(super) fn update(
@@ -137,18 +134,40 @@ impl OverlayTextureSlot {
         device: &ID3D11Device,
         handle: Option<SharedTextureHandle>,
     ) -> anyhow::Result<()> {
-        self.updated.store(true, Ordering::Relaxed);
         let Some(handle) = handle else {
             *self.inner.write() = None;
+            self.invalidate();
             return Ok(());
         };
 
-        *self.inner.write() = Some(OverlaySurface::open(device, handle)?);
+        let surface = OverlaySurface::open(device, handle)?;
+        *self.inner.write() = Some(surface);
+        self.invalidate();
         Ok(())
     }
 
     #[inline]
-    pub fn take_update(&self) -> bool {
-        self.updated.swap(false, Ordering::Relaxed)
+    /// Return whether the slot changed since `generation`, recording it as uploaded.
+    ///
+    /// This does not indicate GPU completion.
+    pub fn take_update(&self, generation: &mut TextureGeneration) -> bool {
+        let current = self.generation.load(Ordering::Acquire);
+        if generation.0 == current {
+            return false;
+        }
+
+        generation.0 = current;
+        true
+    }
+}
+
+/// Texture generation a renderer has uploaded.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TextureGeneration(u64);
+
+impl TextureGeneration {
+    #[inline]
+    pub const fn new() -> Self {
+        Self(0)
     }
 }

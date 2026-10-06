@@ -51,7 +51,6 @@ pub struct Dx9Renderer {
 
     texture: Option<Dx9Texture>,
     vertex_buffer: IDirect3DVertexBuffer9,
-    state_block: IDirect3DStateBlock9,
 }
 
 impl Dx9Renderer {
@@ -68,16 +67,18 @@ impl Dx9Renderer {
                 0 as _,
             )?;
             let vertex_buffer = vertex_buffer.unwrap();
-            let state_block = device.CreateStateBlock(D3DSBT_ALL)?;
 
             Ok(Self {
                 size: (0, 0),
 
                 texture: None,
                 vertex_buffer,
-                state_block,
             })
         }
+    }
+
+    pub fn reference_count(&self) -> u32 {
+        1 + self.texture.is_some() as u32
     }
 
     #[inline]
@@ -183,9 +184,15 @@ impl Dx9Renderer {
         };
 
         let vertices = {
+            // Direct3D9 puts pixel centers on integer coordinates, so a screen space
+            // quad has to be shifted by half a pixel for its texels to line up with
+            // pixels. Without it every texel is sampled on a pixel boundary, and with
+            // point sampling that drops and doubles rows of the overlay: text comes out
+            // visibly aliased, the more so the smaller it is on screen.
+            let half_pixel = (-1.0 / screen.0 as f32, 1.0 / screen.1 as f32);
             let pos = (
-                (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0,
-                -(position.1 as f32 / screen.1 as f32) * 2.0 + 1.0,
+                (position.0 as f32 / screen.0 as f32) * 2.0 - 1.0 + half_pixel.0,
+                -(position.1 as f32 / screen.1 as f32) * 2.0 + 1.0 + half_pixel.1,
             );
             let size = (
                 (self.size.0 as f32 / screen.0 as f32) * 2.0,
@@ -200,12 +207,6 @@ impl Dx9Renderer {
         };
 
         unsafe {
-            let state_block = &self.state_block;
-            state_block.Capture()?;
-            defer!({
-                _ = state_block.Apply();
-            });
-
             let mut buf = ptr::null_mut();
             self.vertex_buffer.Lock(
                 0,
@@ -256,8 +257,10 @@ impl Dx9Renderer {
             device.SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE)?;
             device.SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE.0 as _)?;
             device.SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE.0 as _)?;
-            device.SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_NONE.0 as _)?;
-            device.SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_NONE.0 as _)?;
+            // NOTE: `D3DTEXF_NONE` is only a valid mip filter. Ask for point sampling
+            // explicitly, which is what the overlay wants now that the quad is aligned.
+            device.SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT.0 as _)?;
+            device.SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT.0 as _)?;
             device.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP.0 as _)?;
             device.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP.0 as _)?;
 

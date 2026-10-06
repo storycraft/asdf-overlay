@@ -6,7 +6,7 @@ use asdf_overlay::{
     interop::DxInterop,
     surface::{SurfaceState, Surfaces},
 };
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use ash::vk::{self, Handle};
 use tracing::{debug, error, trace};
 use windows::Win32::{
@@ -98,16 +98,8 @@ fn setup_fn(
 ) -> anyhow::Result<SurfaceState> {
     let window_id = get_surface_hwnd(data.surface).context("invalid surface handle")?;
     let interop = DxInterop::new(get_dxgi_adapter(physical_device).as_ref())?;
-    let gpu_id = interop.gpu_id;
 
-    SurfaceState::new(
-        interop,
-        data.image_size,
-        SurfaceInfo {
-            api: SurfaceType::Vulkan { window_id },
-            gpu_id,
-        },
-    )
+    SurfaceState::new(interop, data.image_size, SurfaceType::Vulkan { window_id })
 }
 
 fn get_dxgi_adapter(physical_device: vk::PhysicalDevice) -> Option<IDXGIAdapter> {
@@ -181,7 +173,7 @@ fn draw_overlay(
         return Ok(None);
     };
 
-    if state.texture.take_update() {
+    if state.texture.take_update(&mut renderer.texture_generation) {
         let props = get_physical_device_memory_properties(table.physical_device).unwrap();
 
         renderer

@@ -22,7 +22,8 @@ use windows::Win32::{
             KeyboardAndMouse::GetKeyboardLayout,
         },
         WindowsAndMessaging::{
-            self as msg, CallWindowProcA, DefWindowProcA, SetCursor, WM_NCDESTROY,
+            self as msg, CallWindowProcA, CallWindowProcW, DefWindowProcA, DefWindowProcW,
+            SetCursor, WM_NCDESTROY,
         },
     },
 };
@@ -34,7 +35,7 @@ use crate::{
 };
 
 #[tracing::instrument(level = Level::TRACE)]
-pub(super) unsafe extern "system" fn hooked_wnd_proc(
+pub(super) unsafe extern "system" fn hooked_wnd_proc<const UNICODE: bool>(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
@@ -50,16 +51,27 @@ pub(super) unsafe extern "system" fn hooked_wnd_proc(
         }
     });
 
-    if let Some(ret) = process_wnd_proc(hwnd.0 as u32, msg, wparam, lparam) {
+    if let Some(ret) = process_wnd_proc::<UNICODE>(hwnd.0 as u32, msg, wparam, lparam) {
         return ret;
     }
 
     let original_proc = Backends::get().window_state(hwnd.0 as u32, |state| state.original_proc);
-    unsafe { CallWindowProcA(original_proc, hwnd, msg, wparam, lparam) }
+    unsafe {
+        if UNICODE {
+            CallWindowProcW(original_proc, hwnd, msg, wparam, lparam)
+        } else {
+            CallWindowProcA(original_proc, hwnd, msg, wparam, lparam)
+        }
+    }
 }
 
 #[inline]
-fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+fn process_wnd_proc<const UNICODE: bool>(
+    hwnd: u32,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> Option<LRESULT> {
     match msg {
         msg::WM_WINDOWPOSCHANGED => {
             let winpos = unsafe { *(lparam.0 as *const msg::WINDOWPOS) };
@@ -102,7 +114,12 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         }
 
         msg::WM_APPCOMMAND if Backends::get().input_blocked() => {
-            return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
+            return Some(call_def_wndproc::<UNICODE>(
+                HWND(hwnd as _),
+                msg,
+                wparam,
+                lparam,
+            ));
         }
 
         // block other keyboard, mouse event
@@ -123,7 +140,12 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
         }
 
         msg::WM_INPUTLANGCHANGEREQUEST if Backends::get().input_blocked() => {
-            return Some(unsafe { DefWindowProcA(HWND(hwnd as _), msg, wparam, lparam) });
+            return Some(call_def_wndproc::<UNICODE>(
+                HWND(hwnd as _),
+                msg,
+                wparam,
+                lparam,
+            ));
         }
 
         msg::WM_IME_NOTIFY => {
@@ -185,15 +207,13 @@ fn process_wnd_proc(hwnd: u32, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Opti
             );
 
             if input_blocked {
-                return Some(unsafe {
-                    DefWindowProcA(
-                        HWND(hwnd as _),
-                        msg,
-                        wparam,
-                        // Disable composition, candinate window
-                        LPARAM(0),
-                    )
-                });
+                return Some(call_def_wndproc::<UNICODE>(
+                    HWND(hwnd as _),
+                    msg,
+                    wparam,
+                    // Disable composition, candinate window
+                    LPARAM(0),
+                ));
             }
         }
 
@@ -345,6 +365,21 @@ fn get_ime_string(himc: HIMC, comp: IME_COMPOSITION_STRING) -> Option<WString<Li
         WString::from_utf16le(buf).ok()
     } else {
         None
+    }
+}
+
+fn call_def_wndproc<const UNICODE: bool>(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    unsafe {
+        if UNICODE {
+            DefWindowProcW(hwnd, msg, wparam, lparam)
+        } else {
+            DefWindowProcA(hwnd, msg, wparam, lparam)
+        }
     }
 }
 

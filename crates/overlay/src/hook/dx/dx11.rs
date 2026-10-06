@@ -1,5 +1,5 @@
 use anyhow::Context;
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use dashmap::Entry;
 use once_cell::sync::Lazy;
 use scopeguard::defer;
@@ -67,13 +67,10 @@ fn with_or_init_renderer_data<R>(
                 state.unwrap()
             };
 
-            let ref_mut = entry.insert(RendererData {
+            entry.insert(RendererData {
                 renderer: Dx11Renderer::new(&device)?,
                 state,
-            });
-            register_swapchain_destruction_callback(swapchain, cleanup_swapchain);
-
-            ref_mut
+            })
         }
     };
 
@@ -94,7 +91,10 @@ pub fn draw_overlay(
     with_or_init_renderer_data(swapchain, move |data| {
         trace!("Using Direct3D11 renderer");
 
-        if state.texture.take_update() {
+        if state
+            .texture
+            .take_update(&mut data.renderer.texture_generation)
+        {
             data.renderer
                 .update_texture(device, state.texture.get().as_ref())
                 .context("renderer texture update")?;
@@ -137,25 +137,25 @@ pub(super) fn setup_fn(
     } else {
         Some(desc.OutputWindow.0 as u32)
     };
-
     let interop = DxInterop::new(adapter.as_ref())?;
-    let gpu_id = interop.gpu_id;
+
+    register_swapchain_destruction_callback(swapchain, {
+        let swapchain = swapchain.as_raw() as usize;
+        move || cleanup_swapchain(swapchain)
+    });
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D11 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D11 { window_id },
     )
 }
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D11 renderer cleanup");
-
-    Surfaces::cleanup_state(swapchain as _);
 }

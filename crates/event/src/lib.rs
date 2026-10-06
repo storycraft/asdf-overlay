@@ -46,6 +46,12 @@ pub struct SurfaceInfo {
     /// Client must choose correct GPU adapter using this luid,
     /// otherwise overlay rendering may fail.
     pub gpu_id: GpuLuid,
+
+    /// Whether the overlay surface can be shared with a keyed mutex.
+    ///
+    /// Client must share a plain texture and flush its writes when this is `false`,
+    /// otherwise the surface cannot be opened.
+    pub keyed_mutex: bool,
 }
 
 /// Locally unique identifier for a GPU adapter.
@@ -100,6 +106,7 @@ pub enum SurfaceType {
 }
 
 impl SurfaceType {
+    /// Return the associated window ID, if any.
     pub fn window_id(self) -> Option<u32> {
         match self {
             SurfaceType::Opengl { window_id } => Some(window_id),

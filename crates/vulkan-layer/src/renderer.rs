@@ -4,7 +4,10 @@ mod shaders;
 use core::mem;
 
 use anyhow::Context;
-use asdf_overlay::surface::{SharedTextureHandle, texture::OverlaySurface};
+use asdf_overlay::surface::{
+    SharedTextureHandle,
+    texture::{OverlaySurface, TextureGeneration},
+};
 use ash::{
     Device,
     vk::{self, Format},
@@ -21,6 +24,8 @@ use crate::renderer::frame::FrameData;
 
 /// A vulkan renderer for rendering an overlay.
 pub struct VulkanRenderer {
+    pub texture_generation: TextureGeneration,
+
     device: Device,
 
     descriptor_pool: vk::DescriptorPool,
@@ -70,6 +75,8 @@ impl VulkanRenderer {
         }
 
         Ok(Self {
+            texture_generation: TextureGeneration::new(),
+
             device,
 
             descriptor_pool,

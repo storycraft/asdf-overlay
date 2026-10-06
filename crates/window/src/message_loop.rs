@@ -60,8 +60,10 @@ impl MessageLoopState {
         });
     }
 
-    /// Execute a closure on the message loop thread.
-    /// Calling `call_on_message_loop` inside the closure deadlock.
+    /// Queue work on this message-loop thread without waiting for execution.
+    ///
+    /// Work may never run if the thread stops processing messages. A callback must not
+    /// queue more work on the same loop, which would deadlock. Panics are not caught.
     pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         self.proc_queue.lock().push_back(Box::new(f));
 

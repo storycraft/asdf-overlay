@@ -24,7 +24,10 @@ use windows::{
 use crate::{
     hook::util::original_execute_command_lists,
     renderer::{dx::shaders, dx12::queue::ID3D12CompatibilityQueue},
-    surface::{SharedTextureHandle, texture::OverlaySurface},
+    surface::{
+        SharedTextureHandle,
+        texture::{OverlaySurface, TextureGeneration},
+    },
     util::wrap_com_manually_drop,
 };
 
@@ -117,6 +120,8 @@ const RASTERIZER_STATE: D3D12_RASTERIZER_DESC = D3D12_RASTERIZER_DESC {
 const MAX_RENDER_TARGETS: usize = D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT as _;
 
 pub struct Dx12Renderer {
+    pub texture_generation: TextureGeneration,
+
     sig: ID3D12RootSignature,
 
     pipeline: ID3D12PipelineState,
@@ -197,6 +202,8 @@ impl Dx12Renderer {
             )?;
 
             Ok(Self {
+                texture_generation: TextureGeneration::new(),
+
                 sig,
 
                 pipeline,

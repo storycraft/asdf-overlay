@@ -1,7 +1,7 @@
 mod rtv;
 mod util;
 
-use asdf_overlay_event::{SurfaceInfo, SurfaceType};
+use asdf_overlay_event::SurfaceType;
 use parking_lot::Once;
 pub use util::original_execute_command_lists;
 
@@ -58,16 +58,10 @@ fn with_or_init_renderer_data<R>(
             info!("Initializing Direct3D12 renderer");
             let device = unsafe { swapchain.GetDevice::<ID3D12Device>()? };
 
-            let ref_mut = entry.insert(RendererData {
+            entry.insert(RendererData {
                 renderer: Dx12Renderer::new(&device, swapchain)?,
                 rtv: RtvDescriptors::new(&device)?,
-            });
-            register_swapchain_destruction_callback(swapchain, {
-                let device = device.as_raw() as usize;
-                move |this| cleanup_swapchain(this, device)
-            });
-
-            ref_mut
+            })
         }
     };
 
@@ -101,7 +95,10 @@ pub fn draw_overlay(
     let screen = state.size();
     with_or_init_renderer_data(swapchain, move |data| {
         trace!("Using Direct3D12 renderer");
-        if state.texture.take_update() {
+        if state
+            .texture
+            .take_update(&mut data.renderer.texture_generation)
+        {
             data.renderer
                 .update_texture(device, state.texture.get().as_ref())
                 .context("updating renderer texture")?;
@@ -143,14 +140,16 @@ pub(super) fn setup_fn(
     } else {
         Some(desc.OutputWindow.0 as u32)
     };
-    let gpu_id = interop.gpu_id;
+
+    register_swapchain_destruction_callback(swapchain, {
+        let swapchain = swapchain.as_raw() as usize;
+        let device = device.as_raw() as usize;
+        move || cleanup_swapchain(swapchain, device)
+    });
     SurfaceState::new(
         interop,
         (desc.BufferDesc.Width, desc.BufferDesc.Height),
-        SurfaceInfo {
-            api: SurfaceType::Direct3D12 { window_id },
-            gpu_id,
-        },
+        SurfaceType::Direct3D12 { window_id },
     )
 }
 
@@ -171,13 +170,14 @@ pub fn resize_swapchain(swapchain: &IDXGISwapChain) {
 
 #[tracing::instrument(level = Level::TRACE)]
 fn cleanup_swapchain(swapchain: usize, device: usize) {
+    Surfaces::cleanup_state(swapchain as _);
+
     if RENDERERS.remove(&swapchain).is_none() {
         return;
     };
     info!("Direct3D12 renderer cleanup");
 
     QUEUE_MAP.remove(&device);
-    Surfaces::cleanup_state(swapchain as _);
 }
 
 #[tracing::instrument(level = Level::TRACE)]

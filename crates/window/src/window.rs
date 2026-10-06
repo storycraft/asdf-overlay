@@ -16,8 +16,8 @@ use windows::Win32::{
             Touch::TOUCHINPUT,
         },
         WindowsAndMessaging::{
-            DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId,
-            SetWindowLongPtrA, WM_IME_SETCONTEXT, WNDPROC,
+            DefWindowProcA, GWLP_WNDPROC, GetClientRect, GetWindowThreadProcessId, IsWindowUnicode,
+            SetWindowLongPtrA, SetWindowLongPtrW, WM_IME_SETCONTEXT, WNDPROC,
         },
     },
 };
@@ -50,11 +50,22 @@ impl WindowProcState {
     pub(crate) fn init(id: u32) -> anyhow::Result<Self> {
         let original_proc: WNDPROC = {
             let res = unsafe {
-                mem::transmute::<isize, WNDPROC>(SetWindowLongPtrA(
-                    HWND(id as _),
-                    GWLP_WNDPROC,
-                    hooked_wnd_proc as *const () as _,
-                ) as _)
+                let hwnd = HWND(id as _);
+                let original_proc = if IsWindowUnicode(hwnd).as_bool() {
+                    SetWindowLongPtrW(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<true> as *const () as _,
+                    )
+                } else {
+                    SetWindowLongPtrA(
+                        hwnd,
+                        GWLP_WNDPROC,
+                        hooked_wnd_proc::<false> as *const () as _,
+                    )
+                } as isize;
+
+                mem::transmute::<isize, WNDPROC>(original_proc)
             };
 
             if res.is_none() {
@@ -83,10 +94,14 @@ impl WindowProcState {
         })
     }
 
+    /// Clear listening flags without changing global input blocking.
     pub fn reset(&self) {
         self.input_flags.store(0, Ordering::Relaxed);
     }
 
+    /// Return cached client-area dimensions in pixels.
+    ///
+    /// A concurrent resize may produce a width and height from different updates.
     pub fn size(&self) -> (u32, u32) {
         (
             self.size.0.load(Ordering::Relaxed),
@@ -94,10 +109,13 @@ impl WindowProcState {
         )
     }
 
+    /// Return the configured input listening flags.
     pub fn input_flags(&self) -> ListenInputFlags {
         ListenInputFlags::from_bits_retain(self.input_flags.load(Ordering::Relaxed))
     }
 
+    /// Replace the input listening flags. Global input blocking captures events
+    /// regardless of these flags.
     pub fn set_input_flags(&self, flags: ListenInputFlags) {
         self.input_flags.store(flags.bits(), Ordering::Relaxed);
     }
@@ -170,8 +188,7 @@ impl WindowProcState {
         });
     }
 
-    /// Execute a closure on the window thread.
-    /// Calling `call_on_window_thread` inside the closure deadlock.
+    /// Queue work on the window's message loop. See [`MessageLoopState::spawn_fn`].
     pub fn spawn_fn(&self, f: impl FnOnce(&MessageLoopState) + Send + 'static) {
         Backends::get().message_loop_state(self.thread_id, |message_loop| {
             message_loop.spawn_fn(f);
