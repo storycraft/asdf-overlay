@@ -253,7 +253,7 @@ fn read_message<const UNICODE: bool>(msg: &MSG) {
             let input_flags = backends.window_state(window_id, |state| state.input_flags());
 
             if input_blocked || input_flags.contains(ListenInputFlags::CURSOR) {
-                emit_cursor_event_from_message(window_id, msg);
+                emit_cursor_event_from_message(window_id, msg, input_blocked);
             }
 
             if input_blocked || input_flags.contains(ListenInputFlags::KEYBOARD) {
@@ -299,7 +299,7 @@ fn filtered_proc<const UNICODE: bool>(msg: &MSG) {
 }
 
 #[inline]
-fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
+fn emit_cursor_event_from_message(id: u32, msg: &MSG, input_blocked: bool) {
     match msg.message {
         msg::WM_MOUSEMOVE => {
             cursor_move(id, msg.lParam);
@@ -310,22 +310,22 @@ fn emit_cursor_event_from_message(id: u32, msg: &MSG) {
         }
 
         msg::WM_LBUTTONDOWN | msg::WM_LBUTTONDBLCLK => {
-            cursor_action(id, CursorAction::Left, true, msg.lParam);
+            cursor_action(id, CursorAction::Left, true, msg.lParam, input_blocked);
         }
         msg::WM_LBUTTONUP => {
-            cursor_action(id, CursorAction::Left, false, msg.lParam);
+            cursor_action(id, CursorAction::Left, false, msg.lParam, input_blocked);
         }
         msg::WM_RBUTTONDOWN | msg::WM_RBUTTONDBLCLK => {
-            cursor_action(id, CursorAction::Right, true, msg.lParam);
+            cursor_action(id, CursorAction::Right, true, msg.lParam, input_blocked);
         }
         msg::WM_RBUTTONUP => {
-            cursor_action(id, CursorAction::Right, false, msg.lParam);
+            cursor_action(id, CursorAction::Right, false, msg.lParam, input_blocked);
         }
         msg::WM_MBUTTONDOWN | msg::WM_MBUTTONDBLCLK => {
-            cursor_action(id, CursorAction::Middle, true, msg.lParam);
+            cursor_action(id, CursorAction::Middle, true, msg.lParam, input_blocked);
         }
         msg::WM_MBUTTONUP => {
-            cursor_action(id, CursorAction::Middle, false, msg.lParam);
+            cursor_action(id, CursorAction::Middle, false, msg.lParam, input_blocked);
         }
 
         msg::WM_MOUSEWHEEL => {
@@ -382,13 +382,21 @@ fn parse_cursor_position(lparam: LPARAM) -> InputPosition {
 }
 
 #[inline]
-fn cursor_action(hwnd: u32, action: CursorAction, pressed: bool, lparam: LPARAM) {
+fn cursor_action(
+    hwnd: u32,
+    action: CursorAction,
+    pressed: bool,
+    lparam: LPARAM,
+    input_blocked: bool,
+) {
     let pos = parse_cursor_position(lparam);
 
-    if pressed {
-        unsafe { SetCapture(HWND(hwnd as _)) };
-    } else {
-        _ = unsafe { ReleaseCapture() };
+    if input_blocked {
+        if pressed {
+            unsafe { SetCapture(HWND(hwnd as _)) };
+        } else {
+            _ = unsafe { ReleaseCapture() };
+        }
     }
 
     let index = match action {
