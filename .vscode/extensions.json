@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "tamasfe.even-better-toml",
+        "christian-kohler.npm-intellisense",
+        "rust-lang.rust-analyzer"
+    ]
+}
