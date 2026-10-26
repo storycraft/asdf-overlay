@@ -48,8 +48,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/electron
       electron:
-        specifier: ^43.5.0
-        version: 43.5.0(supports-color@7.2.0)
+        specifier: ^43.8.1
+        version: 43.8.1(supports-color@7.2.0)
       find-process:
         specifier: ^2.1.1
         version: 2.1.1
@@ -173,6 +173,10 @@ packages:
 
   '@electron-internal/extract-zip@1.0.5':
     resolution: {integrity: sha512-+bqFCP98pLI0Tt0XQo1TmlXtwjWchISndDOxCkEcIuUgXWpBnLyRI+2DU+mesvnMMX6L1XDqYNA0lXNDHd/yiA==}
+    engines: {node: '>=22.12.0'}
+
+  '@electron-internal/extract-zip@1.0.6':
+    resolution: {integrity: sha512-/aQLgFDdCSnwChfUwqekSmE1q2dCTzhUy5saIHBb5vyYn5LzWaKPaIz1wM0lDMCZYBoIG4svJNvAJb6vkI8BuA==}
     engines: {node: '>=22.12.0'}
 
   '@electron/get@5.1.0':
@@ -1152,8 +1156,8 @@ packages:
   '@types/node@24.12.2':
     resolution: {integrity: sha512-A1sre26ke7HDIuY/M23nd9gfB+nrmhtYyMINbjI1zHJxYteKR6qSMX56FsmjMcDb3SMcjJg5BiRRgOCC/yBD0g==}
 
-  '@types/node@24.19.0':
-    resolution: {integrity: sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==}
+  '@types/node@24.19.2':
+    resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
 
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
@@ -1460,8 +1464,8 @@ packages:
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
-  electron@43.5.0:
-    resolution: {integrity: sha512-nV2aWuKatmUrxrAWP2pNIynNX7dy83TCAz+6KnsbK7hDVLE+6fa2iouOtir41AboZTa+J5w2UgicWHAqUaaUJw==}
+  electron@43.8.1:
+    resolution: {integrity: sha512-Qa6/xXODEn60oIkyuV8jXmyX84z6nicuBh7BOkPHVZlTTCG1MeTYjAkmxX+1B/kEkErPjs3WCP+JdtwkRaKRcQ==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -1767,10 +1771,6 @@ packages:
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
-  picomatch@4.0.5:
-    resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
-    engines: {node: '>=12'}
-
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
@@ -1849,10 +1849,6 @@ packages:
     resolution: {integrity: sha512-U+/AXT6LWsxnj2vz9HeUuPWBNgdWxjyIEjEPdbJARC9txmgPzo2VEdqnFo4hHaNyMPtycyVJrSaQYeQv/PoyyA==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  tinyglobby@0.2.16:
-    resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
-    engines: {node: '>=12.0.0'}
-
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
@@ -1902,8 +1898,8 @@ packages:
   undici-types@7.24.6:
     resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
 
-  undici@7.30.0:
-    resolution: {integrity: sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==}
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
     engines: {node: '>=20.18.1'}
 
   universal-user-agent@7.0.3:
@@ -2104,6 +2100,8 @@ snapshots:
 
   '@electron-internal/extract-zip@1.0.5': {}
 
+  '@electron-internal/extract-zip@1.0.6': {}
+
   '@electron/get@5.1.0(supports-color@7.2.0)':
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
@@ -2113,7 +2111,7 @@ snapshots:
       semver: 7.8.5
       sumchecker: 3.0.1(supports-color@7.2.0)
     optionalDependencies:
-      undici: 7.30.0
+      undici: 7.30.1
     transitivePeerDependencies:
       - supports-color
 
@@ -2859,7 +2857,7 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
-  '@types/node@24.19.0':
+  '@types/node@24.19.2':
     dependencies:
       undici-types: 7.24.6
 
@@ -3131,11 +3129,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@43.5.0(supports-color@7.2.0):
+  electron@43.8.1(supports-color@7.2.0):
     dependencies:
-      '@electron-internal/extract-zip': 1.0.5
+      '@electron-internal/extract-zip': 1.0.6
       '@electron/get': 5.1.0(supports-color@7.2.0)
-      '@types/node': 24.19.0
+      '@types/node': 24.19.2
     transitivePeerDependencies:
       - supports-color
 
@@ -3282,10 +3280,6 @@ snapshots:
   fast-wrap-ansi@0.2.2:
     dependencies:
       fast-string-width: 3.0.2
-
-  fdir@6.5.0(picomatch@4.0.5):
-    optionalDependencies:
-      picomatch: 4.0.5
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
@@ -3434,8 +3428,6 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  picomatch@4.0.5: {}
-
   picomatch@4.0.7: {}
 
   postcss@8.5.14:
@@ -3522,11 +3514,6 @@ snapshots:
       '@dual-bundle/import-meta-resolve': 4.2.1
       '@pkgr/core': 0.3.6
 
-  tinyglobby@0.2.16:
-    dependencies:
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
-
   tinyglobby@0.2.17:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.7)
@@ -3590,7 +3577,7 @@ snapshots:
 
   undici-types@7.24.6: {}
 
-  undici@7.30.0:
+  undici@7.30.1:
     optional: true
 
   universal-user-agent@7.0.3: {}
@@ -3608,11 +3595,11 @@ snapshots:
   vite@6.3.5(@types/node@25.6.0)(jiti@2.5.1)(yaml@2.9.0):
     dependencies:
       esbuild: 0.25.12
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
       postcss: 8.5.14
       rollup: 4.60.4
-      tinyglobby: 0.2.16
+      tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 25.6.0
       fsevents: 2.3.3
